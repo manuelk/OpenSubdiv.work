@@ -25,6 +25,7 @@
 #include "../far/gregoryBasis.h"
 #include "../far/endCapGregoryBasisPatchFactory.h"
 #include "../far/error.h"
+#include "../far/patchFaceTag.h"
 #include "../far/stencilTableFactory.h"
 #include "../far/topologyRefiner.h"
 
@@ -131,7 +132,7 @@ EndCapGregoryBasisPatchFactory::addPatchBasis(Index faceIndex,
 ConstIndexArray
 EndCapGregoryBasisPatchFactory::GetPatchPoints(
     Vtr::internal::Level const * level, Index faceIndex,
-    PatchTableFactory::PatchFaceTag const * levelPatchTags,
+    PatchFaceTag const * levelPatchTags,
     int levelVertOffset) {
     // allocate indices (awkward)
     // assert(Vtr::INDEX_INVALID==0xFFFFFFFF);
@@ -165,7 +166,7 @@ EndCapGregoryBasisPatchFactory::GetPatchPoints(
             // - have already been processed (known CV indices)
             // - are also Gregory basis patches
             if (adjface!=Vtr::INDEX_INVALID and (adjface < faceIndex) and
-                (not levelPatchTags[adjface]._isRegular)) {
+                (not levelPatchTags[adjface].isRegular)) {
 
                 ConstIndexArray aedges = level->getFaceEdges(adjface);
                 int aedge = aedges.FindIndexIn4Tuple(edge);

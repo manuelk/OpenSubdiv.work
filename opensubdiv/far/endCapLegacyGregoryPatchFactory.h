@@ -34,6 +34,7 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Far {
 
+struct PatchFaceTag;
 class PatchTable;
 class TopologyRefiner;
 
@@ -60,7 +61,7 @@ public:
     /// @param levelVertOffset  relative offset of patch vertex indices
     ///
     ConstIndexArray GetPatchPoints(Vtr::internal::Level const * level, Index faceIndex,
-                                   PatchTableFactory::PatchFaceTag const * levelPatchTags,
+                                   PatchFaceTag const * levelPatchTags,
                                    int levelVertOffset);
 
     void Finalize(int maxValence, 

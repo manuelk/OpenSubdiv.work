@@ -24,6 +24,7 @@
 
 #include "../far/error.h"
 #include "../far/endCapLegacyGregoryPatchFactory.h"
+#include "../far/patchFaceTag.h"
 #include "../far/patchTable.h"
 #include "../far/topologyRefiner.h"
 #include "../vtr/level.h"
@@ -41,15 +42,15 @@ EndCapLegacyGregoryPatchFactory::EndCapLegacyGregoryPatchFactory(
 ConstIndexArray
 EndCapLegacyGregoryPatchFactory::GetPatchPoints(
     Vtr::internal::Level const * level, Index faceIndex,
-    PatchTableFactory::PatchFaceTag const * levelPatchTags,
+    PatchFaceTag const * levelPatchTags,
     int levelVertOffset) {
 
-    PatchTableFactory::PatchFaceTag patchTag = levelPatchTags[faceIndex];
+    PatchFaceTag patchTag = levelPatchTags[faceIndex];
 
     // Gregory Regular Patch (4 CVs + quad-offsets / valence tables)
     Vtr::ConstIndexArray faceVerts = level->getFaceVertices(faceIndex);
 
-    if (patchTag._boundaryCount) {
+    if (patchTag.boundaryCount) {
         for (int j = 0; j < 4; ++j) {
             // apply level offset
             _gregoryBoundaryTopology.push_back(faceVerts[j] + levelVertOffset);

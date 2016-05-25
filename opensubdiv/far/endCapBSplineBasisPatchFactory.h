@@ -34,6 +34,7 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Far {
 
+struct PatchFaceTag;
 class TopologyRefiner;
 
 /// \brief A BSpline endcap factory
@@ -80,7 +81,7 @@ public:
     ///
     ConstIndexArray GetPatchPoints(
         Vtr::internal::Level const * level, Index faceIndex,
-        PatchTableFactory::PatchFaceTag const * levelPatchTags,
+        PatchFaceTag const * levelPatchTags,
         int levelVertOffset);
 
 private:

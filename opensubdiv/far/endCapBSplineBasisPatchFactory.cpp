@@ -25,6 +25,7 @@
 #include "../far/gregoryBasis.h"
 #include "../far/endCapBSplineBasisPatchFactory.h"
 #include "../far/error.h"
+#include "../far/patchFaceTag.h"
 #include "../far/stencilTableFactory.h"
 #include "../far/topologyRefiner.h"
 
@@ -77,13 +78,13 @@ EndCapBSplineBasisPatchFactory::EndCapBSplineBasisPatchFactory(
 ConstIndexArray
 EndCapBSplineBasisPatchFactory::GetPatchPoints(
     Vtr::internal::Level const * level, Index thisFace,
-    PatchTableFactory::PatchFaceTag const *levelPatchTags,
+    PatchFaceTag const *levelPatchTags,
     int levelVertOffset) {
 
     Vtr::ConstIndexArray facePoints = level->getFaceVertices(thisFace);
-    PatchTableFactory::PatchFaceTag patchTag = levelPatchTags[thisFace];
+    PatchFaceTag patchTag = levelPatchTags[thisFace];
     // if it's boundary, fallback to use GregoryBasis
-    if (patchTag._boundaryCount > 0) {
+    if (patchTag.boundaryCount > 0) {
         return getPatchPointsFromGregoryBasis(
             level, thisFace, facePoints, levelVertOffset);
     }

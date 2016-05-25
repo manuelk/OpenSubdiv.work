@@ -32,6 +32,7 @@ set(SOURCE_FILES
     gregoryBasis.cpp
     patchBasis.cpp
     patchDescriptor.cpp
+    patchFaceTag.cpp
     patchMap.cpp
     patchTable.cpp
     patchTableFactory.cpp
@@ -56,6 +57,7 @@ set(PRIVATE_HEADER_FILES
 set(PUBLIC_HEADER_FILES
     error.h
     patchDescriptor.h
+    patchFaceTag.h
     patchParam.h
     patchMap.h
     patchTable.h
