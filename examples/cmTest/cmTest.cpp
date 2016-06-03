@@ -74,11 +74,20 @@ struct Node {
     int sharpnessIndex; // single crease sharpness
 
     Index childFaceCount,
+          children[4],
           controlVerts[16];
 };
 
 void Node::Print() const {
     printf("{ \"type\":\"%s\", \"children\":%d", NodeTypeNames[type], childFaceCount);
+
+    printf(", \"children\":[");
+    for (int j=0; j<4; ++j) {
+        if (j>0) printf(", ");
+        printf("%d", children[j]);
+    }
+    printf("] }");
+
     printf(", \"cvs\":[");
     for (int j=0; j<16; ++j) {
         if (j>0) printf(", ");
@@ -86,6 +95,60 @@ void Node::Print() const {
     }
     printf("] }");
 }
+
+///
+/// Bitfield layout :
+///
+///  Field0     | Bits | Content
+///  -----------|:----:|------------------------------------------------------
+///  offset     | 28   | the faceId of the patch
+///  type       | 4    | type
+///
+///  Field1     | Bits | Content
+///  -----------|:----:|------------------------------------------------------
+///  transition | 4    | transition edge mask encoding
+///  level      | 4    | the subdivision level of the node
+///  nonquad    | 1    | whether the patch is the child of a non-quad face
+///  boundary   | 4    | boundary edge mask encoding
+///
+struct NodeBits {
+
+    void Set(int offset, unsigned short type, unsigned short depth, bool nonquad,
+                 unsigned short boundary, unsigned short transition ) {
+        field0 = (((unsigned int)offset) & 0xfffffff) |
+                 ((type & 0xf) << 28);
+        field1 = ((boundary & 0xf) << 9) |
+                 ((nonquad ? 1:0) << 8) |
+                 ((nonquad ? depth+1 : depth) << 4) |
+                 (transition & 0xf);
+    }
+
+
+    /// \brief Resets everything to 0
+    void Clear() { field0 = field1 = 0; }
+
+    /// \brief Retuns the offset
+    int GetOffset() const { return Index(field0 & 0xfffffff); }
+
+    /// \brief Returns the transition edge encoding for the patch.
+    unsigned short GetTransition() const { return (unsigned short)((field0 >> 28) & 0xf); }
+
+    /// \brief Returns the boundary edge encoding for the patch.
+    unsigned short GetBoundary() const { return (unsigned short)((field1 >> 8) & 0xf); }
+
+    /// \brief True if the parent coarse face is a non-quad
+    bool NonQuadRoot() const { return (field1 >> 4) & 0x1; }
+
+    unsigned int field0:32,
+                 field1:32;
+};
+
+struct Characteristic {
+
+    int * tree,
+          treeSize,
+          treeRoot;
+};
 
 /// \brief A specialized builder for subdivision plan hierarchies
 ///
@@ -134,26 +197,50 @@ public:
     ///
     /// @param faceIndex            Index of the coarse face
     ///
-    /// @param tree                 Vector of tree nodes (root at index 0)
-    ///
-    void CreateTree(int faceIndex, std::vector<Node> & tree);
+    Characteristic * CreateCharacteristic(int faceIndex);
 
     /// \bried Debug printout
     void PrintTree() const;
 
 private:
 
+    //
+    // Construct tree
+    //
+
     void initializaLevelPatchTags();
 
-    void extractNode(int levelIndex, int faceIndex);
+    int extractNode(int levelIndex, int faceIndex);
+
+    int extractRecursiveNode(int levelIndex, int faceIndex);
 
     void extractNgonNode(int faceIndex);
-
-    void extractRecursiveNode(int levelIndex, int faceIndex);
 
     Node * extractRegularNode(PatchFaceTag const & patchTag, int level, int face);
 
     Node * extractLimitNode(int level, int face);
+
+    void printTree(Index faceIndex) const;
+
+private:
+
+    //
+    // Flatten tree into chartacteristic table
+    //
+
+    bool nodeIsTerminal(int nodeIndex) const;
+
+    void writeNode(int nodeIndex, int * offset, int * dataSize, void * data) const;
+
+    void writeRegularNode(int nodeIndex, int * offset, int * dataSize, void * data) const;
+
+    void writeLimitNode(int nodeIndex, int * offset, int * dataSize, void * data) const;
+
+    void writeRecursiveNode(int nodeIndex, int * offset, int * dataSize, void * data) const;
+
+    void writeTerminalNode(int nodeIndex, int * offset, int * dataSize, void * data) const;
+
+    void writeCharacteristicTree(Characteristic * ch) const;
 
 private:
 
@@ -173,8 +260,54 @@ private:
     StencilTable * _endcapVaryingStencils;
 
     std::vector<float> _sharpnessValues;
-    
-    std::vector<Node *> _tree;
+
+private:
+
+    class NodeAllocator {
+
+    public:
+
+        NodeAllocator() {
+            allocateBlock();
+        }
+
+        ~NodeAllocator() {
+            for (int i=0; i<(int)_blocks.size(); ++i) {
+                delete [] _blocks[i];
+            }
+        }
+
+        void Reset() {
+            _currentBlock = _currentNode = 0;
+        }
+
+        Node * Allocate() {
+            _currentNode++;
+            if (_currentNode==_blockSize) {
+                allocateBlock();
+            }
+            return &_blocks[_currentBlock][_currentNode];
+        }
+
+    private:
+
+        void allocateBlock() {
+            _blocks.push_back(new Node[_blockSize]);
+            _currentBlock = (int)_blocks.size()-1;
+            _currentNode = 0;
+        }
+
+        int const _blockSize = 1000;
+
+        int _currentBlock,
+            _currentNode;
+
+        std::vector<Node *> _blocks;
+    };
+
+    NodeAllocator _nodeAllocator;
+
+    std::vector<Node *> _nodes;
 };
 
 NodeTreeBuilder::NodeTreeBuilder(
@@ -214,10 +347,11 @@ NodeTreeBuilder::NodeTreeBuilder(
 
     for (int i=0; i<nlevels; ++i) {
 
+        TopologyLevel const & level = _refiner.GetLevel(i);
+
         _levelPatchTags[i] = & patchTags[levelFaceOffset];
         _levelVertOffsets[i] = levelVertOffset;
 
-        TopologyLevel const & level = _refiner.GetLevel(i);
         levelFaceOffset += level.GetNumFaces();
         levelVertOffset += level.GetNumVertices();
     }
@@ -294,7 +428,7 @@ Node *
 NodeTreeBuilder::extractRegularNode(
     PatchFaceTag const & patchTag, int levelIndex, int faceIndex) {
 
-    Node * node = new Node;
+    Node * node = _nodeAllocator.Allocate();
 
     Vtr::internal::Level const & level = _refiner.getLevel(levelIndex);
 
@@ -313,9 +447,7 @@ NodeTreeBuilder::extractRegularNode(
     if (patchTag.boundaryCount == 0) {
         static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
         permutation = permuteRegular;
-
         level.gatherQuadRegularInteriorPatchPoints(faceIndex, patchVerts, 0 /* no rotation*/);
-
         if (patchTag.isSingleCrease) {
             boundaryMask = (1<<bIndex);
             sharpness = level.getEdgeSharpness((level.getFaceEdges(faceIndex)[bIndex]));
@@ -333,7 +465,6 @@ NodeTreeBuilder::extractRegularNode(
             { -1, 4, 5, 6, -1, 0, 1, 7, -1, 3, 2, 8, -1, 11, 10, 9 } };
         permutation = permuteBoundary[bIndex];
         level.gatherQuadRegularBoundaryPatchPoints(faceIndex, patchVerts, bIndex);
-
         node->type = NODE_BOUNDARY;
     } else if (patchTag.boundaryCount == 2) {
         // Expand corner patch vertices and rotate to restore correct orientation.
@@ -344,7 +475,6 @@ NodeTreeBuilder::extractRegularNode(
             { -1, 4, 5, 6, -1, 1, 2, 7, -1, 0, 3, 8, -1, -1, -1, -1 } };
         permutation = permuteCorner[bIndex];
         level.gatherQuadRegularCornerPatchPoints(faceIndex, patchVerts, bIndex);
-
         node->type = NODE_CORNER;
     } else {
         assert(patchTag.boundaryCount <= 2);
@@ -364,7 +494,7 @@ NodeTreeBuilder::extractLimitNode(int levelIndex, int faceIndex) {
 
     assert(levelIndex==_refiner.GetMaxLevel());
 
-    Node * node = new Node;
+    Node * node = _nodeAllocator.Allocate();
     node->type = NODE_LIMIT;
 
     Vtr::internal::Level const & level = _refiner.getLevel(levelIndex);
@@ -399,13 +529,14 @@ NodeTreeBuilder::extractLimitNode(int levelIndex, int faceIndex) {
 
 // generate a recursive node : there is no limit patch, so we generate a
 // NODE_RECURSIVE describing sub-patches
-void
+int
 NodeTreeBuilder::extractRecursiveNode(int levelIndex, int faceIndex) {
 
-    if (levelIndex && (levelIndex==_options.maxIsolationLevel)) {
+    int nodeIndex = (int)_nodes.size();
 
+    if (levelIndex && (levelIndex==_options.maxIsolationLevel)) {
         // reached max isolation : create a limit cap
-        _tree.push_back(extractLimitNode(levelIndex, faceIndex));
+        _nodes.push_back(extractLimitNode(levelIndex, faceIndex));
     } else {
 
         TopologyLevel const & level = _refiner.GetLevel(levelIndex);
@@ -413,15 +544,17 @@ NodeTreeBuilder::extractRecursiveNode(int levelIndex, int faceIndex) {
         ConstIndexArray childFaces = level.GetFaceChildFaces(faceIndex);
         assert(childFaces.size()==4);
 
-        Node * node = new Node;
+        Node * node = _nodeAllocator.Allocate();
         node->type = NODE_RECURSIVE;
         node->childFaceCount = 4;
-        _tree.push_back(node);
+
+        _nodes.push_back(node);
 
         for (int child=0; child<childFaces.size(); ++child) {
-            extractNode(levelIndex+1, childFaces[child]);
+            node->children[child] = extractNode(levelIndex+1, childFaces[child]);
         }
     }
+    return nodeIndex;
 }
 
 // generate an n-gon node : can only be applied to non-quad coarse faces
@@ -433,10 +566,10 @@ NodeTreeBuilder::extractNgonNode(int faceIndex) {
     ConstIndexArray childFaces = level.GetFaceChildFaces(faceIndex);
     assert(childFaces.size()!=4);
 
-    Node * node = new Node;
+    Node * node = _nodeAllocator.Allocate();
     node->type = NODE_NGON;
     node->childFaceCount = childFaces.size();
-    _tree.push_back(node);
+    _nodes.push_back(node);
 
     for (int child=0; child<childFaces.size(); ++child) {
         extractNode(1, faceIndex);
@@ -445,44 +578,229 @@ NodeTreeBuilder::extractNgonNode(int faceIndex) {
 
 // recursively traverse an adaptively refined topology from
 // level / face down, and accumulate tree nodes
-void
+int
 NodeTreeBuilder::extractNode(int levelIndex, int faceIndex) {
 
     PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
 
+    int nodeIndex = (int)_nodes.size();
+
     if (patchTag.hasPatch) {
         if (patchTag.isRegular) {
-            _tree.push_back(extractRegularNode(patchTag, levelIndex, faceIndex));
+            _nodes.push_back(extractRegularNode(patchTag, levelIndex, faceIndex));
         } else {
             // reached max isolation : create a limit cap
-            _tree.push_back(extractLimitNode(levelIndex, faceIndex));
+            _nodes.push_back(extractLimitNode(levelIndex, faceIndex));
         }
     } else {
         if (levelIndex==0) {
             ConstIndexArray fverts = _refiner.GetLevel(levelIndex).GetFaceVertices(faceIndex);
             if (fverts.size()!=4) {
                 extractNgonNode(faceIndex);
-                return;
+                return 0;
             }
         }
         extractRecursiveNode(levelIndex, faceIndex);
     }
 
+    return nodeIndex;
 }
 
 void
-NodeTreeBuilder::CreateTree(int face, std::vector<Node> & tree) {
+NodeTreeBuilder::printTree(Index faceIndex) const {
 
+    if (faceIndex>0) {
+        printf(",\n");
+    }
+    printf("  \"face%d\" : [\n", faceIndex);
+    for (int i=0; i<(int)_nodes.size(); ++i) {
+        if (i>0) {
+            printf(",\n");
+        }
+        printf("    \"node%d\" : ", i);
+        _nodes[i]->Print();
+    }
+    printf("\n  ]");
+    fflush(stdout);
+}
+
+
+//
+// Write characteristic tree
+//
+
+bool
+NodeTreeBuilder::nodeIsTerminal(int nodeIndex) const {
+
+// XXXX
+return false;
+
+    Node const * node = _nodes[nodeIndex];
+    if (node->type!=NODE_RECURSIVE) {
+        return false;
+    }
+    int nrecursive = 0;
+    for (int i=0; i<4; ++i) {
+        Node const * child = _nodes[node->children[i]];
+        switch (child->type) {
+            case NODE_REGULAR: break;
+            case NODE_RECURSIVE: ++nrecursive; break;
+            default:
+                return false;
+        };        
+        if (nrecursive>1) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void
+NodeTreeBuilder::writeTerminalNode(
+    int nodeIndex, int * offset, int * dataSize, void * data) const {
+
+    int dataOffset = *dataSize,
+        * indices = (int *)((char *)data + *dataSize);
+
+    for (;;) {
+
+        Node const * node = _nodes[nodeIndex];
+
+/*
+        switch (node->type) {
+
+            case NODE_LIMIT:
+                if (data) {
+                    // XXX copy CVs for end-cap patch
+                }
+                break;
+
+            case NODE_REGULAR:
+
+            case NODE_RECURSIVE:
+                // XXX 25 CVs terminal node case (single EV)
+                // can we do it with rotations ????
+        };
+*/
+        break;
+    }
+}
+
+
+//
+// Memory layout:
+// [[ support vert indices (16,12,9 ints) ]], [[ sharpness (1 float)]]
+//
+void
+NodeTreeBuilder::writeRegularNode(
+    int nodeIndex, int * offset, int * dataSize, void * data) const {
+
+    Node const * node = _nodes[nodeIndex];
+
+    bool isSemiSharp = false;
+    int nsupports = 16;
+    switch(node->type) {
+        case NODE_REGULAR:
+        case NODE_SEMI_SHARP: isSemiSharp = true; break;
+        case NODE_BOUNDARY: nsupports = 12; break;
+        case NODE_CORNER: nsupports = 9; break;
+        default:
+            assert(0);
+    };
+
+    if (data) {
+        // XXXX
+    }
+
+    *dataSize += nsupports * sizeof(int);
+
+    if (isSemiSharp) {
+        *dataSize += sizeof(float);
+        if (data) {
+            // XXXX
+        }
+    }
+}
+
+void
+NodeTreeBuilder::writeLimitNode(
+    int nodeIndex, int * offset, int * dataSize, void * data) const {
+
+}
+
+void
+NodeTreeBuilder::writeRecursiveNode(
+    int nodeIndex, int * offset, int * dataSize, void * data) const {
+
+    Node const * node = _nodes[nodeIndex];
+
+    assert(node->type==NODE_RECURSIVE);
+
+    if (nodeIsTerminal(nodeIndex)) {
+        writeTerminalNode(nodeIndex, offset, dataSize, data);
+    } else {
+        for (int i=0; i<4; ++i) {
+            if (data) {
+            }
+            int * childOffsets = (int *)((char *)data + *dataSize);
+            *dataSize += 4 * sizeof(int);
+            writeNode(node->children[i], &childOffsets[i], dataSize, data);
+        }
+    }
+}
+
+void
+NodeTreeBuilder::writeNode(
+    int nodeIndex, int * offset, int * dataSize, void * data) const {
+
+    Node const * node = _nodes[nodeIndex];
+
+    switch(node->type) {
+        case NODE_REGULAR:
+        case NODE_SEMI_SHARP:
+        case NODE_BOUNDARY:
+        case NODE_CORNER:
+            writeRegularNode(nodeIndex, offset, dataSize, data);
+            break;
+        case NODE_LIMIT:
+            writeLimitNode(nodeIndex, offset, dataSize, data);
+            break;
+        case NODE_RECURSIVE:
+            writeRecursiveNode(nodeIndex, offset, dataSize, data);
+            break;
+        default:
+            assert(0);
+    };
+}
+
+void
+NodeTreeBuilder::writeCharacteristicTree(Characteristic * ch) const {
+
+    writeNode(0, nullptr, &ch->treeSize, nullptr);
+
+    ch->tree = new int[ch->treeSize];
+
+    int offset = 0;
+    //writeNode(0, &ch->treeRoot, &offset, ch->tree);
+}
+
+Characteristic *
+NodeTreeBuilder::CreateCharacteristic(int face) {
+
+    _nodes.clear();
+
+    _nodeAllocator.Reset();
+
+    // recursively build nodes tree
     extractNode(0, face);
 
-    // pack nodes into contiguous memory
-    // xxxx is this really necessary if we use this to build patches ???
-    tree.resize(_tree.size());
-    for (int i=0; i<(int)_tree.size(); ++i) {
-        memcpy(&tree[i], _tree[i], sizeof(Node));
-        delete _tree[i];
-    }
-    _tree.clear();
+    printTree(face);
+
+    Characteristic * ch = new Characteristic;
+
+    writeCharacteristicTree(ch);
+
+    return ch;
 }
 
 
@@ -530,25 +848,12 @@ testMe(ShapeDesc const & shapeDesc, int maxlevel=3) {
         // build trees
         int nfaces = refiner->GetLevel(0).GetNumFaces();
 
-        std::vector<std::vector<Far::Node> > trees(nfaces);
-
-printf("[");
         for (int face=0; face<nfaces; ++face) {
-            std::vector<Far::Node> & tree = trees[face];
-            builder.CreateTree(face, tree);
 
-if (face>0) printf(",\n");
+            Far::Characteristic * ch = builder.CreateCharacteristic(face);
 
-printf("[\n");
-for (int i=0; i<(int)tree.size(); ++i) {
-if (i>0) printf(",\n");
-tree[i].Print();
-}
-printf("]\n");
-
+            delete ch;
         }
-printf("]");
-
     }
 }
 
@@ -572,7 +877,7 @@ int main(int argc, char **argv) {
     initShapes();
 
     ShapeDesc const & sdesc = g_defaultShapes[8]; // g_defaultShapes[42];
-    int level=2;
+    int level=4;
 printf("Shape='%s' (lvl=%d)\n", sdesc.name.c_str(), level);
     testMe(sdesc, level);
 }
