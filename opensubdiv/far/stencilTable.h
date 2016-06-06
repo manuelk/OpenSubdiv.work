@@ -220,6 +220,7 @@ protected:
         : _numControlVertices(numControlVerts) 
     { }
 
+    friend class CharacteristicBuilder;
     friend class StencilTableFactory;
     friend class PatchTableFactory;
     // XXX: temporarily, GregoryBasis class will go away.
