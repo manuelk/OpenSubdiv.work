@@ -48,6 +48,28 @@ struct Characteristic {
     // Tree
     //
 
+    ///
+    ///  Field      | size | Content
+    ///  -----------|:----:|----------------------------------------------------
+    /// Regular node layout
+    ///  header     | 1    | see NodeDescriptor
+    ///  sharpness  | 1    | crease sharpness (single crease nodes only)
+    ///  supports   | 16   | indices
+    ///
+    /// End node layout:
+    ///  header     | 1    | see NodeDescriptor
+    ///  supports   | 16   | indices
+    ///
+    /// Recursive node layout:
+    ///  header     | 1    | see NodeDescriptor
+    ///  offsets    | 4    | offsets to 4 children nodes
+    ///
+    /// Terminal node layout:
+    ///  header     | 1    | see NodeDescriptor
+    ///  offsets    | 4    | offsets to children nodes
+    ///  supports   | 25   | indices
+    ///
+
     enum NodeType {
         NODE_REGULAR = 0,
         NODE_RECURSIVE = 1,
@@ -55,34 +77,43 @@ struct Characteristic {
         NODE_END = 3,
     };
 
+    /// ModeDescriptor
     ///
     /// Bitfield layout :
     ///
-    ///  Field1     | Bits | Content
-    ///  -----------|:----:|------------------------------------------------------
-    ///  type       | 2    | type
-    ///  level      | 4    | the subdivision level of the node
-    ///  transition | 4    | transition edge mask encoding
-    ///  boundary   | 4    | boundary edge mask encoding
+    ///  Field1       | Bits | Content
+    ///  -------------|:----:|------------------------------------------------------
+    ///  type         | 2    | type
+    ///  depth        | 4    | the subdivision level of the node
+    ///  transition   | 4    | transition edge mask encoding
+    ///  boundary     | 4    | boundary edge mask encoding
+    ///  singleCrease | 1    | true if "single crease" patch
     ///
     struct NodeDescriptor {
 
-        void Set(unsigned short type, unsigned short depth, bool nonquad,
-            unsigned short boundary, unsigned short transition ) {
-            field0 = ((boundary & 0xf)            << 10) |
-                     ((transition & 0xf)          <<  6) |
-                     ((nonquad ? depth+1 : depth) <<  2) |
-                     (type & 0x8);
+        void Set(unsigned short type, unsigned short depth, unsigned short boundary,
+            unsigned short transition, unsigned short singleCrease=false) {
+            field0 = ((singleCrease ? 1:0) << 14) |
+                     ((boundary & 0xf)     << 10) |
+                     ((transition & 0xf)   <<  6) |
+                     ((depth & 0xf)        <<  2) |
+                     (type & 0x3);
         }
 
         /// \brief Resets everything to 0
         void Clear() { field0 = 0; }
+
+        /// \brief Returns the type for the patch.
+        NodeType GetType() const { return (NodeType)(field0 & 0x3); }
 
         /// \brief Returns the transition edge encoding for the patch.
         unsigned short GetTransition() const { return (unsigned short)((field0 >> 6) & 0xf); }
 
         /// \brief Returns the boundary edge encoding for the patch.
         unsigned short GetBoundary() const { return (unsigned short)((field0 >> 10) & 0xf); }
+
+        /// \brief Returns true if the patch is of "single crease" type
+        bool IsSingleCrease() const { return (field0 >> 14) & 0x1; }
 
         unsigned int field0:32;
     };
