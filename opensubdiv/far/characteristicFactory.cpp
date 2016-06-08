@@ -103,7 +103,9 @@ public:
 
     void WriteCharacteristicTree(Characteristic * ch, int levelIndex, int faceIndex) const;
 
-Characteristic * currentCh;
+    StencilTable const * FinalizeStencils();
+
+    StencilTable const * FinalizeVaryingStencils();
 
 private:
 
@@ -279,13 +281,7 @@ CharacteristicBuilder::writeRegularNode(
             data += sizeof(float);
         }
 
-#if 0
         offsetAndPermuteIndices(patchVerts, 16, levelVertOffset, permutation, (Index *)data);
-#else
-        for (int i=0; i<16; ++i) {
-            ((int *)data)[i] = 222;
-        }
-#endif
     }
 
     return dataSize;
@@ -307,7 +303,7 @@ CharacteristicBuilder::writeEndNode(
     }
 
     if (data) {
-#if 0
+
         Vtr::internal::Level const & level = _refiner.getLevel(levelIndex);
 
         PatchFaceTag const * levelPatchTags = _levelPatchTags[levelIndex];
@@ -334,27 +330,11 @@ CharacteristicBuilder::writeEndNode(
 
         assert(sizeof(Index)==sizeof(int));
         memcpy(data, cvs.begin(), cvs.size() * sizeof(int));
-#else
-        ((NodeDescriptor *)data)->Set(Characteristic::NODE_END, levelIndex, 0, 0);
-        data += sizeof(NodeDescriptor);
-        for (int i=0; i<16; ++i) {
-            ((int *)data)[i] = 333;
-        }
-#endif
     }
 
     return dataSize;
 }
 
-static void printTree(char const * type, int offset, Characteristic const * ch) {
-    int size = ch->treeSize/4;
-    printf("%s (%d) ofs=%d [\n", type, size, offset);
-    for (int i=0; i<size; ++i) {
-        printf("%*d, ", 4, ch->tree[i]);
-        if ((i+1)%30==0) printf("\n");
-    }
-    printf("]\n\n"); fflush(stdout);
-}
 
 int
 CharacteristicBuilder::writeRecursiveNode(
@@ -369,12 +349,11 @@ CharacteristicBuilder::writeRecursiveNode(
         int * childrenOffsets = (int *)(data + sizeof(NodeDescriptor));
 
         ConstIndexArray children = _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
+
         for (int i=0; i<children.size(); ++i) {
 
             int childOffset = offset + dataSize/sizeof(int);
-
             dataSize += writeNode(levelIndex+1, children[i], childOffset, data+dataSize);
-
             childrenOffsets[i] = childOffset;
         }
     } else {
@@ -388,7 +367,27 @@ CharacteristicBuilder::writeRecursiveNode(
 
 bool
 CharacteristicBuilder::nodeIsTerminal(int levelIndex, int faceIndex) const {
-    return false; // XXXX TODO
+    if (_options.useTerminalNodes) {
+        PatchFaceTag const * levelPatchTags = _levelPatchTags[levelIndex];
+
+        int irregular = 0;
+
+        ConstIndexArray children = _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
+
+        for (int i=0; i<children.size(); ++i) {
+
+            PatchFaceTag const & patchTag = levelPatchTags[faceIndex];
+
+            if (!patchTag.hasPatch || (patchTag.boundaryCount>0) || patchTag.isSingleCrease) {
+                ++irregular;
+            }
+            if (irregular>1) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
 }
 
 int
@@ -402,22 +401,18 @@ CharacteristicBuilder::writeNode(
     if (patchTag.hasPatch) {
         if (patchTag.isRegular) {
             dataSize = writeRegularNode(levelIndex, faceIndex, data);
-//if (data) printTree("Regular", offset, currentCh);
         } else {
             dataSize = writeEndNode(levelIndex, faceIndex, data);
-//if (data) printTree("End", offset, currentCh);
         }
     } else {
         if (nodeIsTerminal(levelIndex, faceIndex)) {
             // XXX TODO
         } else {
             dataSize = writeRecursiveNode(levelIndex, faceIndex, offset, data);
-//if (data) printTree("Recursive", offset, currentCh);
         }
     }
     return dataSize;
 }
-
 
 void
 CharacteristicBuilder::WriteCharacteristicTree(
@@ -428,52 +423,36 @@ CharacteristicBuilder::WriteCharacteristicTree(
     ch->tree = new int[ch->treeSize/sizeof(int)];
 
     writeNode(levelIndex, faceIndex, 0, (uint8_t *)ch->tree);
+    //PrintCharacteristicTreeNode(ch->tree, 0, 0);
 }
 
-static void
-PrintCharacteristicTreeNode(Characteristic const & ch, int offset) {
-
-    typedef Characteristic::NodeDescriptor Descriptor;
-
-    if (offset==0) {
-        printf("subgraph {\n");
+StencilTable const *
+CharacteristicBuilder::FinalizeStencils() {
+    if (_endcapStencils && (_endcapStencils->GetNumStencils() > 0)) {
+        _endcapStencils->finalize();
+    } else {
+        delete _endcapStencils;
+        _endcapStencils = nullptr;
     }
-    int const * data = ch.tree + offset;
+    return _endcapStencils;
+}
 
-    Descriptor const & desc = *(Descriptor *)data;
-
-    switch (desc.GetType()) {
-        case Characteristic::NODE_REGULAR :
-            printf("  %d [label=\"R\", shape=circle]\n", offset);
-            break;
-
-        case Characteristic::NODE_END :
-            printf("  %d [label=\"E\", shape=circle, style=filled, color=darkorange]\n", offset);
-            break;
-
-        case Characteristic::NODE_RECURSIVE : {
-                printf("  %d [label=\"I\", shape=circle, style=filled, color=dodgerblue]\n", offset);
-                int const * childOffsets = data + 1;
-                for (int i=0; i<4; ++i) {
-                    PrintCharacteristicTreeNode(ch, childOffsets[i]);
-                    printf("  %d->%d;\n", offset, childOffsets[i]);
-                }
-            } break;
-
-        case Characteristic::NODE_TERMINAL :
-            printf("  %d [shape=circle, label=\"T\"]", offset);
-
-        default:
-            assert(0);
+StencilTable const *
+CharacteristicBuilder::FinalizeVaryingStencils() {
+    if (_endcapVaryingStencils && (_endcapVaryingStencils->GetNumStencils() > 0)) {
+        _endcapVaryingStencils->finalize();
+    } else {
+        delete _endcapVaryingStencils;
+        _endcapVaryingStencils = nullptr;
     }
-    if (offset==0) {
-        printf("}\n");
-    }
+    return _endcapVaryingStencils;
 }
 
 //
 // Characteristic factory
 //
+
+static void PrintCharacteristicsDigraph(Characteristic const * chars, int nchars);
 
 Characteristic const *
 CharacteristicFactory::Create(TopologyRefiner const & refiner,
@@ -499,27 +478,109 @@ CharacteristicFactory::Create(TopologyRefiner const & refiner,
     Characteristic * result = new Characteristic[nchars],
                    * ch = result;
     for (int face = 0; face < coarseLevel.GetNumFaces(); ++face) {
-
         ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
         if (children.size()==regFaceSize) {
-//builder.currentCh = ch;
             builder.WriteCharacteristicTree(ch, 0, face);
-            PrintCharacteristicTreeNode(*ch, 0);
             ++ch;
         } else {
             for (int child=0; child<children.size(); ++child) {
-//builder.currentCh = ch;
                 builder.WriteCharacteristicTree(ch, 1, children[child]);
-                PrintCharacteristicTreeNode(*ch, 0);
                 ++ch;
             }
         }
-
     }
+
+    StencilTable const * localStencils = builder.FinalizeStencils(),
+                       * localVaryingStencils = builder.FinalizeVaryingStencils();
+    
+
+    //PrintCharacteristicsDigraph(result, nchars);
 
     return result;
 }
 
+//
+// Debug functions
+//
+
+static void
+PrintNodeIndices(int const * cvs, int ncvs) {
+    for (int i=0; i<ncvs; ++i) {
+        if (i>0 && ((i%4)!=0))
+            printf(" ");
+        if ((i%4)==0)
+            printf("\\n");
+        printf("%*d", 4, cvs[i]);
+    }
+}
+
+static void
+PrintCharacteristicTreeNode(int const * tree, int offset, int charIndex, bool showIndices=false) {
+
+    typedef Characteristic::NodeDescriptor Descriptor;
+
+    bool newGraph = offset ? false : true;
+    if (newGraph) {
+        printf("subgraph {\n");
+    }
+    int const * data = tree + offset;
+
+    Descriptor const & desc = *(Descriptor *)data;
+
+    switch (desc.GetType()) {
+        case Characteristic::NODE_REGULAR : {
+                printf("  C%d_%d [label=\"R\\n", charIndex, offset);
+                ++data;
+                if (desc.IsSingleCrease()) {
+                    ++data;
+                }
+                if (showIndices) {
+                    PrintNodeIndices(data, 16);
+                }
+                printf("\", shape=box]\n");
+            } break;
+
+        case Characteristic::NODE_END : {
+                printf("  C%d_%d [label=\"E\\n", charIndex, offset);
+                 ++data;
+                if (showIndices) {
+                    PrintNodeIndices(data, 16);
+                }
+                printf("\", shape=box, style=filled, color=darkorange]\n");
+            } break;
+
+        case Characteristic::NODE_RECURSIVE : {
+                printf("  C%d_%d [label=\"I\", shape=circle, style=filled, color=dodgerblue]\n", charIndex, offset);
+                int const * childOffsets = data + 1;
+                for (int i=0; i<4; ++i) {
+                    PrintCharacteristicTreeNode(tree, childOffsets[i], charIndex, showIndices);
+                    printf("  C%d_%d->C%d_%d;\n", charIndex, offset, charIndex, childOffsets[i]);
+                }
+            } break;
+
+        case Characteristic::NODE_TERMINAL :
+            printf("  C%d_%d [shape=circle, label=\"T\"]", charIndex, offset);
+
+        default:
+            assert(0);
+    }
+    if (newGraph) {
+        printf("}\n");
+    }
+}
+
+static void
+PrintCharacteristicsDigraph(Characteristic const * chars, int nchars) {
+
+    printf("digraph {\n");
+    for (int i=0; i<nchars; ++i) {
+
+        Characteristic const & ch = chars[i];
+
+        PrintCharacteristicTreeNode(ch.tree, 0, i, false);
+    }
+    printf("}\n");
+}
 
 } // end namespace Far
 

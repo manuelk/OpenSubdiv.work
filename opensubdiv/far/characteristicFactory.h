@@ -137,7 +137,8 @@ public:
         };
 
         Options() :
-             endCapType(ENDCAP_BSPLINE_BASIS) { }
+             endCapType(ENDCAP_BSPLINE_BASIS),
+             useTerminalNodes(false) { }
 
         /// \brief Get endcap patch type
         EndCapType GetEndCapType() const { return (EndCapType)endCapType; }
@@ -145,7 +146,8 @@ public:
         /// \brief Set endcap patch type
         void SetEndCapType(EndCapType e) { endCapType = e; }
 
-        unsigned int endCapType : 3; ///< EndCapType
+        unsigned int endCapType       : 3, ///< Type of end-cap patches
+                     useTerminalNodes : 1; ///< Use "terminal" nodes on patches with single EV
     };
 
     static Characteristic const * Create(TopologyRefiner const & refiner,
