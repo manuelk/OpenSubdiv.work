@@ -22,9 +22,10 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
-#include "../far/characteristicFactory.h"
+#include "../far/characteristicMapFactory.h"
 #include "../far/endCapBSplineBasisPatchFactory.h"
 #include "../far/endCapGregoryBasisPatchFactory.h"
+#include "../far/patchBasis.h"
 #include "../far/patchFaceTag.h"
 #include "../far/topologyRefinerFactory.h"
 
@@ -97,7 +98,7 @@ public:
 
     CharacteristicBuilder(TopologyRefiner const & refiner,
         PatchFaceTagVector const & patchTags,
-           CharacteristicFactory::Options options);
+           CharacteristicMapFactory::Options options);
 
     ~CharacteristicBuilder();
 
@@ -127,7 +128,7 @@ private:
     // General state
     //
 
-    CharacteristicFactory::Options _options;
+    CharacteristicMapFactory::Options _options;
 
     TopologyRefiner const & _refiner;
 
@@ -156,21 +157,20 @@ private:
 CharacteristicBuilder::CharacteristicBuilder(
     TopologyRefiner const & refiner,
         PatchFaceTagVector const & patchTags,
-            CharacteristicFactory::Options options) :
+            CharacteristicMapFactory::Options options) :
                 _options(options), _refiner(refiner), _patchTags(patchTags) {
-
 
     // create stencil tables for end caps w/ matching factory
     _endcapStencils = new StencilTable(0);
     _endcapVaryingStencils = new StencilTable(0);
 
     switch (_options.GetEndCapType()) {
-        case CharacteristicFactory::Options::ENDCAP_BSPLINE_BASIS:
+        case CharacteristicMap::ENDCAP_BSPLINE_BASIS:
             _endCapBSplineBasis =
                 new EndCapBSplineBasisPatchFactory(
                     refiner, _endcapStencils, _endcapVaryingStencils);
             break;
-        case CharacteristicFactory::Options::ENDCAP_GREGORY_BASIS:
+        case CharacteristicMap::ENDCAP_GREGORY_BASIS:
             _endCapGregoryBasis =
                 new EndCapGregoryBasisPatchFactory(
                     refiner, _endcapStencils, _endcapVaryingStencils);
@@ -203,10 +203,10 @@ CharacteristicBuilder::CharacteristicBuilder(
 
 CharacteristicBuilder::~CharacteristicBuilder() {
     switch (_options.GetEndCapType()) {
-        case CharacteristicFactory::Options::ENDCAP_GREGORY_BASIS:
+        case CharacteristicMap::ENDCAP_GREGORY_BASIS:
             delete _endCapGregoryBasis;
             break;
-        case CharacteristicFactory::Options::ENDCAP_BSPLINE_BASIS:
+        case CharacteristicMap::ENDCAP_BSPLINE_BASIS:
             delete _endCapBSplineBasis;
             break;
         default:
@@ -294,8 +294,8 @@ CharacteristicBuilder::writeEndNode(
     int dataSize = sizeof(NodeDescriptor);
 
     switch (_options.endCapType) {
-        case CharacteristicFactory::Options::ENDCAP_BSPLINE_BASIS:
-        case CharacteristicFactory::Options::ENDCAP_GREGORY_BASIS:
+        case CharacteristicMap::ENDCAP_BSPLINE_BASIS:
+        case CharacteristicMap::ENDCAP_GREGORY_BASIS:
             dataSize += 16 * sizeof(Index);
             break;
         default:
@@ -314,10 +314,10 @@ CharacteristicBuilder::writeEndNode(
         switch (_options.endCapType) {
                 assert(0);
                 break;
-            case CharacteristicFactory::Options::ENDCAP_BSPLINE_BASIS:
+            case CharacteristicMap::ENDCAP_BSPLINE_BASIS:
                 cvs = _endCapBSplineBasis->GetPatchPoints(&level, faceIndex, levelPatchTags, levelVertOffset);
                 break;
-            case CharacteristicFactory::Options::ENDCAP_GREGORY_BASIS:
+            case CharacteristicMap::ENDCAP_GREGORY_BASIS:
                 cvs = _endCapGregoryBasis->GetPatchPoints(&level, faceIndex, levelPatchTags, levelVertOffset);
                 break;
             default:
@@ -351,10 +351,11 @@ CharacteristicBuilder::writeRecursiveNode(
         ConstIndexArray children = _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
 
         for (int i=0; i<children.size(); ++i) {
-
+            // permute from CCW to Z pattern to match bitwise ~= traversal
+            static int const permute[] = { 0, 3, 1, 2 };
             int childOffset = offset + dataSize/sizeof(int);
             dataSize += writeNode(levelIndex+1, children[i], childOffset, data+dataSize);
-            childrenOffsets[i] = childOffset;
+            childrenOffsets[permute[i]] = childOffset;
         }
     } else {
         ConstIndexArray children = _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
@@ -418,11 +419,11 @@ void
 CharacteristicBuilder::WriteCharacteristicTree(
     Characteristic * ch, int levelIndex, int faceIndex) const {
 
-    ch->treeSize = writeNode(levelIndex, faceIndex, 0, nullptr);
+    ch->_treeSize = writeNode(levelIndex, faceIndex, 0, nullptr);
 
-    ch->tree = new int[ch->treeSize/sizeof(int)];
+    ch->_tree = new int[ch->_treeSize/sizeof(int)];
 
-    writeNode(levelIndex, faceIndex, 0, (uint8_t *)ch->tree);
+    writeNode(levelIndex, faceIndex, 0, (uint8_t *)ch->_tree);
     //PrintCharacteristicTreeNode(ch->tree, 0, 0);
 }
 
@@ -448,14 +449,110 @@ CharacteristicBuilder::FinalizeVaryingStencils() {
     return _endcapVaryingStencils;
 }
 
+
+//
+// Characteristic
+//
+
+Characteristic::Node
+Characteristic::Node::GetChildNode(int childIndex) const {
+
+    NodeDescriptor desc = this->GetDescriptor();
+
+    switch (desc.GetType()) {
+        case Characteristic::NODE_TERMINAL:
+            assert(childIndex=0);
+            break;
+        case Characteristic::NODE_RECURSIVE: {
+                int const * offsetPtr = getNodeData() +
+                    sizeof(NodeDescriptor)/sizeof(int) + childIndex;
+                return Node(_characteristic, *offsetPtr);
+            }
+        default:
+            assert(0);
+    }
+    return *this;
+}
+
+
+Index const *
+Characteristic::Node::GetSupportIndices() const {
+
+    int const * supportsPtr = getNodeData() + sizeof(NodeDescriptor)/sizeof(int);
+
+    NodeDescriptor desc = this->GetDescriptor();
+    switch (desc.GetType()) {
+        case Characteristic::NODE_REGULAR :
+            if (desc.IsSingleCrease()) {
+                supportsPtr += sizeof(float)/sizeof(int);
+            } break;
+        case Characteristic::NODE_RECURSIVE:
+        case Characteristic::NODE_TERMINAL:
+            return nullptr;
+        case Characteristic::NODE_END:
+            break;
+    }
+    return (Index *)supportsPtr;
+}
+
+Characteristic::Node
+Characteristic::GetNode(float s, float t) const {
+
+    assert(_tree && sizeof(NodeDescriptor)==sizeof(int));
+
+    // traverse the sub-patch tree to the (s,t) coordinates
+    int offset = 0, corner = 0;
+    NodeDescriptor desc = _tree[offset];
+    while (desc.GetType()==NODE_RECURSIVE) {
+        if (s>0.5f) { corner ^= 1; s = 1 - s; }
+        if (t>0.5f) { corner ^= 2; t = 1 - t; }
+        s *= 2.0f;
+        t *= 2.0f;
+        offset = _tree[offset + 1 + corner];
+        desc = _tree[offset];
+    }
+    return Node(this, offset);
+}
+
+void
+Characteristic::EvaluateBasis(Node n, float s, float t,
+    float wP[], float wDs[], float wDt[]) const {
+
+    NodeDescriptor desc = n.GetDescriptor();
+
+    PatchParam param;
+    param.Set(/*face id*/ 0, 0, 0, desc.GetDepth(), /*non-quad*/false,
+        desc.GetBoundary(), desc.GetTransition());
+
+    if (desc.GetType()==NODE_REGULAR) {
+        internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
+    } else if (desc.GetType()==NODE_END) {
+// XXXX
+        CharacteristicMap::EndCapType type = CharacteristicMap::ENDCAP_BSPLINE_BASIS;
+        switch (type) {
+            case CharacteristicMap::ENDCAP_BSPLINE_BASIS :
+                internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
+                break;
+            case CharacteristicMap::ENDCAP_GREGORY_BASIS :
+                internal::GetGregoryWeights(param, s, t, wP, wDs, wDt);
+                break;
+            default:
+                assert(0);
+        }
+    } else {
+        assert(0);
+    }
+}
+
+
 //
 // Characteristic factory
 //
 
 static void PrintCharacteristicsDigraph(Characteristic const * chars, int nchars);
 
-Characteristic const *
-CharacteristicFactory::Create(TopologyRefiner const & refiner,
+CharacteristicMap const *
+CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
     PatchFaceTagVector const & patchTags, Options options) {
 
     CharacteristicBuilder builder(refiner, patchTags, options);
@@ -475,10 +572,16 @@ CharacteristicFactory::Create(TopologyRefiner const & refiner,
     }
 
     // Allocate & write the characteristics
-    Characteristic * result = new Characteristic[nchars],
-                   * ch = result;
+    CharacteristicMap * charmap =
+        new CharacteristicMap(options.GetEndCapType());
+    charmap->_characteristics.resize(nchars);
+
+    Characteristic * ch = &charmap->_characteristics[0];
+
     for (int face = 0; face < coarseLevel.GetNumFaces(); ++face) {
+
         ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
+
         if (children.size()==regFaceSize) {
             builder.WriteCharacteristicTree(ch, 0, face);
             ++ch;
@@ -490,13 +593,12 @@ CharacteristicFactory::Create(TopologyRefiner const & refiner,
         }
     }
 
-    StencilTable const * localStencils = builder.FinalizeStencils(),
-                       * localVaryingStencils = builder.FinalizeVaryingStencils();
-    
+    charmap->_localPointStencils = builder.FinalizeStencils();
+    charmap->_localPointVaryingStencils = builder.FinalizeVaryingStencils();
 
-    //PrintCharacteristicsDigraph(result, nchars);
+    PrintCharacteristicsDigraph(&charmap->_characteristics[0], nchars);
 
-    return result;
+    return charmap;
 }
 
 //
@@ -514,58 +616,54 @@ PrintNodeIndices(int const * cvs, int ncvs) {
     }
 }
 
+inline size_t
+HashNodeID(int charIndex, Characteristic::Node node) {
+    //size_t hash = (uint64_t)(node.GetTreeOffset() << 16);
+    //hash |= (charIndex & 0xffff);
+    size_t hash = node.GetTreeOffset() + ((size_t)charIndex << 32);
+    return hash;
+}
+
 static void
-PrintCharacteristicTreeNode(int const * tree, int offset, int charIndex, bool showIndices=false) {
+PrintCharacteristicTreeNode(Characteristic::Node node, int charIndex, bool showIndices=false) {
 
     typedef Characteristic::NodeDescriptor Descriptor;
 
-    bool newGraph = offset ? false : true;
-    if (newGraph) {
-        printf("subgraph {\n");
-    }
-    int const * data = tree + offset;
+    Descriptor const & desc = node.GetDescriptor();
 
-    Descriptor const & desc = *(Descriptor *)data;
+    size_t nodeID = HashNodeID(charIndex, node);
 
     switch (desc.GetType()) {
         case Characteristic::NODE_REGULAR : {
-                printf("  C%d_%d [label=\"R\\n", charIndex, offset);
-                ++data;
-                if (desc.IsSingleCrease()) {
-                    ++data;
-                }
+                printf("  %zu [label=\"R\\n", nodeID);
                 if (showIndices) {
-                    PrintNodeIndices(data, 16);
+                    PrintNodeIndices(node.GetSupportIndices(), 16);
                 }
                 printf("\", shape=box]\n");
             } break;
 
         case Characteristic::NODE_END : {
-                printf("  C%d_%d [label=\"E\\n", charIndex, offset);
-                 ++data;
+                printf("  %zu [label=\"E\\n", nodeID);
                 if (showIndices) {
-                    PrintNodeIndices(data, 16);
+                    PrintNodeIndices(node.GetSupportIndices(), 16);
                 }
                 printf("\", shape=box, style=filled, color=darkorange]\n");
             } break;
 
         case Characteristic::NODE_RECURSIVE : {
-                printf("  C%d_%d [label=\"I\", shape=circle, style=filled, color=dodgerblue]\n", charIndex, offset);
-                int const * childOffsets = data + 1;
+                printf("  %zu [label=\"I\", shape=square, style=filled, color=dodgerblue]\n",nodeID );
                 for (int i=0; i<4; ++i) {
-                    PrintCharacteristicTreeNode(tree, childOffsets[i], charIndex, showIndices);
-                    printf("  C%d_%d->C%d_%d;\n", charIndex, offset, charIndex, childOffsets[i]);
+                    Characteristic::Node child = node.GetChildNode(i);
+                    PrintCharacteristicTreeNode(child, charIndex, showIndices);
+                    printf("  %zu -> %zu [label=\"%d\"]\n", nodeID, HashNodeID(charIndex, child), i);
                 }
             } break;
 
         case Characteristic::NODE_TERMINAL :
-            printf("  C%d_%d [shape=circle, label=\"T\"]", charIndex, offset);
+            printf("  %zu [shape=circle, label=\"T\"]", nodeID);
 
         default:
             assert(0);
-    }
-    if (newGraph) {
-        printf("}\n");
     }
 }
 
@@ -577,7 +675,9 @@ PrintCharacteristicsDigraph(Characteristic const * chars, int nchars) {
 
         Characteristic const & ch = chars[i];
 
-        PrintCharacteristicTreeNode(ch.tree, 0, i, false);
+        printf("subgraph {\n");
+        PrintCharacteristicTreeNode(ch.GetTreeRootNode(), i, /*show indices*/true);
+        printf("}\n");
     }
     printf("}\n");
 }

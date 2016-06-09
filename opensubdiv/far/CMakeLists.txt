@@ -25,7 +25,7 @@
 #-------------------------------------------------------------------------------
 # source & headers
 set(SOURCE_FILES
-    characteristicFactory.cpp
+    characteristicMapFactory.cpp
     error.cpp
     endCapBSplineBasisPatchFactory.cpp
     endCapGregoryBasisPatchFactory.cpp
@@ -56,7 +56,7 @@ set(PRIVATE_HEADER_FILES
 )
 
 set(PUBLIC_HEADER_FILES
-    characteristicFactory.h
+    characteristicMapFactory.h
     error.h
     patchDescriptor.h
     patchFaceTag.h

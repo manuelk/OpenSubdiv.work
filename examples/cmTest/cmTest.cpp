@@ -22,8 +22,9 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
-#include <far/characteristicFactory.h>
+#include <far/characteristicMapFactory.h>
 #include <far/patchFaceTag.h>
+#include <far/stencilTable.h>
 #include <far/topologyRefinerFactory.h>
 
 #include "init_shapes.h"
@@ -33,6 +34,55 @@
 #include <sstream>
 
 using namespace OpenSubdiv;
+
+struct Vertex {
+
+    // Minimal required interface ----------------------
+    Vertex() { }
+
+    void Clear( void * =0 ) {
+         point[0] = point[1] = point[2] = 0.0f;
+    }
+
+    void AddWithWeight(Vertex const & src, float weight) {
+        point[0] += weight * src.point[0];
+        point[1] += weight * src.point[1];
+        point[2] += weight * src.point[2];
+    }
+
+    float point[3];
+};
+
+struct LimitFrame {
+
+    void Clear( void * =0 ) {
+         point[0] =  point[1] =  point[2] = 0.0f;
+        deriv1[0] = deriv1[1] = deriv1[2] = 0.0f;
+        deriv2[0] = deriv2[1] = deriv2[2] = 0.0f;
+    }
+
+    void AddWithWeight(Vertex const & src,
+        float weight, float d1Weight, float d2Weight) {
+
+        point[0] += weight * src.point[0];
+        point[1] += weight * src.point[1];
+        point[2] += weight * src.point[2];
+
+        deriv1[0] += d1Weight * src.point[0];
+        deriv1[1] += d1Weight * src.point[1];
+        deriv1[2] += d1Weight * src.point[2];
+
+        deriv2[0] += d2Weight * src.point[0];
+        deriv2[1] += d2Weight * src.point[1];
+        deriv2[2] += d2Weight * src.point[2];
+    }
+
+    float point[3],
+          deriv1[3],
+          deriv2[3];
+};
+
+//------------------------------------------------------------------------------
 
 static void
 testMe(ShapeDesc const & shapeDesc, int maxlevel=3) {
@@ -48,8 +98,6 @@ testMe(ShapeDesc const & shapeDesc, int maxlevel=3) {
         Far::TopologyRefinerFactory<Shape>::Create(*shape,
             Far::TopologyRefinerFactory<Shape>::Options(sdctype, sdcoptions));
 
-    delete shape;
-
     // refine adaptively
     {
         Far::TopologyRefiner::AdaptiveOptions options(maxlevel);
@@ -61,12 +109,69 @@ testMe(ShapeDesc const & shapeDesc, int maxlevel=3) {
     Far::PatchFaceTag::IdentifyAdaptivePatches(
         *refiner, patchTags, maxlevel, false /*single crease*/);
 
-    // build characteristics
-    Far::CharacteristicFactory::Options options;
-    Far::Characteristic const * ch =
-        Far::CharacteristicFactory::Create(*refiner, patchTags, options);
+    // build characteristics map
+    Far::CharacteristicMapFactory::Options options;
+    Far::CharacteristicMap const * charmap =
+        Far::CharacteristicMapFactory::Create(*refiner, patchTags, options);
+/*
+    // create vertex primvar data buffer
+    std::vector<Vertex> vertexBuffer;
+    {
+        int numVertsTotal = refiner->GetNumVerticesTotal();
+        if (charmap->GetLocalPointStencilTable()) {
+            numVertsTotal += charmap->GetLocalPointStencilTable()->GetNumStencils();
+        }
 
-    delete [] ch;
+        vertexBuffer.resize(numVertsTotal);
+        Vertex * verts = &vertexBuffer[0];
+
+        // copy coarse vertices positions
+        int ncoarseverts = shape->GetNumVertices();
+        for (int i=0; i<ncoarseverts; ++i) {
+            float const * ptr = &shape->verts[i*3];
+            verts[i].SetPosition(ptr[0], ptr[1], ptr[2]);
+        }
+
+        // populate primvar buffer with Far interpolated vertex data
+        {
+            // TopologyRefiner interpolation
+            Vertex * src = verts;
+            for (int level = 1; level <= refiner->GetMaxLevel(); ++level) {
+                Vertex * dst = src + refiner->GetLevel(level-1).GetNumVertices();
+                Far::PrimvarRefiner(*refiner).Interpolate(level, src, dst);
+                src = dst;
+            }
+
+            // endpatch basis conversion
+            Far::StencilTable const * localPoints =
+                charmap->GetLocalPointStencilTable();
+
+            localPoints->UpdateValues(verts, verts + refiner->GetNumVerticesTotal());
+        }
+    }
+
+    delete shape;
+
+    // tessellate
+    for (int i=0; i<charmap->GetNumCharacteristics(); ++i) {
+
+        Far::Characteristic const & ch = charmap->GetCharacteristic(i);
+
+        float wP[20], wDs[20], wDt[20];
+
+        int tessFactor = 5;
+        for (int y=0; y<tessFactor; ++y) {
+            for (int x=0; x<tessFactor; ++x) {
+
+                float s = (float)x / (float)tessFactor,
+                      t = (float)y / (float)tessFactor;
+
+                ch.EvaluateBasis(s, t, wP, wDs, wDt);
+            }
+        }
+    }
+*/
+    delete charmap;
 }
 
 
