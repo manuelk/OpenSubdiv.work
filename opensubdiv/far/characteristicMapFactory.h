@@ -38,6 +38,7 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 struct PatchFaceTag;
+class CharacteristicMap;
 class TopologyRefiner;
 class StencilTable;
 
@@ -45,15 +46,17 @@ typedef std::vector<PatchFaceTag> PatchFaceTagVector;
 
 class Characteristic {
 
-public:
+    /// \brief Returns the map this characteristic belongs to
+    CharacteristicMap const * GetCharacteristicMap() const { return _characteristicMap; }
 
+public:
 
     //
     // Tree
     //
 
     //@{
-    ///  @name Tree access methods
+    ///  @name Sub-patch tree access methods
     ///
 
     ///
@@ -142,24 +145,27 @@ public:
     public:
 
         /// \brief Returns the node descriptor
-        NodeDescriptor GetDescriptor() const { 
-            return _characteristic->_tree[_treeOffset]; 
+        NodeDescriptor GetDescriptor() const {
+            return _characteristic->_tree[_treeOffset];
         }
 
-        /// \brief Returns a pointer to the indices of the support points
-        Index const * GetSupportIndices() const;
-
+        /// \brief Returns the node's child at index
         Node GetChildNode(int childIndex=0) const;
 
+        /// \brief Returns a pointer to the indices of the support points
+        ConstIndexArray GetSupportIndices() const;
+
+        /// \brief Returns a pointer to the characteric that owns this node
         Characteristic const * GetCharacteristic() const { return _characteristic; }
 
+        /// \brief Returns the node's offset
         int GetTreeOffset() const { return _treeOffset; }
 
+        /// \brief Returns true if the nodes are identical
         bool operator == (Node const & other) const {
             return _characteristic == other._characteristic &&
                 _treeOffset == other._treeOffset;
         }
-
 
     private:
 
@@ -211,17 +217,27 @@ public:
     ///
     /// @param wDt     Weights (evaluated basis functions) for derivative wrt t
     ///
-    void EvaluateBasis(Node n, float s, float t, float wP[], float wDs[], float wDt[]) const;
+    /// @return        The leaf node pointing to the sub-patch evaluated
+    ///
+    Node EvaluateBasis(float s, float t, float wP[], float wDs[], float wDt[]) const;
 
     //@}
 
 
 private:
 
-    friend class CharacteristicBuilder;
-
+    // The sub-patch "tree" is stored as a linear buffer of integers for
+    // efficient look-up & traversal on a GPU. Use the Node class to traverse
+    // the tree and access each node's data.
     int * _tree,
           _treeSize;
+
+private:
+
+    friend class CharacteristicBuilder;
+    friend class CharacteristicMapFactory;
+
+    CharacteristicMap const * _characteristicMap;
 };
 
 
@@ -270,6 +286,8 @@ public:
         return _localPointVaryingStencils;
     }
     //@}
+
+    EndCapType GetEndCapType() const { return EndCapType(_endCapType); }
 
 private:
 

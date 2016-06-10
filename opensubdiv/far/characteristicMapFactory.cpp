@@ -474,25 +474,36 @@ Characteristic::Node::GetChildNode(int childIndex) const {
     return *this;
 }
 
-
-Index const *
+ConstIndexArray
 Characteristic::Node::GetSupportIndices() const {
 
     int const * supportsPtr = getNodeData() + sizeof(NodeDescriptor)/sizeof(int);
 
     NodeDescriptor desc = this->GetDescriptor();
     switch (desc.GetType()) {
-        case Characteristic::NODE_REGULAR :
+        case Characteristic::NODE_REGULAR : {
             if (desc.IsSingleCrease()) {
                 supportsPtr += sizeof(float)/sizeof(int);
-            } break;
+            }
+            return ConstIndexArray(supportsPtr, 16);
+        }
+        case Characteristic::NODE_END: {
+            CharacteristicMap::EndCapType endType =
+                GetCharacteristic()->GetCharacteristicMap()->GetEndCapType();
+            int nsupports = 0;
+            switch (endType) {
+                case CharacteristicMap::ENDCAP_BSPLINE_BASIS : nsupports = 16; break;
+                case CharacteristicMap::ENDCAP_GREGORY_BASIS : nsupports = 20; break;
+                default:
+                    assert(0);
+            }
+            return ConstIndexArray(supportsPtr, nsupports);
+        }
         case Characteristic::NODE_RECURSIVE:
         case Characteristic::NODE_TERMINAL:
-            return nullptr;
-        case Characteristic::NODE_END:
-            break;
+        default:
+            return ConstIndexArray(nullptr, 0);
     }
-    return (Index *)supportsPtr;
 }
 
 Characteristic::Node
@@ -514,9 +525,11 @@ Characteristic::GetNode(float s, float t) const {
     return Node(this, offset);
 }
 
-void
-Characteristic::EvaluateBasis(Node n, float s, float t,
+Characteristic::Node
+Characteristic::EvaluateBasis(float s, float t,
     float wP[], float wDs[], float wDt[]) const {
+
+    Node n = GetNode(s, t);
 
     NodeDescriptor desc = n.GetDescriptor();
 
@@ -527,8 +540,8 @@ Characteristic::EvaluateBasis(Node n, float s, float t,
     if (desc.GetType()==NODE_REGULAR) {
         internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
     } else if (desc.GetType()==NODE_END) {
-// XXXX
-        CharacteristicMap::EndCapType type = CharacteristicMap::ENDCAP_BSPLINE_BASIS;
+        CharacteristicMap::EndCapType type =
+            GetCharacteristicMap()->GetEndCapType();
         switch (type) {
             case CharacteristicMap::ENDCAP_BSPLINE_BASIS :
                 internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
@@ -542,14 +555,15 @@ Characteristic::EvaluateBasis(Node n, float s, float t,
     } else {
         assert(0);
     }
+
+    return n;
 }
 
+static void PrintCharacteristicsDigraph(Characteristic const * chars, int nchars);
 
 //
 // Characteristic factory
 //
-
-static void PrintCharacteristicsDigraph(Characteristic const * chars, int nchars);
 
 CharacteristicMap const *
 CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
@@ -580,6 +594,8 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
 
     for (int face = 0; face < coarseLevel.GetNumFaces(); ++face) {
 
+        ch->_characteristicMap = charmap;
+
         ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
 
         if (children.size()==regFaceSize) {
@@ -596,7 +612,7 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
     charmap->_localPointStencils = builder.FinalizeStencils();
     charmap->_localPointVaryingStencils = builder.FinalizeVaryingStencils();
 
-    PrintCharacteristicsDigraph(&charmap->_characteristics[0], nchars);
+    //PrintCharacteristicsDigraph(&charmap->_characteristics[0], nchars);
 
     return charmap;
 }
@@ -606,8 +622,8 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
 //
 
 static void
-PrintNodeIndices(int const * cvs, int ncvs) {
-    for (int i=0; i<ncvs; ++i) {
+PrintNodeIndices(ConstIndexArray cvs) {
+    for (int i=0; i<cvs.size(); ++i) {
         if (i>0 && ((i%4)!=0))
             printf(" ");
         if ((i%4)==0)
@@ -618,8 +634,6 @@ PrintNodeIndices(int const * cvs, int ncvs) {
 
 inline size_t
 HashNodeID(int charIndex, Characteristic::Node node) {
-    //size_t hash = (uint64_t)(node.GetTreeOffset() << 16);
-    //hash |= (charIndex & 0xffff);
     size_t hash = node.GetTreeOffset() + ((size_t)charIndex << 32);
     return hash;
 }
@@ -637,7 +651,7 @@ PrintCharacteristicTreeNode(Characteristic::Node node, int charIndex, bool showI
         case Characteristic::NODE_REGULAR : {
                 printf("  %zu [label=\"R\\n", nodeID);
                 if (showIndices) {
-                    PrintNodeIndices(node.GetSupportIndices(), 16);
+                    PrintNodeIndices(node.GetSupportIndices());
                 }
                 printf("\", shape=box]\n");
             } break;
@@ -645,7 +659,7 @@ PrintCharacteristicTreeNode(Characteristic::Node node, int charIndex, bool showI
         case Characteristic::NODE_END : {
                 printf("  %zu [label=\"E\\n", nodeID);
                 if (showIndices) {
-                    PrintNodeIndices(node.GetSupportIndices(), 16);
+                    PrintNodeIndices(node.GetSupportIndices());
                 }
                 printf("\", shape=box, style=filled, color=darkorange]\n");
             } break;
@@ -660,7 +674,11 @@ PrintCharacteristicTreeNode(Characteristic::Node node, int charIndex, bool showI
             } break;
 
         case Characteristic::NODE_TERMINAL :
-            printf("  %zu [shape=circle, label=\"T\"]", nodeID);
+            printf("  %zu [shape=circle, label=\"T", nodeID);
+            if (showIndices) {
+                PrintNodeIndices(node.GetSupportIndices());
+            }
+            printf("\"]");
 
         default:
             assert(0);
