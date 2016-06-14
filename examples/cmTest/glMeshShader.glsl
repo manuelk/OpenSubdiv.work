@@ -28,6 +28,42 @@ layout(std140) uniform Transform {
     mat4 ModelViewProjectionMatrix;
 };
 
+struct Vertex {
+    vec4 position;
+    vec4 normal;
+    vec3 color;
+};
+
+//--------------------------------------------------------------
+// Vertex Shader
+//--------------------------------------------------------------
+#ifdef VERTEX_SHADER
+
+in vec3 my_position;
+in vec3 my_normal;
+in vec3 my_color;
+
+out vec4 vPosition;
+out vec4 vNormal;
+out vec3 vColor;
+
+void main() {
+    vPosition = ModelViewMatrix * vec4(my_position.xyz, 1.0);
+    vNormal = ModelViewMatrix * vec4(normalize(my_normal.xyz), 1.0);
+    vColor = my_color;
+    gl_Position = ProjectionMatrix * vPosition;
+}
+#endif
+
+//--------------------------------------------------------------
+// Fragment Shader
+//--------------------------------------------------------------
+#ifdef FRAGMENT_SHADER
+
+in vec4 vPosition;
+in vec4 vNormal;
+in vec3 vColor;
+
 #define NUM_LIGHTS 2
 
 struct LightSource {
@@ -41,35 +77,45 @@ layout(std140) uniform Lighting {
     LightSource lightSource[NUM_LIGHTS];
 };
 
+vec4 lighting(vec4 diffuse, vec3 Peye, vec3 Neye) {
 
-//--------------------------------------------------------------
-// Vertex Shader
-//--------------------------------------------------------------
-#ifdef VERTEX_SHADER
+    vec4 color = vec4(0),
+         ambientColor = vec4(0);
 
-layout (location=0) in vec3 position;
-layout (location=1) in vec2 st;
+    for (int i = 0; i < NUM_LIGHTS; ++i) {
 
-out vec4 fragColor;
+        vec4 Plight = lightSource[i].position;
 
-void main()
-{
-    fragColor = vec4(st, 1.0, ,1.0);
-    gl_Position = ModelViewProjectionMatrix * vec4(position, 1);
+        vec3 l = (Plight.w == 0.0)
+                    ? normalize(Plight.xyz) : normalize(Plight.xyz - Peye);
+
+        vec3 n = normalize(Neye);
+        vec3 h = normalize(l + vec3(0,0,1));    // directional viewer
+
+        float d = max(0.0, dot(n, l));
+        float s = pow(max(0.0, dot(n, h)), 500.0f);
+
+        color += lightSource[i].ambient * ambientColor
+            + d * lightSource[i].diffuse * diffuse
+            + s * lightSource[i].specular;
+    }
+
+    color.a = 1;
+    return color;
 }
-#endif
 
-//--------------------------------------------------------------
-// Fragment Shader
-//--------------------------------------------------------------
-#ifdef FRAGMENT_SHADER
-
-in vec2 fragColor;
-out vec4 color;
+out vec4 finalColor;
 
 void main() {
+    vec3 N = (gl_FrontFacing ? vNormal.xyz : -vNormal.xyz);
 
-  color = float4(fragColor.r, fragColor.g, 1, 1);
+    vec4 color = vec4(vColor, 1.0);
+
+    vec4 Cf = lighting(color, vPosition.xyz, N);
+
+    //finalColor = Cf;
+    finalColor = color + 0.00001 * vec4(Cf.xyz, 1.0);
+    //finalColor = color;
 }
 
 #endif

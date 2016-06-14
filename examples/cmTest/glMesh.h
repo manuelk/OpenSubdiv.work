@@ -37,31 +37,34 @@ class GLMesh {
 public:
 
     struct Topology {
-        float const * verts;
-        int nverts;
-
-        int const * faceVerts;
-        int nfaceVerts;
+    
+        static Topology Cube();
+    
+        float * positions;
+        float * normals;
+        float * colors;
+        int nverts;        
     };
 
     GLMesh(Topology const & topo);
 
     ~GLMesh();
 
-    void Draw() const;
+    void Draw(GLuint xformUB, GLuint lightingUB) const;
 
 private:
 
-    int _numIndices;
+    int _numVertices;
 
-    GLuint _program,
-           _attrPosition,
-           _attrST;
+    GLuint _program;
 
-    GLuint _ebo, _vao;
+    GLint  _attrPosition,
+           _attrNormal,
+           _attrColor;
 
-    typedef OpenSubdiv::Osd::GLVertexBuffer GLVertexBuffer;
-    GLVertexBuffer * _vbo;
+    GLuint _vao,
+           _bufVertData,
+           _bufColors;
 };
 
 #endif // GL_MESH_H

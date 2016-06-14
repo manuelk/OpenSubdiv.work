@@ -28,27 +28,28 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "../common/glUtils.h"
+
 static const char * g_meshShaderSrc =
 #include "glMeshShader.gen.h"
 ;
 
-GLuint g_uboIndex=GL_INVALID_INDEX,
-       g_transformBinding=0,
-       g_lightingBinding=1;
-
+static GLuint g_transformBinding=0,
+              g_lightingBinding=1;
 
 GLMesh::GLMesh(Topology const & topo) {
 
     // Shader
-    _program = glCreateProgram(); 
+    _program = glCreateProgram();
 
-    static char const versionStr[] = "#version 330\n",
-                      vtxDefineStr[] = "#define VERTEX_SHADER\n",
+    const std::string glsl_version = GLUtils::GetShaderVersionInclude();
+
+    static char const vtxDefineStr[] = "#define VERTEX_SHADER\n",
                       geoDefineStr[] = "#define GEOMETRY_SHADER\n",
                       fragDefineStr[] = "#define FRAGMENT_SHADER\n";
 
-    std::string vsSrc = std::string(versionStr) + vtxDefineStr + g_meshShaderSrc,
-                fsSrc = std::string(versionStr) + fragDefineStr + g_meshShaderSrc;
+    std::string vsSrc = glsl_version + vtxDefineStr + g_meshShaderSrc,
+                fsSrc = glsl_version + fragDefineStr + g_meshShaderSrc;
 
     GLuint vertexShader = GLUtils::CompileShader(GL_VERTEX_SHADER, vsSrc.c_str()),
            fragmentShader = GLUtils::CompileShader(GL_FRAGMENT_SHADER, fsSrc.c_str());
@@ -68,34 +69,174 @@ GLMesh::GLMesh(Topology const & topo) {
         delete[] infoLog;
         exit(1);
     }
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
 
-    // Vertex / indices arrays
+    // Locations
+    GLint uboIndex = glGetUniformBlockIndex(_program, "Transform");
+    if (uboIndex != GL_INVALID_INDEX)
+        glUniformBlockBinding(_program, uboIndex, g_transformBinding);
+
+    uboIndex = glGetUniformBlockIndex(_program, "Lighting");
+    if (uboIndex != GL_INVALID_INDEX)
+        glUniformBlockBinding(_program, uboIndex, g_lightingBinding);
+
+    _attrPosition = glGetAttribLocation(_program, "my_position");
+    _attrNormal = glGetAttribLocation(_program, "my_normal");
+    _attrColor = glGetAttribLocation(_program, "my_color");
+
     glGenVertexArrays(1, &_vao);
     glBindVertexArray(_vao);
 
-    glGenBuffers(1, &_ebo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-        topo.nfaceVerts * sizeof(GLuint), topo.faceVerts, GL_STATIC_DRAW);
+    //glEnableClientState( GL_VERTEX_ARRAY );
+    //glEnableClientState( GL_NORMAL_ARRAY );
 
-    _numIndices = topo.nfaceVerts;
+    std::vector<float> vertData(topo.nverts * 6);
+    float * srcP = topo.positions,
+          * srcN = topo.normals,
+          * dst = &vertData[0];
+    for (int i=0; i<topo.nverts; ++i, srcP+=3, srcN+=3) {
+        memcpy(dst, srcP, 3 * sizeof(float)); dst += 3;
+        memcpy(dst, srcN, 3 * sizeof(float)); dst += 3;
+    }
 
-    _vbo = GLVertexBuffer::Create(5, topo.nverts);
+    glGenBuffers(1, &_bufVertData);
+    glBindBuffer(GL_ARRAY_BUFFER, _bufVertData);
+    glBufferData(GL_ARRAY_BUFFER,vertData.size()*sizeof(GLfloat), &vertData[0], GL_STATIC_DRAW);
+
+    glGenBuffers(1, &_bufColors);
+    glBindBuffer(GL_ARRAY_BUFFER, _bufColors);
+    glBufferData(GL_ARRAY_BUFFER, topo.nverts*3*sizeof(GLfloat), topo.colors, GL_STATIC_DRAW);
+
+    _numVertices = topo.nverts;
 
     glBindVertexArray(0);
+
+    GLUtils::CheckGLErrors("Create");
 }
 
 GLMesh::~GLMesh() {
 
-    glDeleteVertexArrays(1, &_vao);
-    glDeleteBuffers(1, &_ebo);
+    glDeleteProgram(_program);
 
-    delete _vbo;
+    glDeleteVertexArrays(1, &_vao);
+
+    glDeleteBuffers(1, &_bufVertData);
+    glDeleteBuffers(1, &_bufColors);
 }
 
-void GLMesh::Draw() const {
+void
+GLMesh::Draw(GLuint xformUB, GLuint lightingUB) const {
+
+    glUseProgram(_program);
 
     glBindVertexArray(_vao);
-    glDrawElements(GL_TRIANGLES, _numIndices, GL_UNSIGNED_INT, 0);
+
+    glBindBufferBase(GL_UNIFORM_BUFFER, g_transformBinding, xformUB);
+    glBindBufferBase(GL_UNIFORM_BUFFER, g_lightingBinding, lightingUB);
+
+    glBindBuffer(GL_ARRAY_BUFFER, _bufVertData);
+    glEnableVertexAttribArray(_attrPosition);
+    glVertexAttribPointer(_attrPosition, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), 0);
+    glEnableVertexAttribArray(_attrNormal);
+    glVertexAttribPointer(_attrNormal,   3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void *)(3 * sizeof(GLfloat)));
+
+    glBindBuffer(GL_ARRAY_BUFFER, _bufColors);
+    glEnableVertexAttribArray(_attrColor);
+    glVertexAttribPointer(_attrColor, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
+
+#define wireframe
+#ifdef wireframe
+	glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+    glPointSize(2.0f);
+	glLineWidth(1.0f);
+	glEnable( GL_LINE_SMOOTH );
+#endif
+
+    glDrawArrays(GL_POINTS, 0, _numVertices);
+
+    //glDrawArrays(GL_TRIANGLES, 0, _numVertices);
+
+#ifdef wireframe
+	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+#endif
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
+
+    glUseProgram(0);
 }
+
+GLMesh::Topology
+GLMesh::Topology::Cube() {
+
+    static float positions[] = {
+        -0.5f, -0.5f, -0.5f, /* A */ -0.5f, -0.5f,  0.5f, /* D */ -0.5f,  0.5f, -0.5f, /* B */
+        -0.5f, -0.5f,  0.5f, /* D */ -0.5f,  0.5f,  0.5f, /* C */ -0.5f,  0.5f, -0.5f, /* B */
+
+         0.5f, -0.5f,  0.5f, /* H */ -0.5f, -0.5f,  0.5f, /* D */ -0.5f, -0.5f, -0.5f, /* A */
+         0.5f, -0.5f,  0.5f, /* H */ -0.5f, -0.5f, -0.5f, /* A */  0.5f, -0.5f, -0.5f, /* E */
+
+         0.5f, -0.5f,  0.5f, /* H */  0.5f, -0.5f, -0.5f, /* E */  0.5f,  0.5f, -0.5f, /* F */
+         0.5f, -0.5f,  0.5f, /* H */  0.5f,  0.5f, -0.5f, /* F */  0.5f,  0.5f,  0.5f, /* G */
+
+         0.5f,  0.5f,  0.5f, /* G */  0.5f,  0.5f, -0.5f, /* F */ -0.5f,  0.5f, -0.5f, /* B */
+         0.5f,  0.5f,  0.5f, /* G */ -0.5f,  0.5f, -0.5f, /* B */ -0.5f,  0.5f,  0.5f, /* C */
+
+        -0.5f, -0.5f,  0.5f, /* D */  0.5f, -0.5f,  0.5f, /* H */  0.5f,  0.5f,  0.5f, /* G */
+        -0.5f, -0.5f,  0.5f, /* D */  0.5f,  0.5f,  0.5f, /* G */  -0.5f,  0.5f,  0.5f, /* C */
+
+        -0.5f, -0.5f, -0.5f, /* A */  0.5f,  0.5f, -0.5f, /* F */  0.5f, -0.5f, -0.5f, /* E */
+        -0.5f, -0.5f, -0.5f, /* A */ -0.5f,  0.5f, -0.5f, /* B */  0.5f,  0.5f, -0.5f, /* F */
+    };
+
+    static float normals[] = {
+        -1.0f,  0.0f,  0.0f,   -1.0f,  0.0f,  0.0f,   -1.0f,  0.0f,  0.0f,
+        -1.0f,  0.0f,  0.0f,   -1.0f,  0.0f,  0.0f,   -1.0f,  0.0f,  0.0f,
+
+         0.0f, -1.0f,  0.0f,    0.0f, -1.0f,  0.0f,    0.0f, -1.0f,  0.0f,
+         0.0f, -1.0f,  0.0f,    0.0f, -1.0f,  0.0f,    0.0f, -1.0f,  0.0f,
+
+         1.0f,  0.0f,  0.0f,    1.0f,  0.0f,  0.0f,    1.0f,  0.0f,  0.0f,
+         1.0f,  0.0f,  0.0f,    1.0f,  0.0f,  0.0f,    1.0f,  0.0f,  0.0f,
+
+         0.0f,  1.0f,  0.0f,    0.0f,  1.0f,  0.0f,    0.0f,  1.0f,  0.0f,
+         0.0f,  1.0f,  0.0f,    0.0f,  1.0f,  0.0f,    0.0f,  1.0f,  0.0f,
+
+         0.0f,  0.0f,  1.0f,    0.0f,  0.0f,  1.0f,    0.0f,  0.0f,  1.0f,
+         0.0f,  0.0f,  1.0f,    0.0f,  0.0f,  1.0f,    0.0f,  0.0f,  1.0f,
+
+         0.0f,  0.0f, -1.0f,    0.0f,  0.0f, -1.0f,    0.0f,  0.0f, -1.0f,
+         0.0f,  0.0f, -1.0f,    0.0f,  0.0f, -1.0f,    0.0f,  0.0f, -1.0f,
+    };
+
+    static float colors[] = {
+        1.0f, 0.5f, 0.5f,    1.0f, 0.5f, 0.5f,     1.0f, 0.5f, 0.5f,
+        1.0f, 0.5f, 0.5f,    1.0f, 0.5f, 0.5f,     1.0f, 0.5f, 0.5f,
+
+        0.5f, 1.0f, 0.5f,    0.5f, 1.0f, 0.5f,     0.5f, 1.0f, 0.5f,
+        0.5f, 1.0f, 0.5f,    0.5f, 1.0f, 0.5f,     0.5f, 1.0f, 0.5f,
+
+        0.5f, 0.5f, 1.0f,    0.5f, 0.5f, 1.0f,     0.5f, 0.5f, 1.0f,
+        0.5f, 0.5f, 1.0f,    0.5f, 0.5f, 1.0f,     0.5f, 0.5f, 1.0f,
+
+        1.0f, 1.0f, 0.5f,    1.0f, 1.0f, 0.5f,     1.0f, 1.0f, 0.5f,
+        1.0f, 1.0f, 0.5f,    1.0f, 1.0f, 0.5f,     1.0f, 1.0f, 0.5f,
+
+        0.5f, 1.0f, 1.0f,    0.5f, 1.0f, 1.0f,     0.5f, 1.0f, 1.0f,
+        0.5f, 1.0f, 1.0f,    0.5f, 1.0f, 1.0f,     0.5f, 1.0f, 1.0f,
+
+        1.0f, 0.5f, 1.0f,    1.0f, 0.5f, 1.0f,     1.0f, 0.5f, 1.0f,
+        1.0f, 0.5f, 1.0f,    1.0f, 0.5f, 1.0f,     1.0f, 0.5f, 1.0f,
+    };
+
+    Topology topo;
+    topo.positions = positions;
+    topo.normals = normals;
+    topo.colors = colors;
+    topo.nverts = 36;
+
+    return topo;
+}
+

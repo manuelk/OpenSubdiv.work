@@ -55,14 +55,15 @@ GLFWmonitor* g_primary=0;
 #include "../common/glControlMeshDisplay.h"
 #include "../common/glHud.h"
 
-#include "init_shapes.h"
+#include "./init_shapes.h"
+#include "./glMesh.h"
 
 #include <string>
 #include <fstream>
 #include <sstream>
 
-int g_level = 3,
-    g_currentShape = 8;
+int g_level = 2,
+    g_currentShape = 12; // 8;
 
 int   g_frame = 0,
       g_repeatCount = 0;
@@ -85,8 +86,6 @@ int   g_width = 1024,
       g_height = 1024;
 
 GLhud g_hud;
-
-GLControlMeshDisplay g_controlMeshDisplay;
 
 Stopwatch g_fpsTimer;
 
@@ -153,8 +152,13 @@ struct LimitFrame {
 
 //------------------------------------------------------------------------------
 
+GLMesh * g_tessMesh = 0;
+
+GLControlMeshDisplay g_controlMeshDisplay;
+
 Osd::GLVertexBuffer * g_controlMeshVerts = 0;
 
+#if 1
 static void
 createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
@@ -173,7 +177,7 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     delete g_controlMeshVerts;
     int nverts = shape->GetNumVertices();
     g_controlMeshVerts = Osd::GLVertexBuffer::Create(3, nverts);
-    g_controlMeshVerts->UpdateData(&shape->verts[0], 0, nverts);  
+    g_controlMeshVerts->UpdateData(&shape->verts[0], 0, nverts);
     g_controlMeshDisplay.SetTopology(refiner->GetLevel(0));
 
     // refine adaptively
@@ -222,30 +226,43 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
             // endpatch basis conversion
             Far::StencilTable const * localPoints =
                 charmap->GetLocalPointStencilTable();
-
-            localPoints->UpdateValues(verts, verts + refiner->GetNumVerticesTotal());
+            if (localPoints) {
+                localPoints->UpdateValues(verts, verts + refiner->GetNumVerticesTotal());
+            }
         }
     }
 
     delete shape;
     delete refiner;
 
+    //
     // tessellate
-    int const tessFactor = 5;
+    //
+
+    int const tessFactor = 100;
 
     int nchars = charmap->GetNumCharacteristics();
 
-    std::vector<LimitFrame> verts(tessFactor * tessFactor * nchars);
-    LimitFrame * vert = &verts[0];
+    // interpolate limits
+    nverts = tessFactor * tessFactor * nchars;
+
+    std::vector<float> positions(3 * nverts),
+                       normals(3 * nverts),
+                       colors(3 * nverts);
+
+    float * pos = &positions[0],
+          * norm = &normals[0],
+          * col = &colors[0];
 
     for (int i=0; i<nchars; ++i) {
 
         Far::Characteristic const & ch = charmap->GetCharacteristic(i);
 
+        // interpolate vertices
         float wP[20], wDs[20], wDt[20];
 
         for (int y=0; y<tessFactor; ++y) {
-            for (int x=0; x<tessFactor; ++x) {
+            for (int x=0; x<tessFactor; ++x, pos+=3, norm+=3, col+=3) {
 
                 // compute basis weights at location (s,t)
                 float s = (float)x / (float)tessFactor,
@@ -255,18 +272,105 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 Far::ConstIndexArray supportIndices = node.GetSupportIndices();
 
                 // interpolate support points with basis weights
-                vert->Clear();
+                LimitFrame limit;
+                limit.Clear();
                 for (int i=0; i<supportIndices.size(); ++i) {
-                    Vertex const & support = supportsBuffer[supportIndices[i]];
-                    vert->AddWithWeight(support, wP[i], wDs[i], wDt[i]);
+                    int supportIndex = supportIndices[i];
+                    assert(supportIndex<supportsBuffer.size());
+                    Vertex const & support = supportsBuffer[supportIndex];
+                    limit.AddWithWeight(support, wP[i], wDs[i], wDt[i]);
                 }
-                ++vert;
+
+                float c[3] = { s, 0.0f, t },
+                      n[3] = { 0.0f, 1.0f, 0.0f };
+
+                cross(norm, limit.deriv1, limit.deriv2 );
+
+                memcpy(pos, limit.point, 3 * sizeof(float));
+                //memcpy(pos, c, 3 * sizeof(float));
+                memcpy(norm, n, 3 * sizeof(float));
+                memcpy(col, c, 3 * sizeof(float));
             }
         }
     }
 
+    // create tess mesh
+    int ntriangles = 2 * (tessFactor-1) * (tessFactor-1) * nchars;
+
+    struct GLMesh::Topology topo;
+    topo.positions = new float[ntriangles * 3 * 3];
+    topo.normals = new float[ntriangles * 3 * 3];
+    topo.colors = new float[ntriangles * 3 * 3];
+    topo.nverts = ntriangles * 3;
+
+    pos = topo.positions;
+    norm = topo.normals;
+    col = topo.colors;
+
+    for (int i=0, charOffset=0; i<nchars; ++i) {
+        // generate indices
+        for (int y=0; y<(tessFactor-1); ++y) {
+            for (int x=0; x<(tessFactor-1); ++x) {
+                                                                     //  A o----o B
+                int A = 3 * (charOffset + y * tessFactor + x),       //    |\   |
+                    B = 3 * (charOffset + y * tessFactor + x+1),     //    | \  |
+                    C = 3 * (charOffset + (y+1) * tessFactor + x),   //    |  \ |
+                    D = 3 * (charOffset + (y+1) * tessFactor + x+1); //    |   \|
+                                                                     //  C o----o D
+                assert(A < positions.size() && B < positions.size() &&
+                    C < positions.size() && D < positions.size());
+
+                // first triangle
+                memcpy(pos, &positions[A],  3 * sizeof(float)); pos+=3;
+                memcpy(norm, &normals[A], 3 * sizeof(float)); norm+=3;
+                memcpy(col, &colors[A],  3 * sizeof(float)); col+=3;
+
+                memcpy(pos, &positions[C],  3 * sizeof(float)); pos+=3;
+                memcpy(norm, &normals[C], 3 * sizeof(float)); norm+=3;
+                memcpy(col, &colors[C],  3 * sizeof(float)); col+=3;
+
+                memcpy(pos, &positions[D],  3 * sizeof(float)); pos+=3;
+                memcpy(norm, &normals[D], 3 * sizeof(float)); norm+=3;
+                memcpy(col, &colors[D],  3 * sizeof(float)); col+=3;
+
+                memcpy(pos, &positions[A],  3 * sizeof(float)); pos+=3;
+                memcpy(norm, &normals[A], 3 * sizeof(float)); norm+=3;
+                memcpy(col, &colors[A],  3 * sizeof(float)); col+=3;
+
+                memcpy(pos, &positions[D],  3 * sizeof(float)); pos+=3;
+                memcpy(norm, &normals[D], 3 * sizeof(float)); norm+=3;
+                memcpy(col, &colors[D],  3 * sizeof(float)); col+=3;
+
+                memcpy(pos, &positions[B],  3 * sizeof(float)); pos+=3;
+                memcpy(norm, &normals[B], 3 * sizeof(float)); norm+=3;
+                memcpy(col, &colors[B],  3 * sizeof(float)); col+=3;
+            }
+        }
+        charOffset += tessFactor * tessFactor;
+    }
+
+    delete g_tessMesh;
+
+    g_tessMesh = new GLMesh(topo);
+
+    delete [] topo.positions;
+    delete [] topo.normals;
+    delete [] topo.colors;
+
     delete charmap;
 }
+#else
+static void
+createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
+
+    GLMesh::Topology topo = GLMesh::Topology::Cube();
+
+    delete g_tessMesh;
+
+    g_tessMesh = new GLMesh(topo);
+
+}
+#endif
 
 //------------------------------------------------------------------------------
 static void
@@ -310,15 +414,15 @@ display() {
 
     glUseProgram(0);
 
+#if 0
     // draw the control mesh
     GLuint vbo = g_controlMeshVerts->BindVBO();
-    int stride = 3;
-    g_controlMeshDisplay.Draw(vbo, stride*sizeof(float),
+    int stride = g_controlMeshVerts->GetNumElements();
+    g_controlMeshDisplay.Draw(vbo, 3*sizeof(float),
                               g_transformData.ModelViewProjectionMatrix);
 
-
     glBindBuffer(GL_ARRAY_BUFFER, 0);
-
+#endif
 
     // Update and bind transform state ---------------------
     if (! g_transformUB) {
@@ -359,6 +463,8 @@ display() {
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
     // Draw stuff ------------------------------------------
+
+    g_tessMesh->Draw(g_transformUB, g_lightingUB);
 
     if (g_hud.IsVisible()) {
 
@@ -504,8 +610,13 @@ initGL() {
     glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
+//#define CULLING
+#ifdef CULLING    
     glCullFace(GL_BACK);
     glEnable(GL_CULL_FACE);
+#else
+    glDisable(GL_CULL_FACE);
+#endif
 }
 
 //------------------------------------------------------------------------------
@@ -550,7 +661,7 @@ int main(int argc, char **argv) {
 
     static const char windowTitle[] = "OSD CharacteristicMap test harness";
 
-    GLUtils::SetMinimumGLVersion();
+    GLUtils::SetMinimumGLVersion(argc, argv);
 
     if (fullscreen) {
 
