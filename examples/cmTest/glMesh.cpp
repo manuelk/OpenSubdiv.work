@@ -145,20 +145,18 @@ GLMesh::Draw(GLuint xformUB, GLuint lightingUB) const {
     glEnableVertexAttribArray(_attrColor);
     glVertexAttribPointer(_attrColor, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
 
+
 #define wireframe
 #ifdef wireframe
 	glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
     glPointSize(2.0f);
 	glLineWidth(1.0f);
 	glEnable( GL_LINE_SMOOTH );
-#endif
-
-    glDrawArrays(GL_POINTS, 0, _numVertices);
-
-    //glDrawArrays(GL_TRIANGLES, 0, _numVertices);
-
-#ifdef wireframe
+    //glDrawArrays(GL_POINTS, 0, _numVertices);
+    glDrawArrays(GL_TRIANGLES, 0, _numVertices);
 	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+#else
+    glDrawArrays(GL_TRIANGLES, 0, _numVertices);
 #endif
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);

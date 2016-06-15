@@ -46,6 +46,7 @@ GLFWmonitor* g_primary=0;
 
 #include <far/characteristicMapFactory.h>
 #include <far/patchFaceTag.h>
+#include <far/patchTableFactory.h>
 #include <far/stencilTable.h>
 #include <far/topologyRefinerFactory.h>
 
@@ -62,8 +63,8 @@ GLFWmonitor* g_primary=0;
 #include <fstream>
 #include <sstream>
 
-int g_level = 2,
-    g_currentShape = 12; // 8;
+int g_level = 1,
+    g_currentShape = 8; //12
 
 int   g_frame = 0,
       g_repeatCount = 0;
@@ -152,6 +153,16 @@ struct LimitFrame {
 
 //------------------------------------------------------------------------------
 
+static void
+printArray(Far::ConstIndexArray array) {
+    printf("[");
+    for (int i=0; i<array.size(); ++i) {
+        if (i>0) printf(", ");
+        printf("%d", array[i]);
+    }
+    printf("]");
+}
+
 GLMesh * g_tessMesh = 0;
 
 GLControlMeshDisplay g_controlMeshDisplay;
@@ -159,6 +170,7 @@ GLControlMeshDisplay g_controlMeshDisplay;
 Osd::GLVertexBuffer * g_controlMeshVerts = 0;
 
 #if 1
+
 static void
 createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
@@ -185,7 +197,7 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         Far::TopologyRefiner::AdaptiveOptions options(maxlevel);
         refiner->RefineAdaptive(options);
     }
-
+printf("Uniform ? %d\n", refiner->IsUniform());
     // identify patch types
     Far::PatchFaceTagVector patchTags;
     Far::PatchFaceTag::IdentifyAdaptivePatches(
@@ -233,17 +245,18 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     }
 
     delete shape;
-    delete refiner;
-
     //
     // tessellate
     //
 
-    int const tessFactor = 100;
+    int const tessFactor = 20;
 
     int nchars = charmap->GetNumCharacteristics();
 
     // interpolate limits
+
+#define TESS_DOMAIN
+#ifdef TESS_DOMAIN
     nverts = tessFactor * tessFactor * nchars;
 
     std::vector<float> positions(3 * nverts),
@@ -271,31 +284,34 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 Far::Characteristic::Node node = ch.EvaluateBasis(s, t, wP, wDs, wDt);
                 Far::ConstIndexArray supportIndices = node.GetSupportIndices();
 
+//printf("char=%d (%f, %f) node=%d type=%d\n", i, s, t,
+//    node.GetTreeOffset(), node.GetDescriptor().GetType());
+
                 // interpolate support points with basis weights
                 LimitFrame limit;
                 limit.Clear();
-                for (int i=0; i<supportIndices.size(); ++i) {
-                    int supportIndex = supportIndices[i];
-                    assert(supportIndex<supportsBuffer.size());
-                    Vertex const & support = supportsBuffer[supportIndex];
-                    limit.AddWithWeight(support, wP[i], wDs[i], wDt[i]);
+                for (int k=0; k<supportIndices.size(); ++k) {
+                    assert(supportIndices[k]<supportsBuffer.size());
+                    Vertex const & support = supportsBuffer[supportIndices[k]];
+                    limit.AddWithWeight(support, wP[k], wDs[k], wDt[k]);
                 }
 
                 float c[3] = { s, 0.0f, t },
-                      n[3] = { 0.0f, 1.0f, 0.0f };
+                      n[3] = { 0.0f, 0.0f, 0.0f };
 
                 cross(norm, limit.deriv1, limit.deriv2 );
 
                 memcpy(pos, limit.point, 3 * sizeof(float));
                 //memcpy(pos, c, 3 * sizeof(float));
-                memcpy(norm, n, 3 * sizeof(float));
+                //memcpy(norm, n, 3 * sizeof(float));
                 memcpy(col, c, 3 * sizeof(float));
             }
         }
     }
 
-    // create tess mesh
     int ntriangles = 2 * (tessFactor-1) * (tessFactor-1) * nchars;
+
+    // create tess mesh
 
     struct GLMesh::Topology topo;
     topo.positions = new float[ntriangles * 3 * 3];
@@ -350,13 +366,129 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     }
 
     delete g_tessMesh;
-
     g_tessMesh = new GLMesh(topo);
 
     delete [] topo.positions;
     delete [] topo.normals;
     delete [] topo.colors;
+#else
 
+    {
+        Far::PatchTableFactory::Options options;
+        Far::PatchTable const * patchTable =
+            Far::PatchTableFactory::Create(*refiner, options);
+        printf("PatchTables params :\n");
+        Far::PatchParamTable const & params = patchTable->GetPatchParamTable();
+        for (int i=0; i<(int)params.size(); ++i) {
+            params[i].Print();
+            printf("\n");
+        }
+        printf("\n");
+    }
+
+    typedef Far::Characteristic Char;
+    typedef Far::Characteristic::Node Node;
+    typedef Far::Characteristic::NodeDescriptor NodeDesc;
+
+    std::vector<float> positions,
+                       normals,
+                       colors;
+
+    int ntriangles = 0;
+
+    for (int i=0; i<nchars; ++i) {
+
+        Char const & ch = charmap->GetCharacteristic(i);
+
+        // interpolate vertices
+        float wP[20], wDs[20], wDt[20];
+
+        int ncount=0;
+        Node node = ch.GetTreeNode(0);
+        while (node.GetTreeOffset() < ch.GetTreeSize()) {
+
+            NodeDesc desc = node.GetDescriptor();
+
+            if (desc.GetType()==Char::NODE_REGULAR ||
+                desc.GetType()==Char::NODE_END) {
+
+                Far::ConstIndexArray supportIndices = node.GetSupportIndices();
+{
+    Far::PatchParam param;
+    param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), desc.GetDepth(), desc.NonQuadRoot(),
+        desc.GetBoundary(), desc.GetTransition());
+    param.Print();
+    printf(" ");
+    printf("node %d type=%d offset=%d ", ncount, desc.GetType(),
+    node.GetTreeOffset()); printArray(supportIndices);
+    printf("\n");
+    fflush(stdout);
+}
+                for (int y=0; y<tessFactor; ++y) {
+                    for (int x=0; x<tessFactor; ++x) {
+
+                        // compute basis weights at location (s,t)
+                        float s = (float)x / (float)tessFactor,
+                              t = (float)y / (float)tessFactor;
+
+                        ch.EvaluateBasis(node, s, t, wP, wDs, wDt);
+
+                        // interpolate support points with basis weights
+                        LimitFrame limit;
+                        limit.Clear();
+                        for (int k=0; k<supportIndices.size(); ++k) {
+                            assert(supportIndices[k]<supportsBuffer.size());
+                            Vertex const & support = supportsBuffer[supportIndices[k]];
+                            limit.AddWithWeight(support, wP[k], wDs[k], wDt[k]);
+                        }
+
+                        float n[3] = { 3.3f, 3.3f, 3.3f };
+                        cross(n, limit.deriv1, limit.deriv2 );
+
+                        positions.push_back(limit.point[0]);
+                        positions.push_back(limit.point[1]);
+                        positions.push_back(limit.point[2]);
+
+                        normals.push_back(n[0]);
+                        normals.push_back(n[1]);
+                        normals.push_back(n[2]);
+
+                        static float palette[7][4] = {{1.0f,  1.0f,  1.0f,  1.0f},  
+                                                      {1.0f,  0.5f,  0.5f,  1.0f},  
+                                                      {0.8f,  0.0f,  0.0f,  1.0f},  
+                                                      {0.0f,  1.0f,  0.0f,  1.0f},  
+                                                      {1.0f,  1.0f,  0.0f,  1.0f},  
+                                                      {1.0f,  0.5f,  0.0f,  1.0f},  
+                                                      {1.0f,  0.7f,  0.3f,  1.0f}}; 
+
+                        //float const * c = palette[ncount % 7];
+                        float c[3] = { s, 0.5f, t };
+                        colors.push_back(c[0]);
+                        colors.push_back(c[1]);
+                        colors.push_back(c[2]);
+                    }
+                }
+
+                ntriangles += 2 * (tessFactor-1) * (tessFactor-1);
+
+                ++ncount;
+            }
+            node = ch.GetNextTreeNode(node);
+        }
+    }
+
+    struct GLMesh::Topology topo;
+    topo.positions = &positions[0];
+    topo.normals = &normals[0];
+    topo.colors = &colors[0];
+    topo.nverts = (int)positions.size()/3;
+
+    delete g_tessMesh;
+    g_tessMesh = new GLMesh(topo);
+
+#endif
+
+    delete refiner;
     delete charmap;
 }
 #else
@@ -414,7 +546,7 @@ display() {
 
     glUseProgram(0);
 
-#if 0
+#if 1
     // draw the control mesh
     GLuint vbo = g_controlMeshVerts->BindVBO();
     int stride = g_controlMeshVerts->GetNumElements();
@@ -611,7 +743,7 @@ initGL() {
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
 //#define CULLING
-#ifdef CULLING    
+#ifdef CULLING
     glCullFace(GL_BACK);
     glEnable(GL_CULL_FACE);
 #else

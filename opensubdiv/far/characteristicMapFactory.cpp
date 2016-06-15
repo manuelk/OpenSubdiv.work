@@ -122,6 +122,9 @@ private:
 
     int writeTerminalNode(int leveIndex, int faceIndex, uint8_t * data) const;
 
+    Characteristic::NodeDescriptor computeNodeDescriptor(Characteristic::NodeType type,
+        int levelIndex, Index faceIndex, int boundaryMask, int transitionMask, bool singleCrease) const;
+
 private:
 
     //
@@ -217,6 +220,46 @@ CharacteristicBuilder::~CharacteristicBuilder() {
 
 typedef Characteristic::NodeDescriptor NodeDescriptor;
 
+NodeDescriptor
+CharacteristicBuilder::computeNodeDescriptor(Characteristic::NodeType type,
+    int levelIndex, Index faceIndex, int boundaryMask, int transitionMask, bool singleCrease) const {
+
+    // Move up the hierarchy accumulating u,v indices to the coarse level:
+    int childIndexInParent = 0,
+        u = 0,
+        v = 0,
+        ofs = 1;
+
+    bool nonquad = (_refiner.GetLevel(levelIndex).GetFaceVertices(faceIndex).size() != 4);
+
+    for (int i = levelIndex; i > 0; --i) {
+
+        Vtr::internal::Refinement const& refinement  = _refiner.getRefinement(i-1);
+        Vtr::internal::Level const&      parentLevel = _refiner.getLevel(i-1);
+
+        Vtr::Index parentFaceIndex    = refinement.getChildFaceParentFace(faceIndex);
+                 childIndexInParent = refinement.getChildFaceInParentFace(faceIndex);
+
+        if (parentLevel.getFaceVertices(parentFaceIndex).size() == 4) {
+            switch (childIndexInParent) {
+                case 0 :                     break;
+                case 1 : { u+=ofs;         } break;
+                case 2 : { u+=ofs; v+=ofs; } break;
+                case 3 : {         v+=ofs; } break;
+            }
+            ofs = (unsigned short)(ofs << 1);
+        } else {
+            nonquad = true;
+        }
+        faceIndex = parentFaceIndex;
+    }
+
+    NodeDescriptor desc;
+    desc.Set(type, nonquad, singleCrease, levelIndex, boundaryMask, transitionMask, u, v);
+    return desc;
+}
+
+
 int
 CharacteristicBuilder::writeRegularNode(
     int levelIndex, int faceIndex, uint8_t * data) const {
@@ -238,14 +281,16 @@ CharacteristicBuilder::writeRegularNode(
 
         int const * permutation = 0;
 
-        // only single-crease patch has a sharpness.
-        float sharpness = 0;
+        bool singleCrease = false;
+
+        float sharpness = 0.f;
 
         if (patchTag.boundaryCount == 0) {
             static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
             permutation = permuteRegular;
             level.gatherQuadRegularInteriorPatchPoints(faceIndex, patchVerts, 0);
             if (patchTag.isSingleCrease) {
+                singleCrease = true;
                 boundaryMask = (1<<bIndex);
                 sharpness = level.getEdgeSharpness((level.getFaceEdges(faceIndex)[bIndex]));
                 sharpness = std::min(sharpness, (float)(_refiner.GetMaxLevel()-levelIndex));
@@ -273,7 +318,9 @@ CharacteristicBuilder::writeRegularNode(
         }
 
         // copy to buffer
-        ((NodeDescriptor *)data)->Set(Characteristic::NODE_REGULAR, levelIndex, boundaryMask, transitionMask);
+        NodeDescriptor desc = computeNodeDescriptor(Characteristic::NODE_REGULAR, levelIndex, faceIndex, boundaryMask, transitionMask, singleCrease);
+        
+        *((NodeDescriptor *)data) = desc;
         data += sizeof(NodeDescriptor);
 
         if (patchTag.isSingleCrease) {
@@ -325,7 +372,7 @@ CharacteristicBuilder::writeEndNode(
         }
 
         // copy to buffer
-        ((NodeDescriptor *)data)->Set(Characteristic::NODE_END, levelIndex, 0, 0);
+        *(NodeDescriptor *)data = computeNodeDescriptor(Characteristic::NODE_END, levelIndex, faceIndex, 0, 0, false);
         data += sizeof(NodeDescriptor);
 
         assert(sizeof(Index)==sizeof(int));
@@ -343,16 +390,15 @@ CharacteristicBuilder::writeRecursiveNode(
     int dataSize = sizeof(NodeDescriptor) + 4 * sizeof(int);
 
     if (data) {
-
-        ((NodeDescriptor *)data)->Set(Characteristic::NODE_RECURSIVE, levelIndex, 0, 0);
+        ((NodeDescriptor *)data)->Set(Characteristic::NODE_RECURSIVE, levelIndex, false, false, 0, 0, 0, 0);
 
         int * childrenOffsets = (int *)(data + sizeof(NodeDescriptor));
 
         ConstIndexArray children = _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
 
         for (int i=0; i<children.size(); ++i) {
-            // permute from CCW to Z pattern to match bitwise ~= traversal
-            static int const permute[] = { 0, 3, 1, 2 };
+            // permute from CCW to Z pattern to match bitwise ~= traversal ???
+            static int const permute[] = { 0, 1, 2, 3 };
             int childOffset = offset + dataSize/sizeof(int);
             dataSize += writeNode(levelIndex+1, children[i], childOffset, data+dataSize);
             childrenOffsets[permute[i]] = childOffset;
@@ -419,9 +465,16 @@ void
 CharacteristicBuilder::WriteCharacteristicTree(
     Characteristic * ch, int levelIndex, int faceIndex) const {
 
-    ch->_treeSize = writeNode(levelIndex, faceIndex, 0, nullptr);
+    int nbytes = writeNode(levelIndex, faceIndex, 0, nullptr);
 
-    ch->_tree = new int[ch->_treeSize/sizeof(int)];
+    ch->_treeSize = nbytes / sizeof(int);
+    ch->_tree = new int[ch->_treeSize];
+
+#if 1
+    for (int i=0; i<ch->_treeSize; ++i) {
+        ch->_tree[i] = -1;
+    }
+#endif
 
     writeNode(levelIndex, faceIndex, 0, (uint8_t *)ch->_tree);
     //PrintCharacteristicTreeNode(ch->tree, 0, 0);
@@ -454,6 +507,17 @@ CharacteristicBuilder::FinalizeVaryingStencils() {
 // Characteristic
 //
 
+int
+Characteristic::Node::GetNumChildrenNodes() const {
+    NodeDescriptor desc = this->GetDescriptor();
+    switch (desc.GetType()) {
+        case Characteristic::NODE_TERMINAL: return 1;
+        case Characteristic::NODE_RECURSIVE: return 4;
+        default:
+            return 0;
+    }
+}
+
 Characteristic::Node
 Characteristic::Node::GetChildNode(int childIndex) const {
 
@@ -482,7 +546,7 @@ Characteristic::Node::GetSupportIndices() const {
     NodeDescriptor desc = this->GetDescriptor();
     switch (desc.GetType()) {
         case Characteristic::NODE_REGULAR : {
-            if (desc.IsSingleCrease()) {
+            if (desc.SingleCrease()) {
                 supportsPtr += sizeof(float)/sizeof(int);
             }
             return ConstIndexArray(supportsPtr, 16);
@@ -507,7 +571,45 @@ Characteristic::Node::GetSupportIndices() const {
 }
 
 Characteristic::Node
-Characteristic::GetNode(float s, float t) const {
+Characteristic::GetNextTreeNode(Node node) const {
+
+    NodeDescriptor desc = node.GetDescriptor();
+
+    int offset = node.GetTreeOffset() + sizeof(NodeDescriptor)/sizeof(int);
+
+    switch (desc.GetType()) {
+        case Characteristic::NODE_REGULAR : {
+            if (desc.SingleCrease()) {
+                offset += sizeof(float)/sizeof(int);
+            }
+            offset += 16;
+        } break;
+        case Characteristic::NODE_END: {
+            CharacteristicMap::EndCapType endType =
+                GetCharacteristicMap()->GetEndCapType();
+            int nsupports = 0;
+            switch (endType) {
+                case CharacteristicMap::ENDCAP_BSPLINE_BASIS : nsupports = 16; break;
+                case CharacteristicMap::ENDCAP_GREGORY_BASIS : nsupports = 20; break;
+                default:
+                    assert(0);
+            }
+            offset += nsupports;
+        } break;
+        case Characteristic::NODE_RECURSIVE:
+            offset += 4;
+            break;
+        case Characteristic::NODE_TERMINAL:
+        default:
+            assert(0);
+            break;
+    }
+
+    return GetTreeNode(offset);
+}
+
+Characteristic::Node
+Characteristic::GetTreeNode(float s, float t) const {
 
     assert(_tree && sizeof(NodeDescriptor)==sizeof(int));
 
@@ -526,15 +628,13 @@ Characteristic::GetNode(float s, float t) const {
 }
 
 Characteristic::Node
-Characteristic::EvaluateBasis(float s, float t,
+Characteristic::EvaluateBasis(Node n, float s, float t,
     float wP[], float wDs[], float wDt[]) const {
-
-    Node n = GetNode(s, t);
 
     NodeDescriptor desc = n.GetDescriptor();
 
     PatchParam param;
-    param.Set(/*face id*/ 0, 0, 0, desc.GetDepth(), /*non-quad*/false,
+    param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), desc.GetDepth(), desc.NonQuadRoot(),
         desc.GetBoundary(), desc.GetTransition());
 
     if (desc.GetType()==NODE_REGULAR) {
@@ -557,6 +657,31 @@ Characteristic::EvaluateBasis(float s, float t,
     }
 
     return n;
+}
+
+Characteristic::Node
+Characteristic::EvaluateBasis(float s, float t,
+    float wP[], float wDs[], float wDt[]) const {
+
+/*
+    assert(_tree && sizeof(NodeDescriptor)==sizeof(int));
+
+    // traverse the sub-patch tree to the (s,t) coordinates
+    int offset = 0, corner = 0;
+    NodeDescriptor desc = _tree[offset];
+    while (desc.GetType()==NODE_RECURSIVE) {
+        if (s>0.5f) { corner ^= 1; } //s = 1 - s; }
+        if (t>0.5f) { corner ^= 2; } //t = 1 - t; }
+        s *= 2.0f;
+        t *= 2.0f;
+        offset = _tree[offset + 1 + corner];
+        desc = _tree[offset];
+    }
+
+    Node n(this, offset);
+*/
+    Node n = GetTreeNode(s, t);
+    return EvaluateBasis(n, s, t, wP, wDs, wDt);
 }
 
 static void PrintCharacteristicsDigraph(Characteristic const * chars, int nchars);
@@ -612,7 +737,7 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
     charmap->_localPointStencils = builder.FinalizeStencils();
     charmap->_localPointVaryingStencils = builder.FinalizeVaryingStencils();
 
-    //PrintCharacteristicsDigraph(&charmap->_characteristics[0], nchars);
+    PrintCharacteristicsDigraph(&charmap->_characteristics[0], nchars);
 
     return charmap;
 }

@@ -116,6 +116,11 @@ struct PatchParam {
     ///
     void Normalize( float & u, float & v ) const;
 
+    void Print() const {
+        printf("faceID=%d level=%d nonquad=%d boundary=%d transition=%d u=%d v=%d",
+            GetFaceId(), GetDepth(), NonQuadRoot(), GetBoundary(), GetTransition(), GetU(), GetV());
+    }
+
     unsigned int field0:32;
     unsigned int field1:32;
 };

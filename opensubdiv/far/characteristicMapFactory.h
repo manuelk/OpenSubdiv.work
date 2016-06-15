@@ -97,23 +97,29 @@ public:
     ///  Field1       | Bits | Content
     ///  -------------|:----:|------------------------------------------------------
     ///  type         | 2    | type
+    ///  nonquad      | 1    | whether the patch is the child of a non-quad face
+    ///  singleCrease | 1    | true if "single crease" patch
     ///  depth        | 4    | the subdivision level of the node
     ///  transition   | 4    | transition edge mask encoding
     ///  boundary     | 4    | boundary edge mask encoding
-    ///  singleCrease | 1    | true if "single crease" patch
+    ///  v            | 8    | log2 value of u parameter at first patch corner
+    ///  u            | 8    | log2 value of v parameter at first patch corner
     ///
     struct NodeDescriptor {
 
         /// \brief Translation constructor
-        NodeDescriptor(int value) { field0=value; }
+        NodeDescriptor(int value=0) { field0=value; }
 
-        void Set(unsigned short type, unsigned short depth, unsigned short boundary,
-            unsigned short transition, unsigned short singleCrease=false) {
-            field0 = ((singleCrease ? 1:0) << 14) |
-                     ((boundary & 0xf)     << 10) |
-                     ((transition & 0xf)   <<  6) |
-                     ((depth & 0xf)        <<  2) |
-                     (type & 0x3);
+        void Set(unsigned short type, unsigned short nonquad, unsigned short singleCrease,
+            unsigned short depth, unsigned short boundary, unsigned short transition, short u, short v) {
+            field0 = ((v & 0xff)           << 24) |
+                     ((u & 0xff)           << 16) |
+                     ((boundary & 0xf)     << 12) |
+                     ((transition & 0xf)   <<  8) |
+                     ((depth & 0xf)        <<  4) |
+                     ((singleCrease ? 1:0) <<  3) |
+                     ((nonquad ? 1:0)      <<  2) |
+                      (type & 0x3);
         }
 
         NodeDescriptor & operator=(int value) { field0 = value; return *this; }
@@ -125,16 +131,27 @@ public:
         NodeType GetType() const { return (NodeType)(field0 & 0x3); }
 
         /// \brief Returns the level of subdivision of the patch
-        unsigned short GetDepth() const { return  (unsigned short)((field0 >> 2) & 0xf); }
+        unsigned short GetDepth() const { return  (unsigned short)((field0 >> 4) & 0xf); }
 
         /// \brief Returns the transition edge encoding for the patch.
-        unsigned short GetTransition() const { return (unsigned short)((field0 >> 6) & 0xf); }
+        unsigned short GetTransition() const { return (unsigned short)((field0 >> 8) & 0xf); }
 
         /// \brief Returns the boundary edge encoding for the patch.
-        unsigned short GetBoundary() const { return (unsigned short)((field0 >> 10) & 0xf); }
+        unsigned short GetBoundary() const { return (unsigned short)((field0 >> 12) & 0xf); }
+
+        /// \brief True if the parent coarse face is a non-quad
+        bool NonQuadRoot() const { return (field0 >> 2) & 0x1; }
 
         /// \brief Returns true if the patch is of "single crease" type
-        bool IsSingleCrease() const { return (field0 >> 14) & 0x1; }
+        bool SingleCrease() const { return (field0 >> 3) & 0x1; }
+
+        /// \brief Returns the log2 value of the u parameter at the top left corner of
+        /// the patch
+        unsigned short GetU() const { return (unsigned short)((field0 >> 16) & 0xff); }
+
+        /// \brief Returns the log2 value of the v parameter at the top left corner of
+        /// the patch
+        unsigned short GetV() const { return (unsigned short)((field0 >> 24) & 0xff); }
 
         int field0:32;
     };
@@ -148,6 +165,9 @@ public:
         NodeDescriptor GetDescriptor() const {
             return _characteristic->_tree[_treeOffset];
         }
+
+        /// \brief Returns the number of children nodes
+        int GetNumChildrenNodes() const;
 
         /// \brief Returns the node's child at index
         Node GetChildNode(int childIndex=0) const;
@@ -186,11 +206,20 @@ public:
     /// \brief Returns the size (in bytes) of the patches tree
     int GetTreeSize() const { return _treeSize; }
 
+    /// \brief Returns the tree data
+    int const * GetTreeData() const { return _tree; }
+
     /// \brief Returns a pointer to the root node of the sub-patches tree
     Node GetTreeRootNode() const { return Node(this, 0); }
 
     /// \brief Returns a the node corresponding to the sub-patch at the given (s,t) location
-    Node GetNode(float s, float t) const;
+    Node GetTreeNode(float s, float t) const;
+
+    /// \brief Returns a the node at the given offset location
+    Node GetTreeNode(int treeOffset) const { return Node(this, treeOffset); }
+
+    /// \brief Returns the next node in the tree (serial traversal)
+    Node GetNextTreeNode(Node node) const;
     //@}
 
 
@@ -220,6 +249,8 @@ public:
     /// @return        The leaf node pointing to the sub-patch evaluated
     ///
     Node EvaluateBasis(float s, float t, float wP[], float wDs[], float wDt[]) const;
+
+    Node EvaluateBasis(Node n, float s, float t, float wP[], float wDs[], float wDt[]) const;
 
     //@}
 
