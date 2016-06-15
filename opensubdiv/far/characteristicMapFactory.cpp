@@ -397,8 +397,10 @@ CharacteristicBuilder::writeRecursiveNode(
         ConstIndexArray children = _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
 
         for (int i=0; i<children.size(); ++i) {
+
             // permute from CCW to Z pattern to match bitwise ~= traversal ???
-            static int const permute[] = { 0, 1, 2, 3 };
+            static int const permute[] = { 0, 1, 3, 2 };
+
             int childOffset = offset + dataSize/sizeof(int);
             dataSize += writeNode(levelIndex+1, children[i], childOffset, data+dataSize);
             childrenOffsets[permute[i]] = childOffset;
@@ -507,6 +509,30 @@ CharacteristicBuilder::FinalizeVaryingStencils() {
 // Characteristic
 //
 
+unsigned short
+Characteristic::NodeDescriptor::GetBoundaryCount() const {
+
+    // patches cannot have more than 2 boundaries
+    static int masks[] = { 0,  // 0000
+                           1,  // 0001
+                           1,  // 0010
+                           2,  // 0011
+                           1,  // 0100
+                           2,  // 0101
+                           2,  // 0110
+                          -1,  // 0111
+                           1,  // 1000
+                           2,  // 1001
+                           2,  // 1010
+                          -1,  // 1011
+                           2,  // 1100
+                          -1,  // 1101
+                          -1,  // 1110
+                          -1,  // 1111
+    };
+    return masks[GetBoundaryMask()];
+}
+
 int
 Characteristic::Node::GetNumChildrenNodes() const {
     NodeDescriptor desc = this->GetDescriptor();
@@ -571,11 +597,11 @@ Characteristic::Node::GetSupportIndices() const {
 }
 
 Characteristic::Node
-Characteristic::GetNextTreeNode(Node node) const {
+Characteristic::Node::operator ++() {
 
-    NodeDescriptor desc = node.GetDescriptor();
+    NodeDescriptor desc = this->GetDescriptor();
 
-    int offset = node.GetTreeOffset() + sizeof(NodeDescriptor)/sizeof(int);
+    int offset = this->GetTreeOffset() + sizeof(NodeDescriptor)/sizeof(int);
 
     switch (desc.GetType()) {
         case Characteristic::NODE_REGULAR : {
@@ -586,7 +612,7 @@ Characteristic::GetNextTreeNode(Node node) const {
         } break;
         case Characteristic::NODE_END: {
             CharacteristicMap::EndCapType endType =
-                GetCharacteristicMap()->GetEndCapType();
+                GetCharacteristic()->GetCharacteristicMap()->GetEndCapType();
             int nsupports = 0;
             switch (endType) {
                 case CharacteristicMap::ENDCAP_BSPLINE_BASIS : nsupports = 16; break;
@@ -604,8 +630,8 @@ Characteristic::GetNextTreeNode(Node node) const {
             assert(0);
             break;
     }
-
-    return GetTreeNode(offset);
+    _treeOffset = offset;
+    return *this;
 }
 
 Characteristic::Node
@@ -635,7 +661,7 @@ Characteristic::EvaluateBasis(Node n, float s, float t,
 
     PatchParam param;
     param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), desc.GetDepth(), desc.NonQuadRoot(),
-        desc.GetBoundary(), desc.GetTransition());
+        desc.GetBoundaryMask(), desc.GetTransitionMask());
 
     if (desc.GetType()==NODE_REGULAR) {
         internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
@@ -663,24 +689,8 @@ Characteristic::Node
 Characteristic::EvaluateBasis(float s, float t,
     float wP[], float wDs[], float wDt[]) const {
 
-/*
-    assert(_tree && sizeof(NodeDescriptor)==sizeof(int));
-
-    // traverse the sub-patch tree to the (s,t) coordinates
-    int offset = 0, corner = 0;
-    NodeDescriptor desc = _tree[offset];
-    while (desc.GetType()==NODE_RECURSIVE) {
-        if (s>0.5f) { corner ^= 1; } //s = 1 - s; }
-        if (t>0.5f) { corner ^= 2; } //t = 1 - t; }
-        s *= 2.0f;
-        t *= 2.0f;
-        offset = _tree[offset + 1 + corner];
-        desc = _tree[offset];
-    }
-
-    Node n(this, offset);
-*/
     Node n = GetTreeNode(s, t);
+
     return EvaluateBasis(n, s, t, wP, wDs, wDt);
 }
 
@@ -737,7 +747,7 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
     charmap->_localPointStencils = builder.FinalizeStencils();
     charmap->_localPointVaryingStencils = builder.FinalizeVaryingStencils();
 
-    PrintCharacteristicsDigraph(&charmap->_characteristics[0], nchars);
+    //PrintCharacteristicsDigraph(&charmap->_characteristics[0], nchars);
 
     return charmap;
 }

@@ -26,6 +26,7 @@
 
 set(SHADER_FILES
     glMeshShader.glsl
+    glFontShader.glsl
 )
 
 include_directories(
@@ -48,6 +49,7 @@ _stringify("${SHADER_FILES}" INC_FILES)
 add_executable(cmTest
     cmTest.cpp
     glMesh.cpp
+    glFontUtils.cpp
     "${SHADER_FILES}"
     "${INC_FILES}"
     $<TARGET_OBJECTS:sdc_obj>

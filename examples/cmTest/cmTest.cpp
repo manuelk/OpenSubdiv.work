@@ -57,6 +57,7 @@ GLFWmonitor* g_primary=0;
 #include "../common/glHud.h"
 
 #include "./init_shapes.h"
+#include "./glFontutils.h"
 #include "./glMesh.h"
 
 #include <string>
@@ -64,10 +65,12 @@ GLFWmonitor* g_primary=0;
 #include <sstream>
 
 int g_level = 1,
-    g_currentShape = 8; //12
+    g_currentShape = 12; //8
 
 int   g_frame = 0,
       g_repeatCount = 0;
+
+bool g_DrawNodeIDs = false;
 
 // GUI variables
 int   g_fullscreen = 0,
@@ -107,7 +110,7 @@ using namespace OpenSubdiv;
 struct Vertex {
 
     // Minimal required interface ----------------------
-    Vertex() { memset(this, 0, sizeof(Vertex)); }
+    Vertex() { }
 
     void Clear( void * =0 ) {
          point[0] = point[1] = point[2] = 0.0f;
@@ -151,6 +154,90 @@ struct LimitFrame {
           deriv2[3];
 };
 
+static float g_palette[7][4] = {{1.0f,  1.0f,  1.0f,  1.0f},
+                                {1.0f,  0.5f,  0.5f,  1.0f},
+                                {0.8f,  0.0f,  0.0f,  1.0f},
+                                {0.0f,  1.0f,  0.0f,  1.0f},
+                                {1.0f,  1.0f,  0.0f,  1.0f},
+                                {1.0f,  0.5f,  0.0f,  1.0f},
+                                {1.0f,  0.7f,  0.3f,  1.0f}};
+
+static float g_patchColors[42][4] = {
+        {1.0f,  1.0f,  1.0f,  1.0f},   // regular
+        {0.0f,  1.0f,  1.0f,  1.0f},   // regular pattern 0
+        {0.0f,  0.5f,  1.0f,  1.0f},   // regular pattern 1
+        {0.0f,  0.5f,  0.5f,  1.0f},   // regular pattern 2
+        {0.5f,  0.0f,  1.0f,  1.0f},   // regular pattern 3
+        {1.0f,  0.5f,  1.0f,  1.0f},   // regular pattern 4
+
+        {1.0f,  0.5f,  0.5f,  1.0f},   // single crease
+        {1.0f,  0.70f,  0.6f,  1.0f},  // single crease pattern 0
+        {1.0f,  0.65f,  0.6f,  1.0f},  // single crease pattern 1
+        {1.0f,  0.60f,  0.6f,  1.0f},  // single crease pattern 2
+        {1.0f,  0.55f,  0.6f,  1.0f},  // single crease pattern 3
+        {1.0f,  0.50f,  0.6f,  1.0f},  // single crease pattern 4
+
+        {0.8f,  0.0f,  0.0f,  1.0f},   // boundary
+        {0.0f,  0.0f,  0.75f, 1.0f},   // boundary pattern 0
+        {0.0f,  0.2f,  0.75f, 1.0f},   // boundary pattern 1
+        {0.0f,  0.4f,  0.75f, 1.0f},   // boundary pattern 2
+        {0.0f,  0.6f,  0.75f, 1.0f},   // boundary pattern 3
+        {0.0f,  0.8f,  0.75f, 1.0f},   // boundary pattern 4
+
+        {0.0f,  1.0f,  0.0f,  1.0f},   // corner
+        {0.25f, 0.25f, 0.25f, 1.0f},   // corner pattern 0
+        {0.25f, 0.25f, 0.25f, 1.0f},   // corner pattern 1
+        {0.25f, 0.25f, 0.25f, 1.0f},   // corner pattern 2
+        {0.25f, 0.25f, 0.25f, 1.0f},   // corner pattern 3
+        {0.25f, 0.25f, 0.25f, 1.0f},   // corner pattern 4
+
+        {1.0f,  1.0f,  0.0f,  1.0f},   // gregory
+        {1.0f,  1.0f,  0.0f,  1.0f},   // gregory
+        {1.0f,  1.0f,  0.0f,  1.0f},   // gregory
+        {1.0f,  1.0f,  0.0f,  1.0f},   // gregory
+        {1.0f,  1.0f,  0.0f,  1.0f},   // gregory
+        {1.0f,  1.0f,  0.0f,  1.0f},   // gregory
+
+        {1.0f,  0.5f,  0.0f,  1.0f},   // gregory boundary
+        {1.0f,  0.5f,  0.0f,  1.0f},   // gregory boundary
+        {1.0f,  0.5f,  0.0f,  1.0f},   // gregory boundary
+        {1.0f,  0.5f,  0.0f,  1.0f},   // gregory boundary
+        {1.0f,  0.5f,  0.0f,  1.0f},   // gregory boundary
+        {1.0f,  0.5f,  0.0f,  1.0f},   // gregory boundary
+
+        {1.0f,  0.7f,  0.3f,  1.0f},   // gregory basis
+        {1.0f,  0.7f,  0.3f,  1.0f},   // gregory basis
+        {1.0f,  0.7f,  0.3f,  1.0f},   // gregory basis
+        {1.0f,  0.7f,  0.3f,  1.0f},   // gregory basis
+        {1.0f,  0.7f,  0.3f,  1.0f},   // gregory basis
+        {1.0f,  0.7f,  0.3f,  1.0f}    // gregory basis
+};
+
+static float const *
+getAdaptiveColor(Far::Characteristic::NodeDescriptor desc) {
+
+   int patchType = 0;
+
+   if (desc.GetType()==Far::Characteristic::NODE_REGULAR ||
+       desc.GetType()==Far::Characteristic::NODE_END) {
+
+       int edgeCount =desc.GetBoundaryCount();
+       switch (edgeCount) {
+           case 1 : patchType = 2; break;
+           case 2 : patchType = 3; break;
+       };
+
+       if (desc.SingleCrease()) {
+           patchType = 1;
+       }
+   } else {
+   }
+
+   int pattern = desc.GetTransitionMask();
+
+   return g_patchColors[6*patchType + pattern];
+}
+
 //------------------------------------------------------------------------------
 
 static void
@@ -163,6 +250,125 @@ printArray(Far::ConstIndexArray array) {
     printf("]");
 }
 
+static void
+printPatchTables(Far::TopologyRefiner const * refiner) {
+
+    Far::PatchTableFactory::Options options;
+    Far::PatchTable const * patchTable =
+        Far::PatchTableFactory::Create(*refiner, options);
+    printf("PatchTables :\n");
+
+    int narrays = patchTable->GetNumPatchArrays();
+    for (int array=0; array<narrays; ++array) {
+        int npatches = patchTable->GetNumPatches(array);
+        for (int patch=0; patch<npatches; ++patch) {
+
+            printf("  ");
+            patchTable->GetPatchParam(array, patch).Print();
+
+            printf(" [");
+            Far::ConstIndexArray cvs =
+                patchTable->GetPatchVertices(array, patch);
+            for (int k=0; k<cvs.size(); ++k) {
+                if (k>0) printf(", ");
+                printf("%d", cvs[k]);
+            }
+            printf("]\n");
+        }
+    }
+    printf("\n");
+    fflush(stdout);
+    delete patchTable;
+}
+
+static void
+printCharmapNodes(Far::CharacteristicMap const * charmap) {
+
+    typedef Far::Characteristic::Node Node;
+    typedef Far::Characteristic::NodeDescriptor NodeDesc;
+
+    printf("Nodes :\n");
+
+    int nchars = charmap->GetNumCharacteristics();
+    for (int i=0; i<nchars; ++i) {
+
+        Far::Characteristic const & ch = charmap->GetCharacteristic(i);
+
+        printf("Characteristic : %d\n", i);
+
+        int nodeIndex = 0;
+        for (Node it = ch.GetTreeNode(0); it.GetTreeOffset()<ch.GetTreeSize(); ++it, ++nodeIndex) {
+
+            NodeDesc desc = it.GetDescriptor();
+
+            if (desc.GetType()!=Far::Characteristic::NODE_REGULAR &&
+                desc.GetType()!=Far::Characteristic::NODE_END) {
+                continue;
+            }
+
+            printf("    ");
+
+            Far::PatchParam param;
+            param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), desc.GetDepth(),
+                desc.NonQuadRoot(), desc.GetBoundaryMask(), desc.GetTransitionMask());
+            param.Print();
+            printf(" ");
+
+            Far::ConstIndexArray supportIndices = it.GetSupportIndices();
+            printArray(supportIndices);
+            printf(" type=%d offset=%4d ID=%d", desc.GetType(), it.GetTreeOffset(), nodeIndex);
+            float const * c = getAdaptiveColor(desc);
+            printf(" bcount=%d color=(%f %f %f)", desc.GetBoundaryCount(), c[0], c[1], c[2]);
+            printf("\n");
+        }
+    }
+    fflush(stdout);
+}
+
+//------------------------------------------------------------------------------
+
+GLFont * g_font=0;
+
+static void
+createNodeIDs(Far::CharacteristicMap const & charmap,
+    std::vector<Vertex> const & vertexBuffer) {
+
+    typedef Far::Characteristic::Node Node;
+    typedef Far::Characteristic::NodeDescriptor NodeDesc;
+
+    int nchars = charmap.GetNumCharacteristics();
+
+    for (int i=0; i<nchars; ++i) {
+
+        Far::Characteristic const & ch = charmap.GetCharacteristic(i);
+
+        Node it = ch.GetTreeNode(0);
+        for (int nindex=0; it.GetTreeOffset()<ch.GetTreeSize(); ++nindex, ++it) {
+
+            NodeDesc desc = it.GetDescriptor();
+
+            if (desc.GetType()!=Far::Characteristic::NODE_REGULAR &&
+                desc.GetType()!=Far::Characteristic::NODE_END)
+                continue;
+
+            OpenSubdiv::Far::ConstIndexArray const cvs = it.GetSupportIndices();
+
+            Vertex center;
+            center.Clear();
+
+            float weight = 1.0f / cvs.size();
+            for (int k=0; k<cvs.size(); ++k) {
+                center.AddWithWeight(vertexBuffer[cvs[k]], weight);
+            }
+
+            static char buf[16];
+            snprintf(buf, 16, "%d-%d", i, nindex);
+            g_font->Print3D(center.point, buf, 1);
+        }
+    }
+
+}
+
 GLMesh * g_tessMesh = 0;
 
 GLControlMeshDisplay g_controlMeshDisplay;
@@ -173,6 +379,8 @@ Osd::GLVertexBuffer * g_controlMeshVerts = 0;
 
 static void
 createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
+
+printf("level=%d\n", g_level);
 
     Shape const * shape = Shape::parseObj(
         shapeDesc.data.c_str(), shapeDesc.scheme);
@@ -197,7 +405,7 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         Far::TopologyRefiner::AdaptiveOptions options(maxlevel);
         refiner->RefineAdaptive(options);
     }
-printf("Uniform ? %d\n", refiner->IsUniform());
+
     // identify patch types
     Far::PatchFaceTagVector patchTags;
     Far::PatchFaceTag::IdentifyAdaptivePatches(
@@ -245,13 +453,22 @@ printf("Uniform ? %d\n", refiner->IsUniform());
     }
 
     delete shape;
+
     //
     // tessellate
     //
 
-    int const tessFactor = 20;
+    int const tessFactor = 10;
 
     int nchars = charmap->GetNumCharacteristics();
+
+    printPatchTables(refiner);
+
+    printCharmapNodes(charmap);
+    if (g_DrawNodeIDs) {
+        createNodeIDs(*charmap, supportsBuffer);
+    }
+
 
     // interpolate limits
 
@@ -278,14 +495,11 @@ printf("Uniform ? %d\n", refiner->IsUniform());
             for (int x=0; x<tessFactor; ++x, pos+=3, norm+=3, col+=3) {
 
                 // compute basis weights at location (s,t)
-                float s = (float)x / (float)tessFactor,
-                      t = (float)y / (float)tessFactor;
+                float s = (float)x / (float)(tessFactor-1),
+                      t = (float)y / (float)(tessFactor-1);
 
                 Far::Characteristic::Node node = ch.EvaluateBasis(s, t, wP, wDs, wDt);
                 Far::ConstIndexArray supportIndices = node.GetSupportIndices();
-
-//printf("char=%d (%f, %f) node=%d type=%d\n", i, s, t,
-//    node.GetTreeOffset(), node.GetDescriptor().GetType());
 
                 // interpolate support points with basis weights
                 LimitFrame limit;
@@ -296,9 +510,11 @@ printf("Uniform ? %d\n", refiner->IsUniform());
                     limit.AddWithWeight(support, wP[k], wDs[k], wDt[k]);
                 }
 
-                float c[3] = { s, 0.0f, t },
-                      n[3] = { 0.0f, 0.0f, 0.0f };
+                //float c[3] = { s, 0.0f, t };
+                //float const * c = g_palette[ch.GetNodeIndex(node) % 7];
+                float const * c = getAdaptiveColor(node.GetDescriptor());
 
+                float n[3] = { 0.0f, 0.0f, 0.0f };
                 cross(norm, limit.deriv1, limit.deriv2 );
 
                 memcpy(pos, limit.point, 3 * sizeof(float));
@@ -373,18 +589,6 @@ printf("Uniform ? %d\n", refiner->IsUniform());
     delete [] topo.colors;
 #else
 
-    {
-        Far::PatchTableFactory::Options options;
-        Far::PatchTable const * patchTable =
-            Far::PatchTableFactory::Create(*refiner, options);
-        printf("PatchTables params :\n");
-        Far::PatchParamTable const & params = patchTable->GetPatchParamTable();
-        for (int i=0; i<(int)params.size(); ++i) {
-            params[i].Print();
-            printf("\n");
-        }
-        printf("\n");
-    }
 
     typedef Far::Characteristic Char;
     typedef Far::Characteristic::Node Node;
@@ -413,23 +617,13 @@ printf("Uniform ? %d\n", refiner->IsUniform());
                 desc.GetType()==Char::NODE_END) {
 
                 Far::ConstIndexArray supportIndices = node.GetSupportIndices();
-{
-    Far::PatchParam param;
-    param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), desc.GetDepth(), desc.NonQuadRoot(),
-        desc.GetBoundary(), desc.GetTransition());
-    param.Print();
-    printf(" ");
-    printf("node %d type=%d offset=%d ", ncount, desc.GetType(),
-    node.GetTreeOffset()); printArray(supportIndices);
-    printf("\n");
-    fflush(stdout);
-}
+
                 for (int y=0; y<tessFactor; ++y) {
                     for (int x=0; x<tessFactor; ++x) {
 
                         // compute basis weights at location (s,t)
-                        float s = (float)x / (float)tessFactor,
-                              t = (float)y / (float)tessFactor;
+                        float s = (float)x / (float)(tessFactor-1),
+                              t = (float)y / (float)(tessFactor-1);
 
                         ch.EvaluateBasis(node, s, t, wP, wDs, wDt);
 
@@ -447,22 +641,14 @@ printf("Uniform ? %d\n", refiner->IsUniform());
 
                         positions.push_back(limit.point[0]);
                         positions.push_back(limit.point[1]);
-                        positions.push_back(limit.point[2]);
+                        positions.push_back(limit.point[2]+ncount*0.25f);
 
                         normals.push_back(n[0]);
                         normals.push_back(n[1]);
                         normals.push_back(n[2]);
 
-                        static float palette[7][4] = {{1.0f,  1.0f,  1.0f,  1.0f},  
-                                                      {1.0f,  0.5f,  0.5f,  1.0f},  
-                                                      {0.8f,  0.0f,  0.0f,  1.0f},  
-                                                      {0.0f,  1.0f,  0.0f,  1.0f},  
-                                                      {1.0f,  1.0f,  0.0f,  1.0f},  
-                                                      {1.0f,  0.5f,  0.0f,  1.0f},  
-                                                      {1.0f,  0.7f,  0.3f,  1.0f}}; 
-
-                        //float const * c = palette[ncount % 7];
-                        float c[3] = { s, 0.5f, t };
+                        float const * c = g_palette[ncount % 7];
+                        //float c[3] = { s, 0.1f, t };
                         colors.push_back(c[0]);
                         colors.push_back(c[1]);
                         colors.push_back(c[2]);
@@ -473,7 +659,7 @@ printf("Uniform ? %d\n", refiner->IsUniform());
 
                 ++ncount;
             }
-            node = ch.GetNextTreeNode(node);
+            ++node;
         }
     }
 
@@ -484,7 +670,7 @@ printf("Uniform ? %d\n", refiner->IsUniform());
     topo.nverts = (int)positions.size()/3;
 
     delete g_tessMesh;
-    g_tessMesh = new GLMesh(topo);
+    g_tessMesh = new GLMesh(topo, GLMesh::DRAW_POINTS);
 
 #endif
 
@@ -500,13 +686,18 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     delete g_tessMesh;
 
     g_tessMesh = new GLMesh(topo);
-
 }
 #endif
 
 //------------------------------------------------------------------------------
 static void
 rebuildMeshes() {
+
+    if (not g_font) {
+        g_font = new GLFont(g_hud.GetFontTexture());
+    }
+    g_font->Clear();
+
     createTessMesh(g_shapes[ g_currentShape ], g_level);
 }
 
@@ -598,6 +789,10 @@ display() {
 
     g_tessMesh->Draw(g_transformUB, g_lightingUB);
 
+    if (g_font) {
+        g_font->Draw(g_transformUB);
+    }
+
     if (g_hud.IsVisible()) {
 
         g_fpsTimer.Stop();
@@ -624,6 +819,24 @@ callbackModel(int m) {
     if (m >= (int)g_shapes.size())
         m = (int)g_shapes.size() - 1;
     g_currentShape = m;
+    rebuildMeshes();
+}
+
+static void
+callbackLevel(int l) {
+    g_level = l;
+    rebuildMeshes();
+}
+
+static void
+callbackDrawIDs(bool checked, int button) {
+
+    switch (button) {
+
+        case 0: g_DrawNodeIDs = checked; break;
+
+        default: break;
+    }
     rebuildMeshes();
 }
 
@@ -726,6 +939,14 @@ initHUD() {
     glfwGetFramebufferSize(g_window, &frameBufferWidth, &frameBufferHeight);
 
     g_hud.Init(windowWidth, windowHeight, frameBufferWidth, frameBufferHeight);
+
+    g_hud.AddCheckBox("Node IDs", g_DrawNodeIDs!=0, 10, 215, callbackDrawIDs, 0);
+
+    for (int i = 1; i < 11; ++i) {
+        char level[16];
+        sprintf(level, "Lv. %d", i);
+        g_hud.AddRadioButton(3, level, i==g_level, 10, 310+i*20, callbackLevel, i, '0'+(i%10));
+    }
 
     int shapes_pulldown = g_hud.AddPullDown("Shape (N)", -300, 10, 300, callbackModel, 'n');
     for (int i = 0; i < (int)g_shapes.size(); ++i) {

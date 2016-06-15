@@ -37,7 +37,8 @@ static const char * g_meshShaderSrc =
 static GLuint g_transformBinding=0,
               g_lightingBinding=1;
 
-GLMesh::GLMesh(Topology const & topo) {
+GLMesh::GLMesh(Topology const & topo, DrawMode drawMode) :
+    _drawMode(drawMode) {
 
     // Shader
     _program = glCreateProgram();
@@ -148,13 +149,16 @@ GLMesh::Draw(GLuint xformUB, GLuint lightingUB) const {
 
 #define wireframe
 #ifdef wireframe
-	glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+    glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
     glPointSize(2.0f);
-	glLineWidth(1.0f);
-	glEnable( GL_LINE_SMOOTH );
-    //glDrawArrays(GL_POINTS, 0, _numVertices);
-    glDrawArrays(GL_TRIANGLES, 0, _numVertices);
-	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+    glLineWidth(1.0f);
+    glEnable( GL_LINE_SMOOTH );
+    if (_drawMode==DRAW_POINTS) {
+        glDrawArrays(GL_POINTS, 0, _numVertices);
+    } else if (_drawMode==DRAW_WIREFRAME) {
+        glDrawArrays(GL_TRIANGLES, 0, _numVertices);
+    }
+    glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 #else
     glDrawArrays(GL_TRIANGLES, 0, _numVertices);
 #endif

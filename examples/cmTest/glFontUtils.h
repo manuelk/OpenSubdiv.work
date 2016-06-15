@@ -1,5 +1,5 @@
 //
-//   Copyright 2016 Nvidia
+//   Copyright 2013 Pixar
 //
 //   Licensed under the Apache License, Version 2.0 (the "Apache License")
 //   with the following modification; you may not use this file except in
@@ -22,57 +22,57 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
-#ifndef GL_MESH_H
-#define GL_MESH_H
-
-#include <osd/glVertexBuffer.h>
+#ifndef GL_FONT_UTILS_H
+#define GL_FONT_UTILS_H
 
 #include "../common/glUtils.h"
 
 #include <vector>
 
-// Mesh drawing
-class GLMesh {
-
+class GLFont {
 public:
 
-    enum DrawMode {
-        DRAW_POINTS,
-        DRAW_WIREFRAME,
-        DRAW_MESH
+    GLFont(GLuint fontTexture);
+
+    ~GLFont();
+
+    void Draw(GLuint transforUB);
+
+    void Clear();
+
+    void Print3D(float const pos[3], const char * str, int color=0);
+    
+    void SetFontScale(float scale);
+
+    struct Char {
+        float pos[3];
+        float ofs[2];
+        float alpha;
+        float color;
     };
-
-    struct Topology {
-
-        static Topology Cube();
-
-        float * positions;
-        float * normals;
-        float * colors;
-        int nverts;
-    };
-
-    GLMesh(Topology const & topo, DrawMode drawMode=DRAW_WIREFRAME);
-
-    ~GLMesh();
-
-    void Draw(GLuint xformUB, GLuint lightingUB) const;
-
+    
+    std::vector<Char> & GetChars() {
+        _dirty=true;
+        return _chars;
+    }
+    
+    
 private:
 
-    DrawMode _drawMode;
+    void bindProgram();
 
-    int _numVertices;
+    std::vector<Char> _chars;
+    bool _dirty;
 
-    GLuint _program;
-
-    GLint  _attrPosition,
-           _attrNormal,
-           _attrColor;
-
-    GLuint _vao,
-           _bufVertData,
-           _bufColors;
+    GLuint _program,
+           _transformBinding,
+           _attrPosition,
+           _attrData,
+           _fontTexture,
+           _scale,
+           _VAO,
+           _EAO,
+           _VBO;
 };
 
-#endif // GL_MESH_H
+#endif // GL_FONT_UTILS_H

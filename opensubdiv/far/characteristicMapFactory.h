@@ -110,8 +110,10 @@ public:
         /// \brief Translation constructor
         NodeDescriptor(int value=0) { field0=value; }
 
-        void Set(unsigned short type, unsigned short nonquad, unsigned short singleCrease,
-            unsigned short depth, unsigned short boundary, unsigned short transition, short u, short v) {
+        void Set(unsigned short type, unsigned short nonquad,
+            unsigned short singleCrease, unsigned short depth,
+                unsigned short boundary, unsigned short transition,
+                    short u, short v) {
             field0 = ((v & 0xff)           << 24) |
                      ((u & 0xff)           << 16) |
                      ((boundary & 0xf)     << 12) |
@@ -127,17 +129,20 @@ public:
         /// \brief Resets everything to 0
         void Clear() { field0 = 0; }
 
-        /// \brief Returns the type for the patch.
+        /// \brief Returns the type for the sub-patch.
         NodeType GetType() const { return (NodeType)(field0 & 0x3); }
 
-        /// \brief Returns the level of subdivision of the patch
+        /// \brief Returns the level of subdivision of the sub-patch
         unsigned short GetDepth() const { return  (unsigned short)((field0 >> 4) & 0xf); }
 
         /// \brief Returns the transition edge encoding for the patch.
-        unsigned short GetTransition() const { return (unsigned short)((field0 >> 8) & 0xf); }
+        unsigned short GetTransitionMask() const { return (unsigned short)((field0 >> 8) & 0xf); }
 
-        /// \brief Returns the boundary edge encoding for the patch.
-        unsigned short GetBoundary() const { return (unsigned short)((field0 >> 12) & 0xf); }
+        /// \brief Returns the boundary edge encoding for the sub-patch.
+        unsigned short GetBoundaryMask() const { return (unsigned short)((field0 >> 12) & 0xf); }
+
+        /// \brief Returns the number of boundary edges in the sub-patch
+        unsigned short GetBoundaryCount() const;
 
         /// \brief True if the parent coarse face is a non-quad
         bool NonQuadRoot() const { return (field0 >> 2) & 0x1; }
@@ -181,6 +186,9 @@ public:
         /// \brief Returns the node's offset
         int GetTreeOffset() const { return _treeOffset; }
 
+        /// \brief Returns the next node in the tree (serial traversal)
+        Node operator ++ ();
+
         /// \brief Returns true if the nodes are identical
         bool operator == (Node const & other) const {
             return _characteristic == other._characteristic &&
@@ -218,8 +226,15 @@ public:
     /// \brief Returns a the node at the given offset location
     Node GetTreeNode(int treeOffset) const { return Node(this, treeOffset); }
 
-    /// \brief Returns the next node in the tree (serial traversal)
-    Node GetNextTreeNode(Node node) const;
+    int GetNodeIndex(Node node) const {
+        Node it = GetTreeNode(0);
+        for (int index=0; it.GetTreeOffset()<GetTreeSize(); ++index, ++it) {
+            if (it==node) {
+                return index;
+            }
+        }
+        return -1;
+    }
     //@}
 
 

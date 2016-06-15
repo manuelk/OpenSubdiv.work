@@ -117,7 +117,7 @@ struct PatchParam {
     void Normalize( float & u, float & v ) const;
 
     void Print() const {
-        printf("faceID=%d level=%d nonquad=%d boundary=%d transition=%d u=%d v=%d",
+        printf("faceID=%d level=%d nonquad=%d boundary=%2d transition=%2d u=%d v=%d",
             GetFaceId(), GetDepth(), NonQuadRoot(), GetBoundary(), GetTransition(), GetU(), GetV());
     }
 
