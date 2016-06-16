@@ -549,13 +549,14 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
     for (int face = 0; face < coarseLevel.GetNumFaces(); ++face) {
 
 
-        ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
+        ConstIndexArray verts = coarseLevel.GetFaceVertices(face);
 
-        if (children.size()==regFaceSize) {
+        if (verts.size()==regFaceSize) {
             ch->_characteristicMap = charmap;
             builder.WriteCharacteristicTree(ch, 0, face);
             ++ch;
         } else {
+            ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
             for (int child=0; child<children.size(); ++child) {
                 ch->_characteristicMap = charmap;
                 builder.WriteCharacteristicTree(ch, 1, children[child]);
@@ -567,7 +568,7 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
     charmap->_localPointStencils = builder.FinalizeStencils();
     charmap->_localPointVaryingStencils = builder.FinalizeVaryingStencils();
 
-    //PrintCharacteristicsDigraph(&charmap->_characteristics[0], nchars);
+    PrintCharacteristicsDigraph(&charmap->_characteristics[0], nchars);
 
     return charmap;
 }
