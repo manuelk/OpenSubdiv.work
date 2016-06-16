@@ -69,7 +69,7 @@ using namespace OpenSubdiv;
 int g_level = 2,
     g_tessLevel = 10,
     g_tessLevelMin = 2,
-    g_currentShape = 49; //cube = 8 square = 12 pyramid = 45 torus = 49
+    g_currentShape = 45; //cube = 8 square = 12 pyramid = 45 torus = 49
 
 int   g_frame = 0,
       g_repeatCount = 0;
@@ -269,26 +269,25 @@ static void
 printPatchTables(Far::TopologyRefiner const * refiner) {
 
     Far::PatchTableFactory::Options options;
+    options.SetEndCapType(g_endCap);
     Far::PatchTable const * patchTable =
         Far::PatchTableFactory::Create(*refiner, options);
     printf("PatchTables :\n");
 
-    int narrays = patchTable->GetNumPatchArrays();
+    int narrays = patchTable->GetNumPatchArrays(),
+        patchCount = 0;
     for (int array=0; array<narrays; ++array) {
         int npatches = patchTable->GetNumPatches(array);
-        for (int patch=0; patch<npatches; ++patch) {
+        for (int patch=0; patch<npatches; ++patch, ++patchCount) {
 
-            printf("  ");
+            printf("  ID = %3d ", patchCount);
             patchTable->GetPatchParam(array, patch).Print();
+            printf(" ");
 
-            printf(" [");
             Far::ConstIndexArray cvs =
                 patchTable->GetPatchVertices(array, patch);
-            for (int k=0; k<cvs.size(); ++k) {
-                if (k>0) printf(", ");
-                printf("%d", cvs[k]);
-            }
-            printf("]\n");
+            printArray(cvs);
+            printf("\n");
         }
     }
     printf("\n");
@@ -331,7 +330,7 @@ printCharmapNodes(Far::CharacteristicMap const * charmap) {
 
             Far::ConstIndexArray supportIndices = it.GetSupportIndices();
             printArray(supportIndices);
-            printf("ID=%3d type=%d offset=%4d screase=%d", nodeIndex, desc.GetType(), it.GetTreeOffset(), desc.SingleCrease());
+            printf(" ID=%3d type=%d offset=%4d screase=%d", nodeIndex, desc.GetType(), it.GetTreeOffset(), desc.SingleCrease());
             float const * c = getAdaptiveColor(it);
             printf(" bcount=%d color=(%f %f %f)", desc.GetBoundaryCount(), c[0], c[1], c[2]);
             printf("\n");

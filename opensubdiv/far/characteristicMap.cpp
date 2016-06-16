@@ -199,9 +199,11 @@ Characteristic::EvaluateBasis(Node n, float s, float t,
 
     NodeDescriptor desc = n.GetDescriptor();
 
+    int depth = desc.GetDepth() - (desc.NonQuadRoot() ? 1 : 0);
+
     PatchParam param;
-    param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), desc.GetDepth(), desc.NonQuadRoot(),
-        desc.GetBoundaryMask(), desc.GetTransitionMask());
+    param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), depth,
+        desc.NonQuadRoot(), desc.GetBoundaryMask(), desc.GetTransitionMask());
 
     if (desc.GetType()==NODE_REGULAR) {
 
