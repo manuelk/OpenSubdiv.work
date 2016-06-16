@@ -850,21 +850,34 @@ callbackLevel(int l) {
 }
 
 static void
-callbackDrawIDs(bool checked, int button) {
-
-    switch (button) {
-
-        case 0: g_DrawNodeIDs = checked; break;
-
-        default: break;
-    }
-    rebuildMeshes();
-}
-
-static void
 callbackEndCap(int endCap) {
     g_endCap = (Far::EndCapType)endCap;
     rebuildMeshes();
+}
+
+enum HudCheckBox { kHUD_CB_DISPLAY_CONTROL_MESH_EDGES,
+                   kHUD_CB_DISPLAY_CONTROL_MESH_VERTS,
+                   kHUD_CB_DISPLAY_NODE_IDS,
+                  };
+
+
+static void
+callbackCheckBox(bool checked, int button) {
+
+    switch (button) {
+        case kHUD_CB_DISPLAY_NODE_IDS: {
+                g_DrawNodeIDs = checked;
+                rebuildMeshes();
+            } break;
+        case kHUD_CB_DISPLAY_CONTROL_MESH_EDGES:
+            g_controlMeshDisplay.SetEdgesDisplay(checked);
+            break;
+        case kHUD_CB_DISPLAY_CONTROL_MESH_VERTS:
+            g_controlMeshDisplay.SetVerticesDisplay(checked);
+            break;
+        default:
+            break;
+    }
 }
 
 
@@ -975,7 +988,13 @@ initHUD() {
 
     g_hud.Init(windowWidth, windowHeight, frameBufferWidth, frameBufferHeight);
 
-    g_hud.AddCheckBox("Node IDs", g_DrawNodeIDs!=0, 10, 210, callbackDrawIDs, 0);
+    g_hud.AddCheckBox("Control edges (H)", g_controlMeshDisplay.GetEdgesDisplay(),
+        10, 10, callbackCheckBox, kHUD_CB_DISPLAY_CONTROL_MESH_EDGES, 'h');
+    g_hud.AddCheckBox("Control vertices (J)", g_controlMeshDisplay.GetVerticesDisplay(),
+        10, 30, callbackCheckBox, kHUD_CB_DISPLAY_CONTROL_MESH_VERTS, 'j');
+
+    g_hud.AddCheckBox("Node IDs", g_DrawNodeIDs!=0,
+        10, 50, callbackCheckBox, kHUD_CB_DISPLAY_NODE_IDS);
 
     int endcap_pulldown = g_hud.AddPullDown("End cap (E)", 10, 230, 200, callbackEndCap, 'e');
     //g_hud.AddPullDownButton(endcap_pulldown, "None", Far::ENDCAP_NONE, g_endCap == Far::ENDCAP_NONE);
