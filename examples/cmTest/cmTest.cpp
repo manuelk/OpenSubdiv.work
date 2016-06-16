@@ -232,12 +232,12 @@ getAdaptiveColor(Far::Characteristic::Node node) {
         }
     } else if (desc.GetType()==Far::Characteristic::NODE_END) {
 
-        Far::CharacteristicMap::EndCapType type =
+        Far::EndCapType type =
             node.GetCharacteristic()->GetCharacteristicMap()->GetEndCapType();
         switch (type) {
-            case Far::CharacteristicMap::ENDCAP_BILINEAR_BASIS : break;            
-            case Far::CharacteristicMap::ENDCAP_BSPLINE_BASIS : break;
-            case Far::CharacteristicMap::ENDCAP_GREGORY_BASIS : patchType = 6; break;
+            case Far::ENDCAP_BILINEAR_BASIS : break;            
+            case Far::ENDCAP_BSPLINE_BASIS : break;
+            case Far::ENDCAP_GREGORY_BASIS : patchType = 6; break;
             default:
                 break;
         }
@@ -427,8 +427,8 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     // build characteristics map
     
     Far::CharacteristicMapFactory::Options options;
-    //options.endCapType = Far::Characteristic::ENDCAP_BSPLINE_BASIS;
-    options.endCapType = Far::CharacteristicMap::ENDCAP_GREGORY_BASIS;
+    options.endCapType = Far::ENDCAP_BSPLINE_BASIS;
+    //options.endCapType = Far::ENDCAP_GREGORY_BASIS;
     Far::CharacteristicMap const * charmap =
         Far::CharacteristicMapFactory::Create(*refiner, patchTags, options);
     // create vertex primvar data buffer

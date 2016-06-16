@@ -28,7 +28,7 @@
 
 #include "../version.h"
 
-#include "../far/types.h"
+#include "../far/characteristicMap.h"
 
 #include <vector>
 
@@ -38,337 +38,26 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 struct PatchFaceTag;
-class CharacteristicMap;
 class TopologyRefiner;
-class StencilTable;
 
 typedef std::vector<PatchFaceTag> PatchFaceTagVector;
 
-class Characteristic {
 
-public:
-
-    /// \brief Returns the map this characteristic belongs to
-    CharacteristicMap const * GetCharacteristicMap() const { return _characteristicMap; }
-
-public:
-
-    //
-    // Tree
-    //
-
-    //@{
-    ///  @name Sub-patch tree access methods
-    ///
-
-    ///
-    ///  Field      | size | Content
-    ///  -----------|:----:|----------------------------------------------------
-    /// Regular node layout
-    ///  header     | 1    | see NodeDescriptor
-    ///  sharpness  | 1    | crease sharpness (single crease nodes only)
-    ///  supports   | 16   | indices
-    ///
-    /// End node layout:
-    ///  header     | 1    | see NodeDescriptor
-    ///  supports   | 16   | indices
-    ///
-    /// Recursive node layout:
-    ///  header     | 1    | see NodeDescriptor
-    ///  offsets    | 4    | offsets to 4 children nodes
-    ///
-    /// Terminal node layout:
-    ///  header     | 1    | see NodeDescriptor
-    ///  offsets    | 4    | offsets to children nodes
-    ///  supports   | 25   | indices
-    ///
-
-    enum NodeType {
-        NODE_REGULAR = 0,
-        NODE_RECURSIVE = 1,
-        NODE_TERMINAL = 2,
-        NODE_END = 3,
-    };
-
-    /// NodeDescriptor
-    ///
-    /// Note : this descriptor *must* have the size of an int !
-    ///
-    /// Bitfield layout :
-    ///
-    ///  Field1       | Bits | Content
-    ///  -------------|:----:|------------------------------------------------------
-    ///  type         | 2    | type
-    ///  nonquad      | 1    | whether the patch is the child of a non-quad face
-    ///  singleCrease | 1    | true if "single crease" patch
-    ///  depth        | 4    | the subdivision level of the node
-    ///  transition   | 4    | transition edge mask encoding
-    ///  boundary     | 4    | boundary edge mask encoding
-    ///  v            | 8    | log2 value of u parameter at first patch corner
-    ///  u            | 8    | log2 value of v parameter at first patch corner
-    ///
-    struct NodeDescriptor {
-
-        /// \brief Translation constructor
-        NodeDescriptor(int value=0) { field0=value; }
-
-        void Set(unsigned short type, unsigned short nonquad,
-            unsigned short singleCrease, unsigned short depth,
-                unsigned short boundary, unsigned short transition,
-                    short u, short v) {
-            field0 = ((v & 0xff)           << 24) |
-                     ((u & 0xff)           << 16) |
-                     ((boundary & 0xf)     << 12) |
-                     ((transition & 0xf)   <<  8) |
-                     ((depth & 0xf)        <<  4) |
-                     ((singleCrease ? 1:0) <<  3) |
-                     ((nonquad ? 1:0)      <<  2) |
-                      (type & 0x3);
-        }
-
-        NodeDescriptor & operator=(int value) { field0 = value; return *this; }
-
-        /// \brief Resets everything to 0
-        void Clear() { field0 = 0; }
-
-        /// \brief Returns the type for the sub-patch.
-        NodeType GetType() const { return (NodeType)(field0 & 0x3); }
-
-        /// \brief Returns the level of subdivision of the sub-patch
-        unsigned short GetDepth() const { return  (unsigned short)((field0 >> 4) & 0xf); }
-
-        /// \brief Returns the transition edge encoding for the patch.
-        unsigned short GetTransitionMask() const { return (unsigned short)((field0 >> 8) & 0xf); }
-
-        /// \brief Returns the number of transition edges in the sub-patch (-1 for invalid mask)
-        unsigned short GetTransitionCount() const;
-
-        /// \brief Returns the boundary edge encoding for the sub-patch.
-        unsigned short GetBoundaryMask() const { return (unsigned short)((field0 >> 12) & 0xf); }
-
-        /// \brief Returns the number of boundary edges in the sub-patch (-1 for invalid mask)
-        unsigned short GetBoundaryCount() const;
-
-        /// \brief True if the parent coarse face is a non-quad
-        bool NonQuadRoot() const { return (field0 >> 2) & 0x1; }
-
-        /// \brief Returns true if the patch is of "single crease" type
-        bool SingleCrease() const { return (field0 >> 3) & 0x1; }
-
-        /// \brief Returns the log2 value of the u parameter at the top left corner of
-        /// the patch
-        unsigned short GetU() const { return (unsigned short)((field0 >> 16) & 0xff); }
-
-        /// \brief Returns the log2 value of the v parameter at the top left corner of
-        /// the patch
-        unsigned short GetV() const { return (unsigned short)((field0 >> 24) & 0xff); }
-
-        int field0:32;
-    };
-
-    /// Tree Node
-    class Node {
-
-    public:
-
-        /// \brief Returns the node descriptor
-        NodeDescriptor GetDescriptor() const {
-            return _characteristic->_tree[_treeOffset];
-        }
-
-        /// \brief Returns the number of children nodes
-        int GetNumChildrenNodes() const;
-
-        /// \brief Returns the node's child at index
-        Node GetChildNode(int childIndex=0) const;
-
-        /// \brief Returns a pointer to the indices of the support points
-        ConstIndexArray GetSupportIndices() const;
-
-        /// \brief Returns a pointer to the characteric that owns this node
-        Characteristic const * GetCharacteristic() const { return _characteristic; }
-
-        /// \brief Returns the node's offset
-        int GetTreeOffset() const { return _treeOffset; }
-
-        /// \brief Returns the next node in the tree (serial traversal)
-        Node operator ++ ();
-
-        /// \brief Returns true if the nodes are identical
-        bool operator == (Node const & other) const {
-            return _characteristic == other._characteristic &&
-                _treeOffset == other._treeOffset;
-        }
-
-    private:
-
-        int const * getNodeData() const {
-            return &_characteristic->_tree[_treeOffset];
-        }
-
-        friend class Characteristic;
-
-        Node(Characteristic const * ch, int treeOffset) :
-            _characteristic(ch), _treeOffset(treeOffset) { }
-
-        Characteristic const * _characteristic;
-        int _treeOffset;
-    };
-
-
-    /// \brief Returns the size (in bytes) of the patches tree
-    int GetTreeSize() const { return _treeSize; }
-
-    /// \brief Returns the tree data
-    int const * GetTreeData() const { return _tree; }
-
-    /// \brief Returns a pointer to the root node of the sub-patches tree
-    Node GetTreeRootNode() const { return Node(this, 0); }
-
-    /// \brief Returns a the node corresponding to the sub-patch at the given (s,t) location
-    Node GetTreeNode(float s, float t) const;
-
-    /// \brief Returns a the node at the given offset location
-    Node GetTreeNode(int treeOffset) const { return Node(this, treeOffset); }
-
-    int GetNodeIndex(Node node) const {
-        Node it = GetTreeNode(0);
-        for (int index=0; it.GetTreeOffset()<GetTreeSize(); ++index, ++it) {
-            if (it==node) {
-                return index;
-            }
-        }
-        return -1;
-    }
-    //@}
-
-
-
-public:
-
-    //@{
-    ///  @name Evaluation methods
-    ///
-
-    /// \brief Evaluate basis functions for position and first derivatives at a
-    /// given (s,t) parametric location of a patch.
-    ///
-    /// @param handle  A patch handle indentifying the sub-patch containing the
-    ///                (s,t) location
-    ///
-    /// @param s       Patch coordinate (in coarse face normalized space)
-    ///
-    /// @param t       Patch coordinate (in coarse face normalized space)
-    ///
-    /// @param wP      Weights (evaluated basis functions) for the position
-    ///
-    /// @param wDs     Weights (evaluated basis functions) for derivative wrt s
-    ///
-    /// @param wDt     Weights (evaluated basis functions) for derivative wrt t
-    ///
-    /// @return        The leaf node pointing to the sub-patch evaluated
-    ///
-    Node EvaluateBasis(float s, float t, float wP[], float wDs[], float wDt[]) const;
-
-    Node EvaluateBasis(Node n, float s, float t, float wP[], float wDs[], float wDt[]) const;
-
-    //@}
-
-
-private:
-
-    // The sub-patch "tree" is stored as a linear buffer of integers for
-    // efficient look-up & traversal on a GPU. Use the Node class to traverse
-    // the tree and access each node's data.
-    int * _tree,
-          _treeSize;
-
-private:
-
-    friend class CharacteristicBuilder;
-    friend class CharacteristicMapFactory;
-
-    CharacteristicMap const * _characteristicMap;
-};
-
-
-class CharacteristicMap {
-
-public:
-
-    enum EndCapType {
-        ENDCAP_NONE = 0,             ///< no endcap
-        ENDCAP_BILINEAR_BASIS,       ///< use bilinear quads (4 cp) as end-caps
-        ENDCAP_BSPLINE_BASIS,        ///< use BSpline basis patches (16 cp) as end-caps
-        ENDCAP_GREGORY_BASIS,        ///< use Gregory basis patches (20 cp) as end-caps
-    };
-
-
-    //@{
-    ///  @name Characteristics
-    ///
-    /// \anchor arrays_of_characteristics
-    ///
-    int GetNumCharacteristics() const {
-        return (int)_characteristics.size();
-    }
-
-    Characteristic const & GetCharacteristic(Index charIndex) const {
-        return _characteristics[charIndex];
-    }
-
-    //@}
-
-    //@{
-    ///  @name change of basis patches
-    ///
-    /// \anchor change_of_basis_patches
-    ///
-    /// \brief Accessors for change of basis patch points
-    ///
-    /// \brief Returns the stencil table to get change of basis patch points.
-    StencilTable const * GetLocalPointStencilTable() const {
-        return _localPointStencils;
-    }
-
-    /// \brief Returns the varying stencil table for the change of basis patch
-    ///        points.
-    StencilTable const * GetLocalPointVaryingStencilTable() const {
-        return _localPointVaryingStencils;
-    }
-    //@}
-
-    EndCapType GetEndCapType() const { return EndCapType(_endCapType); }
-
-private:
-
-    friend class CharacteristicMapFactory;
-
-    CharacteristicMap(EndCapType endcaps) :
-        _endCapType(endcaps), _localPointStencils(0), _localPointVaryingStencils(0) { }
-
-private:
-
-    // flags
-    unsigned int _endCapType:2;
-
-    // XXXX this eventually will be a map : right now it's just 1 characteristic per face
-    std::vector<Characteristic> _characteristics;
-
-    StencilTable const * _localPointStencils,        // endcap basis conversion stencils
-                       * _localPointVaryingStencils; // endcap varying stencils (for convenience)
-};
-
+///\brief Factory for constructing CharacteristicMaps from topology.
+///
+/// CharacteristicMapFactory needs 2 elements in order to build characteristic
+/// maps:
+///     1) a valid TopologyRefiner that has been adaptively refined
+///     2) a valid PatchFaceTagVector that has been created from the refiner
+///
 class CharacteristicMapFactory {
 
 public:
 
-    typedef CharacteristicMap::EndCapType EndCapType;
-
     struct Options {
 
         Options() :
-             endCapType(CharacteristicMap::ENDCAP_BSPLINE_BASIS),
+             endCapType(ENDCAP_BSPLINE_BASIS),
              useTerminalNodes(false) { }
 
         /// \brief Get endcap patch type
@@ -381,6 +70,17 @@ public:
                      useTerminalNodes : 1; ///< Use "terminal" nodes on patches with single EV
     };
 
+    /// \brief Factory constructor for CharacteristicMap
+    ///
+    /// @param refiner              TopologyRefiner from which to generate patches
+    ///                             (must be adaptively refined)
+    ///
+    /// @param patchTags            Vector of PatchFaceTags extracted from the refiner
+    ///
+    /// @param options              Options controlling the creation of the table
+    ///
+    /// @return                     A new instance of PatchTable
+    ///
     static CharacteristicMap const * Create(TopologyRefiner const & refiner,
         PatchFaceTagVector const & patchTags,
            Options options=Options());

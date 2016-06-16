@@ -641,20 +641,20 @@ PatchTableFactory::createAdaptive(TopologyRefiner const & refiner, Options optio
         } else {
             // select endcap patchtype
             switch(context.options.GetEndCapType()) {
-                case Options::ENDCAP_GREGORY_BASIS:
+                case ENDCAP_GREGORY_BASIS:
                     context.patchInventory.GP++;
                     break;
-                case Options::ENDCAP_BSPLINE_BASIS:
+                case ENDCAP_BSPLINE_BASIS:
                     context.patchInventory.R++;
                     break;
-                case Options::ENDCAP_LEGACY_GREGORY:
+                case ENDCAP_LEGACY_GREGORY:
                     if (patchTag.boundaryCount == 0) {
                         context.patchInventory.G++;
                     } else {
                         context.patchInventory.GB++;
                     }
                     break;
-                case Options::ENDCAP_BILINEAR_BASIS:
+                case ENDCAP_BILINEAR_BASIS:
                     // not implemented yet
                     assert(false);
                     break;
@@ -797,7 +797,7 @@ PatchTableFactory::populateAdaptivePatches(
     StencilTable *localPointVaryingStencils = NULL;
 
     switch(context.options.GetEndCapType()) {
-    case Options::ENDCAP_GREGORY_BASIS:
+    case ENDCAP_GREGORY_BASIS:
         localPointStencils = new StencilTable(0);
         localPointVaryingStencils = new StencilTable(0);
         endCapGregoryBasis = new EndCapGregoryBasisPatchFactory(
@@ -806,7 +806,7 @@ PatchTableFactory::populateAdaptivePatches(
             localPointVaryingStencils,
             context.options.shareEndCapPatchPoints);
         break;
-    case Options::ENDCAP_BSPLINE_BASIS:
+    case ENDCAP_BSPLINE_BASIS:
         localPointStencils = new StencilTable(0);
         localPointVaryingStencils = new StencilTable(0);
         endCapBSpline = new EndCapBSplineBasisPatchFactory(
@@ -814,7 +814,7 @@ PatchTableFactory::populateAdaptivePatches(
             localPointStencils,
             localPointVaryingStencils);
         break;
-    case Options::ENDCAP_LEGACY_GREGORY:
+    case ENDCAP_LEGACY_GREGORY:
         endCapLegacyGregory = new EndCapLegacyGregoryPatchFactory(refiner);
         break;
     default:
@@ -896,70 +896,67 @@ PatchTableFactory::populateAdaptivePatches(
 
                 // switch endcap patchtype by option
                 switch(context.options.GetEndCapType()) {
-                case Options::ENDCAP_GREGORY_BASIS:
-                {
-                    // note: this call will be moved into vtr::level.
-                    ConstIndexArray cvs = endCapGregoryBasis->GetPatchPoints(
-                        level, faceIndex, levelPatchTags, levelVertOffset);
+                    case ENDCAP_GREGORY_BASIS: {
+                        // note: this call will be moved into vtr::level.
+                        ConstIndexArray cvs = endCapGregoryBasis->GetPatchPoints(
+                            level, faceIndex, levelPatchTags, levelVertOffset);
 
-                    for (int j = 0; j < cvs.size(); ++j) iptrs.GP[j] = cvs[j];
-                    iptrs.GP += cvs.size();
-                    pptrs.GP = computePatchParam(
-                        refiner, ptexIndices, i, faceIndex, /*boundary*/0, /*transition*/0, pptrs.GP);
-                    if (sptrs.R) *sptrs.R++ = assignSharpnessIndex(0, table->_sharpnessValues);
-                    fofss.GP += gatherFVarData(context,
-                                               i, faceIndex, levelFaceOffset,
-                                               0, levelFVarVertOffsets, fofss.GP, fptrs.GP);
-                    break;
-                }
-                case Options::ENDCAP_BSPLINE_BASIS:
-                {
-                    ConstIndexArray cvs = endCapBSpline->GetPatchPoints(
-                        level, faceIndex, levelPatchTags, levelVertOffset);
-
-                    for (int j = 0; j < cvs.size(); ++j) iptrs.R[j] = cvs[j];
-                    iptrs.R += cvs.size();
-                    pptrs.R = computePatchParam(
-                        refiner, ptexIndices, i, faceIndex, /*boundary*/0, /*transition*/0, pptrs.R);
-                    if (sptrs.R) *sptrs.R++ = assignSharpnessIndex(0, table->_sharpnessValues);
-                    fofss.R += gatherFVarData(context,
-                                              i, faceIndex, levelFaceOffset,
-                                              0, levelFVarVertOffsets, fofss.R, fptrs.R);
-                    break;
-                }
-                case Options::ENDCAP_LEGACY_GREGORY:
-                {
-                    ConstIndexArray cvs = endCapLegacyGregory->GetPatchPoints(
-                        level, faceIndex, levelPatchTags, levelVertOffset);
-
-                    if (patchTag.boundaryCount == 0) {
-                        for (int j = 0; j < cvs.size(); ++j) iptrs.G[j] = cvs[j];
-                        iptrs.G += cvs.size();
-                        pptrs.G = computePatchParam(
-                            refiner, ptexIndices, i, faceIndex, /*boundary*/0, /*transition*/0, pptrs.G);
+                        for (int j = 0; j < cvs.size(); ++j) iptrs.GP[j] = cvs[j];
+                        iptrs.GP += cvs.size();
+                        pptrs.GP = computePatchParam(
+                            refiner, ptexIndices, i, faceIndex, /*boundary*/0, /*transition*/0, pptrs.GP);
                         if (sptrs.R) *sptrs.R++ = assignSharpnessIndex(0, table->_sharpnessValues);
-                        fofss.G += gatherFVarData(context,
-                                                  i, faceIndex, levelFaceOffset,
-                                                  0, levelFVarVertOffsets, fofss.G, fptrs.G);
-                    } else {
-                        for (int j = 0; j < cvs.size(); ++j) iptrs.GB[j] = cvs[j];
-                        iptrs.GB += cvs.size();
-                        pptrs.GB = computePatchParam(
-                            refiner, ptexIndices, i, faceIndex, /*boundary*/0, /*transition*/0, pptrs.GB);
-                        if (sptrs.R) *sptrs.R++ = assignSharpnessIndex(0, table->_sharpnessValues);
-                        fofss.GB += gatherFVarData(context,
+                        fofss.GP += gatherFVarData(context,
                                                    i, faceIndex, levelFaceOffset,
-                                                   0, levelFVarVertOffsets, fofss.GB, fptrs.GB);
+                                                   0, levelFVarVertOffsets, fofss.GP, fptrs.GP);
+                        break;
                     }
-                    break;
-                }
-                case Options::ENDCAP_BILINEAR_BASIS:
-                    // not implemented yet
-                    assert(false);
-                    break;
-                default:
-                    // no endcap
-                    break;
+                    case ENDCAP_BSPLINE_BASIS: {
+                        ConstIndexArray cvs = endCapBSpline->GetPatchPoints(
+                            level, faceIndex, levelPatchTags, levelVertOffset);
+
+                        for (int j = 0; j < cvs.size(); ++j) iptrs.R[j] = cvs[j];
+                        iptrs.R += cvs.size();
+                        pptrs.R = computePatchParam(
+                            refiner, ptexIndices, i, faceIndex, /*boundary*/0, /*transition*/0, pptrs.R);
+                        if (sptrs.R) *sptrs.R++ = assignSharpnessIndex(0, table->_sharpnessValues);
+                        fofss.R += gatherFVarData(context,
+                                                  i, faceIndex, levelFaceOffset,
+                                                  0, levelFVarVertOffsets, fofss.R, fptrs.R);
+                        break;
+                    }
+                    case ENDCAP_LEGACY_GREGORY: {
+                        ConstIndexArray cvs = endCapLegacyGregory->GetPatchPoints(
+                            level, faceIndex, levelPatchTags, levelVertOffset);
+
+                        if (patchTag.boundaryCount == 0) {
+                            for (int j = 0; j < cvs.size(); ++j) iptrs.G[j] = cvs[j];
+                            iptrs.G += cvs.size();
+                            pptrs.G = computePatchParam(
+                                refiner, ptexIndices, i, faceIndex, /*boundary*/0, /*transition*/0, pptrs.G);
+                            if (sptrs.R) *sptrs.R++ = assignSharpnessIndex(0, table->_sharpnessValues);
+                            fofss.G += gatherFVarData(context,
+                                                      i, faceIndex, levelFaceOffset,
+                                                      0, levelFVarVertOffsets, fofss.G, fptrs.G);
+                        } else {
+                            for (int j = 0; j < cvs.size(); ++j) iptrs.GB[j] = cvs[j];
+                            iptrs.GB += cvs.size();
+                            pptrs.GB = computePatchParam(
+                                refiner, ptexIndices, i, faceIndex, /*boundary*/0, /*transition*/0, pptrs.GB);
+                            if (sptrs.R) *sptrs.R++ = assignSharpnessIndex(0, table->_sharpnessValues);
+                            fofss.GB += gatherFVarData(context,
+                                                       i, faceIndex, levelFaceOffset,
+                                                       0, levelFVarVertOffsets, fofss.GB, fptrs.GB);
+                        }
+                        break;
+                    }
+                    case ENDCAP_BILINEAR_BASIS:
+                        // not implemented yet
+                        assert(false);
+                        break;
+                    default:
+                        // no endcap
+                        break;
                 }
             }
         }
@@ -989,25 +986,25 @@ PatchTableFactory::populateAdaptivePatches(
     }
 
     switch(context.options.GetEndCapType()) {
-    case Options::ENDCAP_GREGORY_BASIS:
-        table->_localPointStencils = localPointStencils;
-        table->_localPointVaryingStencils = localPointVaryingStencils;
-        delete endCapGregoryBasis;
-        break;
-    case Options::ENDCAP_BSPLINE_BASIS:
-        table->_localPointStencils = localPointStencils;
-        table->_localPointVaryingStencils = localPointVaryingStencils;
-        delete endCapBSpline;
-        break;
-    case Options::ENDCAP_LEGACY_GREGORY:
-        endCapLegacyGregory->Finalize(
-            table->GetMaxValence(),
-            &table->_quadOffsetsTable,
-            &table->_vertexValenceTable);
-        delete endCapLegacyGregory;
-        break;
-    default:
-        break;
+        case ENDCAP_GREGORY_BASIS:
+            table->_localPointStencils = localPointStencils;
+            table->_localPointVaryingStencils = localPointVaryingStencils;
+            delete endCapGregoryBasis;
+            break;
+        case ENDCAP_BSPLINE_BASIS:
+            table->_localPointStencils = localPointStencils;
+            table->_localPointVaryingStencils = localPointVaryingStencils;
+            delete endCapBSpline;
+            break;
+        case ENDCAP_LEGACY_GREGORY:
+            endCapLegacyGregory->Finalize(
+                table->GetMaxValence(),
+                &table->_quadOffsetsTable,
+                &table->_vertexValenceTable);
+            delete endCapLegacyGregory;
+            break;
+        default:
+            break;
     }
 }
 
