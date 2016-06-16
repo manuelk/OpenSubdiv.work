@@ -319,7 +319,7 @@ CharacteristicBuilder::writeRegularNode(
 
         // copy to buffer
         NodeDescriptor desc = computeNodeDescriptor(Characteristic::NODE_REGULAR, levelIndex, faceIndex, boundaryMask, transitionMask, singleCrease);
-        
+
         *((NodeDescriptor *)data) = desc;
         data += sizeof(NodeDescriptor);
 
@@ -342,8 +342,10 @@ CharacteristicBuilder::writeEndNode(
 
     switch (_options.endCapType) {
         case CharacteristicMap::ENDCAP_BSPLINE_BASIS:
-        case CharacteristicMap::ENDCAP_GREGORY_BASIS:
             dataSize += 16 * sizeof(Index);
+            break;
+        case CharacteristicMap::ENDCAP_GREGORY_BASIS:
+            dataSize += 20 * sizeof(Index);
             break;
         default:
             assert(0);
@@ -510,29 +512,25 @@ CharacteristicBuilder::FinalizeVaryingStencils() {
 //
 
 unsigned short
-Characteristic::NodeDescriptor::GetBoundaryCount() const {
-
-    // patches cannot have more than 2 boundaries
-    static int masks[] = { 0,  // 0000
-                           1,  // 0001
-                           1,  // 0010
-                           2,  // 0011
-                           1,  // 0100
-                           2,  // 0101
-                           2,  // 0110
-                          -1,  // 0111
-                           1,  // 1000
-                           2,  // 1001
-                           2,  // 1010
-                          -1,  // 1011
-                           2,  // 1100
-                          -1,  // 1101
-                          -1,  // 1110
-                          -1,  // 1111
-    };
-    return masks[GetBoundaryMask()];
+Characteristic::NodeDescriptor::GetTransitionCount() const {
+    // patches cannot have more than 2 boundaries : return -1 if more than 2 bits are set
+    // 0000, 0001, 0010, 0011, 0100, 0101, 0110, 0111,
+    // 1000, 1001, 1010, 1011, 1100, 1101, 1110, 1111
+    static int masks[] = { 0,  1,  1,  2,  1,  2,  2,  3,
+                           1,  2,  2,  3,  2,  3,  3,  4,  };
+    return masks[GetTransitionMask()];
 }
 
+unsigned short
+Characteristic::NodeDescriptor::GetBoundaryCount() const {
+
+    // patches cannot have more than 2 boundaries : return -1 if more than 2 bits are set
+    // 0000, 0001, 0010, 0011, 0100, 0101, 0110, 0111,
+    // 1000, 1001, 1010, 1011, 1100, 1101, 1110, 1111
+    static int masks[] = { 0,  1,  1,  2,  1,  2,  2, -1,
+                           1,  2,  2, -1,  2, -1, -1, -1,  };
+    return masks[GetBoundaryMask()];
+}
 int
 Characteristic::Node::GetNumChildrenNodes() const {
     NodeDescriptor desc = this->GetDescriptor();
@@ -653,6 +651,23 @@ Characteristic::GetTreeNode(float s, float t) const {
     return Node(this, offset);
 }
 
+static float
+getSingleCreasePatchSegmentParameter(PatchParam param, float s, float t) {
+
+    unsigned short boundaryMask = param.GetBoundary();
+    float f;
+    if ((boundaryMask & 1) != 0) {
+        f = 1 - t;
+    } else if ((boundaryMask & 2) != 0) {
+        f = s;
+    } else if ((boundaryMask & 4) != 0) {
+        f = t;
+    } else if ((boundaryMask & 8) != 0) {
+        f = 1 - s;
+    }
+    return f;
+}
+
 Characteristic::Node
 Characteristic::EvaluateBasis(Node n, float s, float t,
     float wP[], float wDs[], float wDt[]) const {
@@ -664,8 +679,11 @@ Characteristic::EvaluateBasis(Node n, float s, float t,
         desc.GetBoundaryMask(), desc.GetTransitionMask());
 
     if (desc.GetType()==NODE_REGULAR) {
+
         internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
+
     } else if (desc.GetType()==NODE_END) {
+
         CharacteristicMap::EndCapType type =
             GetCharacteristicMap()->GetEndCapType();
         switch (type) {
@@ -729,15 +747,16 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
 
     for (int face = 0; face < coarseLevel.GetNumFaces(); ++face) {
 
-        ch->_characteristicMap = charmap;
 
         ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
 
         if (children.size()==regFaceSize) {
+            ch->_characteristicMap = charmap;
             builder.WriteCharacteristicTree(ch, 0, face);
             ++ch;
         } else {
             for (int child=0; child<children.size(); ++child) {
+                ch->_characteristicMap = charmap;
                 builder.WriteCharacteristicTree(ch, 1, children[child]);
                 ++ch;
             }

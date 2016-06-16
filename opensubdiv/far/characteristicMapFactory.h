@@ -46,6 +46,8 @@ typedef std::vector<PatchFaceTag> PatchFaceTagVector;
 
 class Characteristic {
 
+public:
+
     /// \brief Returns the map this characteristic belongs to
     CharacteristicMap const * GetCharacteristicMap() const { return _characteristicMap; }
 
@@ -138,10 +140,13 @@ public:
         /// \brief Returns the transition edge encoding for the patch.
         unsigned short GetTransitionMask() const { return (unsigned short)((field0 >> 8) & 0xf); }
 
+        /// \brief Returns the number of transition edges in the sub-patch (-1 for invalid mask)
+        unsigned short GetTransitionCount() const;
+
         /// \brief Returns the boundary edge encoding for the sub-patch.
         unsigned short GetBoundaryMask() const { return (unsigned short)((field0 >> 12) & 0xf); }
 
-        /// \brief Returns the number of boundary edges in the sub-patch
+        /// \brief Returns the number of boundary edges in the sub-patch (-1 for invalid mask)
         unsigned short GetBoundaryCount() const;
 
         /// \brief True if the parent coarse face is a non-quad

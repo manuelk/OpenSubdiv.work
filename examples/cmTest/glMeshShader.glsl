@@ -49,9 +49,9 @@ out vec3 vColor;
 
 void main() {
     vPosition = ModelViewMatrix * vec4(my_position.xyz, 1.0);
-    vNormal = ModelViewMatrix * vec4(normalize(my_normal.xyz), 1.0);
+    vNormal = ModelViewMatrix * vec4(normalize(my_normal.xyz), 0.0);
     vColor = my_color;
-    gl_Position = ProjectionMatrix * vPosition;
+    gl_Position = ModelViewProjectionMatrix * vec4(my_position.xyz, 1.0);
 }
 #endif
 
@@ -88,7 +88,7 @@ vec4 lighting(vec4 diffuse, vec3 Peye, vec3 Neye) {
 
         vec3 l = (Plight.w == 0.0)
                     ? normalize(Plight.xyz) : normalize(Plight.xyz - Peye);
-
+                    
         vec3 n = normalize(Neye);
         vec3 h = normalize(l + vec3(0,0,1));    // directional viewer
 
@@ -108,13 +108,14 @@ out vec4 finalColor;
 
 void main() {
     vec3 N = (gl_FrontFacing ? vNormal.xyz : -vNormal.xyz);
-
+    
     vec4 color = vec4(vColor, 1.0);
+    //vec4 color = vec4(N, 1.0);
 
     vec4 Cf = lighting(color, vPosition.xyz, N);
 
-    //finalColor = Cf;
-    finalColor = color + 0.00001 * vec4(Cf.xyz, 1.0);
+    finalColor = Cf;
+    //finalColor = color + 0.00001 * vec4(Cf.xyz, 1.0);
     //finalColor = color;
 }
 

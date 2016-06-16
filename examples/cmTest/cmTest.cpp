@@ -64,8 +64,8 @@ GLFWmonitor* g_primary=0;
 #include <fstream>
 #include <sstream>
 
-int g_level = 1,
-    g_currentShape = 12; //8
+int g_level = 3,
+    g_currentShape = 6; //8
 
 int   g_frame = 0,
       g_repeatCount = 0;
@@ -214,28 +214,40 @@ static float g_patchColors[42][4] = {
 };
 
 static float const *
-getAdaptiveColor(Far::Characteristic::NodeDescriptor desc) {
+getAdaptiveColor(Far::Characteristic::Node node) {
 
-   int patchType = 0;
+    Far::Characteristic::NodeDescriptor desc = node.GetDescriptor();
 
-   if (desc.GetType()==Far::Characteristic::NODE_REGULAR ||
-       desc.GetType()==Far::Characteristic::NODE_END) {
+    int patchType = 0;
+    if (desc.GetType()==Far::Characteristic::NODE_REGULAR) {
 
-       int edgeCount =desc.GetBoundaryCount();
-       switch (edgeCount) {
-           case 1 : patchType = 2; break;
-           case 2 : patchType = 3; break;
-       };
+        int edgeCount =desc.GetBoundaryCount();
+        switch (edgeCount) {
+            case 1 : patchType = 2; break;
+            case 2 : patchType = 3; break;
+        };
 
-       if (desc.SingleCrease()) {
-           patchType = 1;
-       }
-   } else {
-   }
+        if (desc.SingleCrease()) {
+            patchType = 1;
+        }
+    } else if (desc.GetType()==Far::Characteristic::NODE_END) {
 
-   int pattern = desc.GetTransitionMask();
+        Far::CharacteristicMap::EndCapType type =
+            node.GetCharacteristic()->GetCharacteristicMap()->GetEndCapType();
+        switch (type) {
+            case Far::CharacteristicMap::ENDCAP_BILINEAR_BASIS : break;            
+            case Far::CharacteristicMap::ENDCAP_BSPLINE_BASIS : break;
+            case Far::CharacteristicMap::ENDCAP_GREGORY_BASIS : patchType = 6; break;
+            default:
+                break;
+        }
+    } else {
+        assert(0);
+    }
 
-   return g_patchColors[6*patchType + pattern];
+    int pattern = desc.GetTransitionCount();
+
+    return g_patchColors[6*patchType + pattern];
 }
 
 //------------------------------------------------------------------------------
@@ -245,7 +257,7 @@ printArray(Far::ConstIndexArray array) {
     printf("[");
     for (int i=0; i<array.size(); ++i) {
         if (i>0) printf(", ");
-        printf("%d", array[i]);
+        printf("%3d", array[i]);
     }
     printf("]");
 }
@@ -316,8 +328,8 @@ printCharmapNodes(Far::CharacteristicMap const * charmap) {
 
             Far::ConstIndexArray supportIndices = it.GetSupportIndices();
             printArray(supportIndices);
-            printf(" type=%d offset=%4d ID=%d", desc.GetType(), it.GetTreeOffset(), nodeIndex);
-            float const * c = getAdaptiveColor(desc);
+            printf("ID=%3d type=%d offset=%4d screase=%d", nodeIndex, desc.GetType(), it.GetTreeOffset(), desc.SingleCrease());
+            float const * c = getAdaptiveColor(it);
             printf(" bcount=%d color=(%f %f %f)", desc.GetBoundaryCount(), c[0], c[1], c[2]);
             printf("\n");
         }
@@ -380,8 +392,6 @@ Osd::GLVertexBuffer * g_controlMeshVerts = 0;
 static void
 createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
-printf("level=%d\n", g_level);
-
     Shape const * shape = Shape::parseObj(
         shapeDesc.data.c_str(), shapeDesc.scheme);
 
@@ -400,19 +410,25 @@ printf("level=%d\n", g_level);
     g_controlMeshVerts->UpdateData(&shape->verts[0], 0, nverts);
     g_controlMeshDisplay.SetTopology(refiner->GetLevel(0));
 
+    bool useSingleCreasePatches = true;
+
     // refine adaptively
     {
         Far::TopologyRefiner::AdaptiveOptions options(maxlevel);
+        options.useSingleCreasePatch = useSingleCreasePatches;
         refiner->RefineAdaptive(options);
     }
 
     // identify patch types
     Far::PatchFaceTagVector patchTags;
     Far::PatchFaceTag::IdentifyAdaptivePatches(
-        *refiner, patchTags, maxlevel, false /*single crease*/);
+        *refiner, patchTags, maxlevel, useSingleCreasePatches);
 
     // build characteristics map
+    
     Far::CharacteristicMapFactory::Options options;
+    //options.endCapType = Far::Characteristic::ENDCAP_BSPLINE_BASIS;
+    options.endCapType = Far::CharacteristicMap::ENDCAP_GREGORY_BASIS;
     Far::CharacteristicMap const * charmap =
         Far::CharacteristicMapFactory::Create(*refiner, patchTags, options);
     // create vertex primvar data buffer
@@ -458,16 +474,19 @@ printf("level=%d\n", g_level);
     // tessellate
     //
 
-    int const tessFactor = 10;
+    int const tessFactor = 25;
 
-    int nchars = charmap->GetNumCharacteristics();
-
+//#define DEBUG_PRINT
+#ifdef DEBUG_PRINT
     printPatchTables(refiner);
-
     printCharmapNodes(charmap);
+#endif
+
     if (g_DrawNodeIDs) {
         createNodeIDs(*charmap, supportsBuffer);
     }
+
+    int nchars = charmap->GetNumCharacteristics();
 
 
     // interpolate limits
@@ -512,7 +531,7 @@ printf("level=%d\n", g_level);
 
                 //float c[3] = { s, 0.0f, t };
                 //float const * c = g_palette[ch.GetNodeIndex(node) % 7];
-                float const * c = getAdaptiveColor(node.GetDescriptor());
+                float const * c = getAdaptiveColor(node);
 
                 float n[3] = { 0.0f, 0.0f, 0.0f };
                 cross(norm, limit.deriv1, limit.deriv2 );
@@ -557,25 +576,25 @@ printf("level=%d\n", g_level);
                 memcpy(norm, &normals[A], 3 * sizeof(float)); norm+=3;
                 memcpy(col, &colors[A],  3 * sizeof(float)); col+=3;
 
-                memcpy(pos, &positions[C],  3 * sizeof(float)); pos+=3;
-                memcpy(norm, &normals[C], 3 * sizeof(float)); norm+=3;
-                memcpy(col, &colors[C],  3 * sizeof(float)); col+=3;
-
                 memcpy(pos, &positions[D],  3 * sizeof(float)); pos+=3;
                 memcpy(norm, &normals[D], 3 * sizeof(float)); norm+=3;
                 memcpy(col, &colors[D],  3 * sizeof(float)); col+=3;
+
+                memcpy(pos, &positions[C],  3 * sizeof(float)); pos+=3;
+                memcpy(norm, &normals[C], 3 * sizeof(float)); norm+=3;
+                memcpy(col, &colors[C],  3 * sizeof(float)); col+=3;
 
                 memcpy(pos, &positions[A],  3 * sizeof(float)); pos+=3;
                 memcpy(norm, &normals[A], 3 * sizeof(float)); norm+=3;
                 memcpy(col, &colors[A],  3 * sizeof(float)); col+=3;
 
-                memcpy(pos, &positions[D],  3 * sizeof(float)); pos+=3;
-                memcpy(norm, &normals[D], 3 * sizeof(float)); norm+=3;
-                memcpy(col, &colors[D],  3 * sizeof(float)); col+=3;
-
                 memcpy(pos, &positions[B],  3 * sizeof(float)); pos+=3;
                 memcpy(norm, &normals[B], 3 * sizeof(float)); norm+=3;
                 memcpy(col, &colors[B],  3 * sizeof(float)); col+=3;
+
+                memcpy(pos, &positions[D],  3 * sizeof(float)); pos+=3;
+                memcpy(norm, &normals[D], 3 * sizeof(float)); norm+=3;
+                memcpy(col, &colors[D],  3 * sizeof(float)); col+=3;
             }
         }
         charOffset += tessFactor * tessFactor;
@@ -963,7 +982,7 @@ initGL() {
     glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
-//#define CULLING
+#define CULLING
 #ifdef CULLING
     glCullFace(GL_BACK);
     glEnable(GL_CULL_FACE);
