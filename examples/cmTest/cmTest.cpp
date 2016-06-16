@@ -64,6 +64,8 @@ GLFWmonitor* g_primary=0;
 #include <fstream>
 #include <sstream>
 
+using namespace OpenSubdiv;
+
 int g_level = 3,
     g_currentShape = 6; //8
 
@@ -71,6 +73,8 @@ int   g_frame = 0,
       g_repeatCount = 0;
 
 bool g_DrawNodeIDs = false;
+
+Far::EndCapType g_endCap = Far::ENDCAP_BSPLINE_BASIS;
 
 // GUI variables
 int   g_fullscreen = 0,
@@ -103,9 +107,6 @@ struct Transform {
 } g_transformData;
 
 //-----------------------------------------------------------------------------
-
-
-using namespace OpenSubdiv;
 
 struct Vertex {
 
@@ -427,8 +428,7 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     // build characteristics map
     
     Far::CharacteristicMapFactory::Options options;
-    options.endCapType = Far::ENDCAP_BSPLINE_BASIS;
-    //options.endCapType = Far::ENDCAP_GREGORY_BASIS;
+    options.endCapType = g_endCap;
     Far::CharacteristicMap const * charmap =
         Far::CharacteristicMapFactory::Create(*refiner, patchTags, options);
     // create vertex primvar data buffer
@@ -859,6 +859,12 @@ callbackDrawIDs(bool checked, int button) {
     rebuildMeshes();
 }
 
+static void
+callbackEndCap(int endCap) {
+    g_endCap = (Far::EndCapType)endCap;
+    rebuildMeshes();
+}
+
 
 //------------------------------------------------------------------------------
 static void
@@ -959,7 +965,14 @@ initHUD() {
 
     g_hud.Init(windowWidth, windowHeight, frameBufferWidth, frameBufferHeight);
 
-    g_hud.AddCheckBox("Node IDs", g_DrawNodeIDs!=0, 10, 215, callbackDrawIDs, 0);
+    g_hud.AddCheckBox("Node IDs", g_DrawNodeIDs!=0, 10, 210, callbackDrawIDs, 0);
+
+    int endcap_pulldown = g_hud.AddPullDown("End cap (E)", 10, 230, 200, callbackEndCap, 'e');
+    //g_hud.AddPullDownButton(endcap_pulldown, "None", Far::ENDCAP_NONE, g_endCap == Far::ENDCAP_NONE);
+    //g_hud.AddPullDownButton(endcap_pulldown, "Bilinear", Far::ENDCAP_BILINEAR_BASIS, g_endCap == Far::ENDCAP_BILINEAR_BASIS);
+    g_hud.AddPullDownButton(endcap_pulldown, "BSpline", Far::ENDCAP_BSPLINE_BASIS, g_endCap == Far::ENDCAP_BSPLINE_BASIS);
+    g_hud.AddPullDownButton(endcap_pulldown, "GregoryBasis", Far::ENDCAP_GREGORY_BASIS, g_endCap == Far::ENDCAP_GREGORY_BASIS);
+    //g_hud.AddPullDownButton(endcap_pulldown, "LegacyGregory", Far::ENDCAP_LEGACY_GREGORY, g_endCap == Far::ENDCAP_LEGACY_GREGORY);
 
     for (int i = 1; i < 11; ++i) {
         char level[16];
