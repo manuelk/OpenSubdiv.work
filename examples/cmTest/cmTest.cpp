@@ -66,8 +66,10 @@ GLFWmonitor* g_primary=0;
 
 using namespace OpenSubdiv;
 
-int g_level = 3,
-    g_currentShape = 6; //8
+int g_level = 2,
+    g_tessLevel = 10,
+    g_tessLevelMin = 2,
+    g_currentShape = 49; //cube = 8 square = 12 pyramid = 45 torus = 49
 
 int   g_frame = 0,
       g_repeatCount = 0;
@@ -236,7 +238,7 @@ getAdaptiveColor(Far::Characteristic::Node node) {
         Far::EndCapType type =
             node.GetCharacteristic()->GetCharacteristicMap()->GetEndCapType();
         switch (type) {
-            case Far::ENDCAP_BILINEAR_BASIS : break;            
+            case Far::ENDCAP_BILINEAR_BASIS : break;
             case Far::ENDCAP_BSPLINE_BASIS : break;
             case Far::ENDCAP_GREGORY_BASIS : patchType = 6; break;
             default:
@@ -426,7 +428,7 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         *refiner, patchTags, maxlevel, useSingleCreasePatches);
 
     // build characteristics map
-    
+
     Far::CharacteristicMapFactory::Options options;
     options.endCapType = g_endCap;
     Far::CharacteristicMap const * charmap =
@@ -474,7 +476,7 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     // tessellate
     //
 
-    int const tessFactor = 25;
+    int const tessFactor = g_tessLevel;
 
 //#define DEBUG_PRINT
 #ifdef DEBUG_PRINT
@@ -821,6 +823,7 @@ display() {
         static char const * schemeNames[3] = { "BILINEAR", "CATMARK", "LOOP" };
 
         g_hud.DrawString(10, -120, "Scheme     : %s", schemeNames[g_shapes[g_currentShape].scheme]);
+        g_hud.DrawString(10, -100, "Tess level : %d", g_tessLevel);
         g_hud.DrawString(10, -20,  "FPS        : %3.1f", fps);
 
         g_hud.Flush();
@@ -948,6 +951,14 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int /* mods */) {
     switch (key) {
         case 'Q': g_running = 0; break;
         case 'F': fitFrame(); break;
+        case '=':  {
+            g_tessLevel+=5;
+            rebuildMeshes();
+        } break;
+        case '-': {
+            g_tessLevel = std::max(g_tessLevelMin, g_tessLevel-5);
+            rebuildMeshes();
+        } break;
         case GLFW_KEY_ESCAPE: g_hud.SetVisible(!g_hud.IsVisible()); break;
     }
 }
@@ -1086,7 +1097,7 @@ int main(int argc, char **argv) {
     glfwSetMouseButtonCallback(g_window, mouse);
     glfwSetWindowCloseCallback(g_window, windowClose);
 
-    GLUtils::PrintGLVersion();
+    //GLUtils::PrintGLVersion();
 
 #if defined(OSD_USES_GLEW)
 #ifdef CORE_PROFILE
