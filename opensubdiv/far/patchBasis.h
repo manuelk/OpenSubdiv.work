@@ -54,6 +54,10 @@ void GetBezierWeights(PatchParam const & patchParam,
 void GetBSplineWeights(PatchParam const & patchParam,
     float s, float t, float wP[16], float wDs[16], float wDt[16]);
 
+// XXXX manuelk: basis weights for single-crease patches - tested w/ BSpline basis only
+void GetBSplineWeights(PatchParam const & patchParam,
+    float sharpness, float s, float t, float wP[16], float wDs[16], float wDt[16]);
+
 void GetGregoryWeights(PatchParam const & patchParam,
     float s, float t, float wP[20], float wDs[20], float wDt[20]);
 
