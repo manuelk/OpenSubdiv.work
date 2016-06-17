@@ -26,7 +26,6 @@
 #ifndef OPENSUBDIV3_FAR_CHARACTERISTIC_H
 #define OPENSUBDIV3_FAR_CHARACTERISTIC_H
 
-
 #include "../version.h"
 
 #include "../far/types.h"
@@ -178,6 +177,11 @@ public:
 
         /// \brief Returns the node's child at index
         Node GetChildNode(int childIndex=0) const;
+
+        /// \brief Returns the creased edge sharpness
+        /// note : the value is undefined for any node other than REGULAR
+        ///        with a SingleCrease flag set to true
+        float GetSharpness() const;
 
         /// \brief Returns a pointer to the indices of the support points
         ConstIndexArray GetSupportIndices() const;

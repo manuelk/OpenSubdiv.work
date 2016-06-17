@@ -87,6 +87,16 @@ Characteristic::Node::GetChildNode(int childIndex) const {
     return *this;
 }
 
+float
+Characteristic::Node::GetSharpness() const {
+
+    assert(GetDescriptor().SingleCrease());
+
+    float const * ptr = (float const *)(
+        getNodeData() + sizeof(NodeDescriptor)/sizeof(int));
+    return *ptr;
+}
+
 ConstIndexArray
 Characteristic::Node::GetSupportIndices() const {
 
@@ -176,23 +186,6 @@ Characteristic::GetTreeNode(float s, float t) const {
     return Node(this, offset);
 }
 
-static float
-getSingleCreasePatchSegmentParameter(PatchParam param, float s, float t) {
-
-    unsigned short boundaryMask = param.GetBoundary();
-    float f;
-    if ((boundaryMask & 1) != 0) {
-        f = 1 - t;
-    } else if ((boundaryMask & 2) != 0) {
-        f = s;
-    } else if ((boundaryMask & 4) != 0) {
-        f = t;
-    } else if ((boundaryMask & 8) != 0) {
-        f = 1 - s;
-    }
-    return f;
-}
-
 void
 Characteristic::EvaluateBasis(Node n, float s, float t,
     float wP[], float wDs[], float wDt[]) const {
@@ -207,8 +200,12 @@ Characteristic::EvaluateBasis(Node n, float s, float t,
 
     if (desc.GetType()==NODE_REGULAR) {
 
-        internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
-
+        if (desc.SingleCrease()) {
+            float sharpness = n.GetSharpness();
+            internal::GetBSplineWeights(param, sharpness, s, t, wP, wDs, wDt);
+        } else {
+            internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
+        }
     } else if (desc.GetType()==NODE_END) {
 
         EndCapType type =
@@ -237,7 +234,7 @@ Characteristic::EvaluateBasis(float s, float t,
     Node n = GetTreeNode(s, t);
 
     EvaluateBasis(n, s, t, wP, wDs, wDt);
-    
+
     return n;
 }
 
