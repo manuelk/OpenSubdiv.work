@@ -268,30 +268,6 @@ void Spline<BASIS>::GetPatchWeights(PatchParam const & param,
     }
 }
 
-static void
-computeMixedCreaseMatrix(float sharp1, float sharp2, float t, float tInf, float m[16]) {
-
-  float s1 = exp2f(sharp1),
-        s2 = exp2f(sharp2);
-
-  float sOver3 = mix(s1, s2, t) / 3.0f,
-        oneOverS1 = 1.0f / s1,
-        oneOverS2 = 1.0f / s2,
-        oneOver6S = mix(oneOverS1, oneOverS2, t) / 6.0f,
-        sSqr = mix(s1*s1, s2*s2, t);
-
-  float A = -sSqr + sOver3 * 5.5f + oneOver6S      - 1.0f,
-        B =         sOver3        + oneOver6S      + 0.5f,
-        C =         sOver3        - oneOver6S*2.0f + 1.0f,
-        E =         sOver3        + oneOver6S      - 0.5f,
-        F =       - sOver3 * 0.5f + oneOver6S;
-
-    m[ 0] = 1.0f; m[ 1] = A*tInf;            m[ 2] = -2.0f*A*tInf;           m[ 3] = A*tInf;
-    m[ 4] = 0.0f; m[ 5] = mix(1.0f,B,tInf);  m[ 6] = -2.0f*E*tInf;           m[ 7] = E*tInf;
-    m[ 8] = 0.0f; m[ 9] = F*tInf;            m[10] = mix(1.0,C,tInf);        m[11] = F*tInf;
-    m[12] = 0.0f; m[13] = mix(-1.0f,E,tInf); m[14] = mix(2.0f,-2.0f*E,tInf); m[15] = B*tInf;
-}
-
 inline float mix(float s1, float s2, float t) {
     return (1.0f-t) * s1 + t * s2;
 }
@@ -319,7 +295,33 @@ applyMatrix(float * v, float const * m) {
 }
 
 static void
-computeMixedCreaseMatrix(float sharpness, float t, float m[16]) {
+computeMixedCreaseMatrix(float sharp1, float sharp2, float t, float tInf, float m[16]) {
+
+  float s1 = exp2f(sharp1),
+        s2 = exp2f(sharp2);
+
+  float sOver3 = mix(s1, s2, t) / 3.0f,
+        oneOverS1 = 1.0f / s1,
+        oneOverS2 = 1.0f / s2,
+        oneOver6S = mix(oneOverS1, oneOverS2, t) / 6.0f,
+        sSqr = mix(s1*s1, s2*s2, t);
+
+  float A = -sSqr + sOver3 * 5.5f + oneOver6S      - 1.0f,
+        B =         sOver3        + oneOver6S      + 0.5f,
+        C =         sOver3        - oneOver6S*2.0f + 1.0f,
+        E =         sOver3        + oneOver6S      - 0.5f,
+        F =       - sOver3 * 0.5f + oneOver6S;
+
+    m[ 0] = 1.0f; m[ 1] = A*tInf;            m[ 2] = -2.0f*A*tInf;           m[ 3] = A*tInf;
+    m[ 4] = 0.0f; m[ 5] = mix(1.0f,B,tInf);  m[ 6] = -2.0f*E*tInf;           m[ 7] = E*tInf;
+    m[ 8] = 0.0f; m[ 9] = F*tInf;            m[10] = mix(1.0,C,tInf);        m[11] = F*tInf;
+    m[12] = 0.0f; m[13] = mix(-1.0f,E,tInf); m[14] = mix(2.0f,-2.0f*E,tInf); m[15] = B*tInf;
+}
+
+// compute the "crease matrix" for modifying basis weights at parametric
+// location 't', given a sharpness value (based off Matthias Niessner HLSL code)
+static void
+computeCreaseMatrix(float sharpness, float t, float m[16]) {
 
     float sharpFloor = floorf(sharpness),
           sharpCeil = sharpFloor + 1,
@@ -357,23 +359,23 @@ void Spline<BASIS>::GetPatchWeights(PatchParam const & param,
 
     float m[16], mflip[16];
     if (boundary & 1) {
-        computeMixedCreaseMatrix(sharpness, 1.0f-t, m);
+        computeCreaseMatrix(sharpness, 1.0f-t, m);
         flipMatrix(m, mflip);
         applyMatrix( tWeights, mflip);
         applyMatrix(dtWeights, mflip);
     }
     if (boundary & 2) {
-        computeMixedCreaseMatrix(sharpness, s, m);
+        computeCreaseMatrix(sharpness, s, m);
         applyMatrix( sWeights, m);
         applyMatrix(dsWeights, m);
     }
     if (boundary & 4) {
-        computeMixedCreaseMatrix(sharpness, t, m);
+        computeCreaseMatrix(sharpness, t, m);
         applyMatrix( tWeights, m);
         applyMatrix(dtWeights, m);
     }
     if (boundary & 8) {
-        computeMixedCreaseMatrix(sharpness, 1.0f-s, m);
+        computeCreaseMatrix(sharpness, 1.0f-s, m);
         flipMatrix(m, mflip);
         applyMatrix( sWeights, mflip);
         applyMatrix(dsWeights, mflip);
