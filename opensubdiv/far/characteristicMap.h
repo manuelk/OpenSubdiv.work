@@ -57,28 +57,6 @@ public:
     ///  @name Sub-patch tree access methods
     ///
 
-    ///
-    ///  Field      | size | Content
-    ///  -----------|:----:|----------------------------------------------------
-    /// Regular node layout
-    ///  header     | 1    | see NodeDescriptor
-    ///  sharpness  | 1    | crease sharpness (single crease nodes only)
-    ///  supports   | 16   | indices
-    ///
-    /// End node layout:
-    ///  header     | 1    | see NodeDescriptor
-    ///  supports   | 16   | indices
-    ///
-    /// Recursive node layout:
-    ///  header     | 1    | see NodeDescriptor
-    ///  offsets    | 4    | offsets to 4 children nodes
-    ///
-    /// Terminal node layout:
-    ///  header     | 1    | see NodeDescriptor
-    ///  offsets    | 4    | offsets to children nodes
-    ///  supports   | 25   | indices
-    ///
-
     enum NodeType {
         NODE_REGULAR = 0,
         NODE_RECURSIVE = 1,

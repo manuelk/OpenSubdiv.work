@@ -33,7 +33,53 @@ namespace Far {
 
 
 //
-// Characteristic
+// Characteristic Node
+//
+
+//
+// The hierarchical layout of adaptive sub-patches is encoded in "characteristic
+// tree".  The nodes of each tree are serialized in a vector of integers. There
+// are several types of nodes, each with its own encoding.
+//
+// Node types :
+//
+//  * NODE_REGULAR :
+//    Leaf node describing a bspline patch
+//
+//  * NODE_END :
+//    Leaf node describing an "end-cap" patch.
+//
+//  * NODE_RECURSIVE :
+//    Branch node.
+//
+//  * NODE_TERMINAL :
+//    Optimization node compressing several nodes for the case of irregular
+//    faces that contain only a single extraordinary vertex.
+//
+// Node Layouts :
+//
+//   Field      | size | Content
+//  ------------|:----:|----------------------------------------------------
+//  REGULAR     |      |
+//   descriptor | 1    | see NodeDescriptor
+//   sharpness  | 1    | crease sharpness (single crease nodes only)
+//   supports   | 16   | support indices
+//  ------------|:----:|----------------------------------------------------
+//  EMD         |      |
+//   descriptor | 1    | see NodeDescriptor
+//   supports   | 0-20 | support indices (depending on end-cap type)
+//  ------------|:----:|----------------------------------------------------
+//  Recursive   |      |
+//   descriptor | 1    | see NodeDescriptor
+//   offsets    | 4    | offsets to 4 children nodes
+//  ------------|:----:|----------------------------------------------------
+//  TERMINAL    |      |
+//   descriptor | 1    | see NodeDescriptor
+//   offsets    | 1    | offset to end-cap or terminal child node
+//   supports   | 25   | support indices
+//  ------------|:----:|----------------------------------------------------
+//
+// Sizes are in 'integers' (4 bytes)
 //
 
 unsigned short
@@ -56,6 +102,7 @@ Characteristic::NodeDescriptor::GetBoundaryCount() const {
                            1,  2,  2, -1,  2, -1, -1, -1,  };
     return masks[GetBoundaryMask()];
 }
+
 int
 Characteristic::Node::GetNumChildrenNodes() const {
     NodeDescriptor desc = this->GetDescriptor();
@@ -166,6 +213,10 @@ Characteristic::Node::operator ++() {
     _treeOffset = offset;
     return *this;
 }
+
+//
+// Characteristic
+//
 
 Characteristic::Node
 Characteristic::GetTreeNode(float s, float t) const {
