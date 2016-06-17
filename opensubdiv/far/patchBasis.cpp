@@ -274,7 +274,6 @@ inline float mix(float s1, float s2, float t) {
 
 inline void
 flipMatrix(float const * a, float * m) {
-
     m[ 0]=a[15]; m[ 1]=a[14]; m[ 2]=a[13]; m[ 3]=a[12]; // 180
     m[ 4]=a[11]; m[ 5]=a[10]; m[ 6]=a[ 9]; m[ 7]=a[ 8];
     m[ 8]=a[ 7]; m[ 9]=a[ 6]; m[10]=a[ 5]; m[11]=a[ 4];
@@ -290,8 +289,6 @@ applyMatrix(float * v, float const * m) {
     r[2] = v[0]*m[2] + v[1]*m[6] + v[2]*m[10] + v[3]*m[14];
     r[3] = v[0]*m[3] + v[1]*m[7] + v[2]*m[11] + v[3]*m[15];
     memcpy(v, r, 4 * sizeof(float));
-
-    //printMatrix(m);
 }
 
 static void
