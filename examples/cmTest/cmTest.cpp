@@ -66,10 +66,10 @@ GLFWmonitor* g_primary=0;
 
 using namespace OpenSubdiv;
 
-int g_level = 2,
+int g_level = 3,
     g_tessLevel = 10,
     g_tessLevelMin = 2,
-    g_currentShape = 45; //cube = 8 square = 12 pyramid = 45 torus = 49
+    g_currentShape = 7; //cube = 8 square = 12 pyramid = 45 torus = 49
 
 int   g_frame = 0,
       g_repeatCount = 0;
@@ -173,7 +173,7 @@ static float g_patchColors[42][4] = {
         {0.5f,  0.0f,  1.0f,  1.0f},   // regular pattern 3
         {1.0f,  0.5f,  1.0f,  1.0f},   // regular pattern 4
 
-        {1.0f,  0.5f,  0.5f,  1.0f},   // single crease
+        {1.0f,  0.5f,   0.5f,  1.0f},  // single crease
         {1.0f,  0.70f,  0.6f,  1.0f},  // single crease pattern 0
         {1.0f,  0.65f,  0.6f,  1.0f},  // single crease pattern 1
         {1.0f,  0.60f,  0.6f,  1.0f},  // single crease pattern 2
@@ -508,6 +508,10 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
         Far::Characteristic const & ch = charmap->GetCharacteristic(i);
 
+        if (ch.GetTreeSize()==0) {
+            continue; // skip holes
+        }
+
         // interpolate vertices
         float wP[20], wDs[20], wDt[20];
 
@@ -560,6 +564,13 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     col = topo.colors;
 
     for (int i=0, charOffset=0; i<nchars; ++i) {
+
+        Far::Characteristic const & ch = charmap->GetCharacteristic(i);
+
+        if (ch.GetTreeSize()==0) {
+            continue;
+        }
+
         // generate indices
         for (int y=0; y<(tessFactor-1); ++y) {
             for (int x=0; x<(tessFactor-1); ++x) {

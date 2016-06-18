@@ -539,15 +539,18 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
         nchars += fverts.size()==regFaceSize ? 1 : fverts.size();
     }
 
-    // Allocate & write the characteristics
     CharacteristicMap * charmap =
         new CharacteristicMap(options.GetEndCapType());
-    charmap->_characteristics.resize(nchars);
 
+    // Allocate & write the characteristics
+    charmap->_characteristics.resize(nchars);
     Characteristic * ch = &charmap->_characteristics[0];
 
     for (int face = 0; face < coarseLevel.GetNumFaces(); ++face) {
 
+        if (coarseLevel.IsFaceHole(face)) {
+            continue;
+        }
 
         ConstIndexArray verts = coarseLevel.GetFaceVertices(face);
 
