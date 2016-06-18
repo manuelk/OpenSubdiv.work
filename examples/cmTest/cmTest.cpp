@@ -596,6 +596,7 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 memcpy(norm, &normals[C], 3 * sizeof(float)); norm+=3;
                 memcpy(col, &colors[C],  3 * sizeof(float)); col+=3;
 
+                // second triangle
                 memcpy(pos, &positions[A],  3 * sizeof(float)); pos+=3;
                 memcpy(norm, &normals[A], 3 * sizeof(float)); norm+=3;
                 memcpy(col, &colors[A],  3 * sizeof(float)); col+=3;
@@ -768,7 +769,6 @@ display() {
 
     glUseProgram(0);
 
-#if 1
     // draw the control mesh
     GLuint vbo = g_controlMeshVerts->BindVBO();
     int stride = g_controlMeshVerts->GetNumElements();
@@ -776,7 +776,6 @@ display() {
                               g_transformData.ModelViewProjectionMatrix);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
-#endif
 
     // Update and bind transform state ---------------------
     if (! g_transformUB) {
@@ -820,9 +819,12 @@ display() {
 
     g_tessMesh->Draw(g_transformUB, g_lightingUB);
 
+    // draw 3D strings (if any)
     if (g_font) {
         g_font->Draw(g_transformUB);
     }
+
+    // Draw hud --------------------------------------------
 
     if (g_hud.IsVisible()) {
 
@@ -833,7 +835,7 @@ display() {
         static char const * schemeNames[3] = { "BILINEAR", "CATMARK", "LOOP" };
 
         g_hud.DrawString(10, -120, "Scheme     : %s", schemeNames[g_shapes[g_currentShape].scheme]);
-        g_hud.DrawString(10, -100, "Tess level : %d", g_tessLevel);
+        g_hud.DrawString(10, -100, "Tess (+,-) : %d", g_tessLevel);
         g_hud.DrawString(10, -20,  "FPS        : %3.1f", fps);
 
         g_hud.Flush();

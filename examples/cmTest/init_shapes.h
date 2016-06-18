@@ -105,21 +105,5 @@ static void initShapes() {
     g_shapes.push_back( ShapeDesc("catmark_helmet",           catmark_helmet,           kCatmark ) );
     g_shapes.push_back( ShapeDesc("catmark_pawn",             catmark_pawn,             kCatmark ) );
     g_shapes.push_back( ShapeDesc("catmark_rook",             catmark_rook,             kCatmark ) );
-
-    g_shapes.push_back( ShapeDesc("bilinear_cube",            bilinear_cube,            kBilinear ) );
-
-    g_shapes.push_back( ShapeDesc("loop_cube_creases0",       loop_cube_creases0,       kLoop ) );
-    g_shapes.push_back( ShapeDesc("loop_cube_creases1",       loop_cube_creases1,       kLoop ) );
-    g_shapes.push_back( ShapeDesc("loop_cube",                loop_cube,                kLoop ) );
-    g_shapes.push_back( ShapeDesc("loop_icosahedron",         loop_icosahedron,         kLoop ) );
-    g_shapes.push_back( ShapeDesc("loop_saddle_edgecorner",   loop_saddle_edgecorner,   kLoop ) );
-    g_shapes.push_back( ShapeDesc("loop_saddle_edgeonly",     loop_saddle_edgeonly,     kLoop ) );
-    g_shapes.push_back( ShapeDesc("loop_triangle_edgecorner", loop_triangle_edgecorner, kLoop ) );
-    g_shapes.push_back( ShapeDesc("loop_triangle_edgeonly",   loop_triangle_edgeonly,   kLoop ) );
-    g_shapes.push_back( ShapeDesc("loop_chaikin0",            loop_chaikin0,            kLoop ) );
-    g_shapes.push_back( ShapeDesc("loop_chaikin1",            loop_chaikin1,            kLoop ) );
-    g_shapes.push_back( ShapeDesc("loop_pole8",               loop_pole8,               kLoop ) );
-    g_shapes.push_back( ShapeDesc("loop_pole64",              loop_pole64,              kLoop ) );
-    g_shapes.push_back( ShapeDesc("loop_pole360",             loop_pole360,             kLoop ) );
 }
 //------------------------------------------------------------------------------
