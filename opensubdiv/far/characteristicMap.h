@@ -40,6 +40,16 @@ namespace Far {
 class CharacteristicMap;
 class StencilTable;
 
+
+///
+///  \brief Stores topology characteristic plans
+///
+///  For more details, see: 
+///  "Efficient GPU Rendering of SUbdivision Surfaces using Adaptive Quadtrees"
+///    W. Brainer, T. Foley, M. Mkraemer, H. Moreton, M. Niessner - Siggraph 2016
+///
+///  http://www.graphics.stanford.edu/~niessner/papers/2016/4subdiv/brainerd2016efficient.pdf
+///
 class Characteristic {
 
 public:
@@ -50,7 +60,7 @@ public:
 public:
 
     //
-    // Tree
+    // Sub-patches Tree
     //
 
     //@{
@@ -111,6 +121,9 @@ public:
         /// \brief Returns the level of subdivision of the sub-patch
         unsigned short GetDepth() const { return  (unsigned short)((field0 >> 4) & 0xf); }
 
+        // XXXX manuelk characteristic plan evaluation does not need transition
+        // masks -> we should recover those 4 bits and use them for (u,v) instead...
+
         /// \brief Returns the transition edge encoding for the patch.
         unsigned short GetTransitionMask() const { return (unsigned short)((field0 >> 8) & 0xf); }
 
@@ -141,6 +154,10 @@ public:
     };
 
     /// Tree Node
+    ///
+    /// note : The burden is on the client to check whether a particular accessor
+    ///        method can be applied on a given node. If the node is of the wrong
+    ///        type, behavior will be "undefined".
     class Node {
 
     public:
@@ -171,7 +188,10 @@ public:
         int GetTreeOffset() const { return _treeOffset; }
 
         /// \brief Returns the next node in the tree (serial traversal)
-        Node operator ++ ();
+        Node operator ++ () {
+            _treeOffset += getNodeSize();
+            return *this;
+        }
 
         /// \brief Returns true if the nodes are identical
         bool operator == (Node const & other) const {
@@ -184,6 +204,8 @@ public:
         int const * getNodeData() const {
             return &_characteristic->_tree[_treeOffset];
         }
+        
+        int getNodeSize() const;
 
         friend class Characteristic;
 
@@ -207,11 +229,12 @@ public:
     /// \brief Returns a the node corresponding to the sub-patch at the given (s,t) location
     Node GetTreeNode(float s, float t) const;
 
-    /// \brief Returns a the node at the given offset location
+    /// \brief Returns the node at the given offset in the serialized tree
     Node GetTreeNode(int treeOffset) const { return Node(this, treeOffset); }
 
+    /// \brief Returns the index of the node in the serialized tree
     int GetNodeIndex(Node node) const {
-        Node it = GetTreeNode(0);
+        Node it = GetTreeRootNode();
         for (int index=0; it.GetTreeOffset()<GetTreeSize(); ++index, ++it) {
             if (it==node) {
                 return index;
@@ -244,26 +267,10 @@ public:
     ///
     Node EvaluateBasis(float s, float t, float wP[], float wDs[], float wDt[]) const;
 
-
-    /// \brief Evaluate basis functions for position and first derivatives at a
-    /// given (s,t) parametric location of a patch.
-    ///
-    /// @param n       The leaf node pointing to the sub-patch evaluated
-    ///
-    /// @param s       Patch coordinate (in coarse face normalized space)
-    ///
-    /// @param t       Patch coordinate (in coarse face normalized space)
-    ///
-    /// @param wP      Weights (evaluated basis functions) for the position
-    ///
-    /// @param wDs     Weights (evaluated basis functions) for derivative wrt s
-    ///
-    /// @param wDt     Weights (evaluated basis functions) for derivative wrt t
-    ///
-    void EvaluateBasis(Node n, float s, float t, float wP[], float wDs[], float wDt[]) const;
-
     //@}
 
+    // XXXX manuelk temporarily exposed for debugging - should be private
+    void evaluateBasis(Node n, float s, float t, float wP[], float wDs[], float wDt[]) const;
 
 private:
 

@@ -83,18 +83,7 @@ namespace Far {
 //
 
 unsigned short
-Characteristic::NodeDescriptor::GetTransitionCount() const {
-    // patches cannot have more than 2 boundaries : return -1 if more than 2 bits are set
-    // 0000, 0001, 0010, 0011, 0100, 0101, 0110, 0111,
-    // 1000, 1001, 1010, 1011, 1100, 1101, 1110, 1111
-    static int masks[] = { 0,  1,  1,  2,  1,  2,  2,  3,
-                           1,  2,  2,  3,  2,  3,  3,  4,  };
-    return masks[GetTransitionMask()];
-}
-
-unsigned short
 Characteristic::NodeDescriptor::GetBoundaryCount() const {
-
     // patches cannot have more than 2 boundaries : return -1 if more than 2 bits are set
     // 0000, 0001, 0010, 0011, 0100, 0101, 0110, 0111,
     // 1000, 1001, 1010, 1011, 1100, 1101, 1110, 1111
@@ -103,9 +92,18 @@ Characteristic::NodeDescriptor::GetBoundaryCount() const {
     return masks[GetBoundaryMask()];
 }
 
+unsigned short
+Characteristic::NodeDescriptor::GetTransitionCount() const {
+    // 0000, 0001, 0010, 0011, 0100, 0101, 0110, 0111,
+    // 1000, 1001, 1010, 1011, 1100, 1101, 1110, 1111
+    static int masks[] = { 0,  1,  1,  2,  1,  2,  2,  3,
+                           1,  2,  2,  3,  2,  3,  3,  4,  };
+    return masks[GetTransitionMask()];
+}
+
 int
 Characteristic::Node::GetNumChildrenNodes() const {
-    NodeDescriptor desc = this->GetDescriptor();
+    NodeDescriptor desc = GetDescriptor();
     switch (desc.GetType()) {
         case Characteristic::NODE_TERMINAL: return 1;
         case Characteristic::NODE_RECURSIVE: return 4;
@@ -117,7 +115,7 @@ Characteristic::Node::GetNumChildrenNodes() const {
 Characteristic::Node
 Characteristic::Node::GetChildNode(int childIndex) const {
 
-    NodeDescriptor desc = this->GetDescriptor();
+    NodeDescriptor desc = GetDescriptor();
 
     switch (desc.GetType()) {
         case Characteristic::NODE_TERMINAL:
@@ -149,7 +147,7 @@ Characteristic::Node::GetSupportIndices() const {
 
     int const * supportsPtr = getNodeData() + sizeof(NodeDescriptor)/sizeof(int);
 
-    NodeDescriptor desc = this->GetDescriptor();
+    NodeDescriptor desc = GetDescriptor();
     switch (desc.GetType()) {
         case Characteristic::NODE_REGULAR : {
             if (desc.SingleCrease()) {
@@ -176,42 +174,40 @@ Characteristic::Node::GetSupportIndices() const {
     }
 }
 
-Characteristic::Node
-Characteristic::Node::operator ++() {
+int
+Characteristic::Node::getNodeSize() const {
 
-    NodeDescriptor desc = this->GetDescriptor();
+    int size = sizeof(NodeDescriptor)/sizeof(int);    
 
-    int offset = this->GetTreeOffset() + sizeof(NodeDescriptor)/sizeof(int);
-
+    NodeDescriptor desc = GetDescriptor();
     switch (desc.GetType()) {
+        case Characteristic::NODE_RECURSIVE:
+            size += 4;
+            break;
         case Characteristic::NODE_REGULAR : {
             if (desc.SingleCrease()) {
-                offset += sizeof(float)/sizeof(int);
+                size += sizeof(float)/sizeof(int);
             }
-            offset += 16;
+            size += 16;
         } break;
         case Characteristic::NODE_END: {
             EndCapType endType =
                 GetCharacteristic()->GetCharacteristicMap()->GetEndCapType();
-            int nsupports = 0;
             switch (endType) {
-                case ENDCAP_BSPLINE_BASIS : nsupports = 16; break;
-                case ENDCAP_GREGORY_BASIS : nsupports = 20; break;
+                case ENDCAP_NONE           : break;
+                case ENDCAP_BILINEAR_BASIS : size += 4; break;
+                case ENDCAP_BSPLINE_BASIS  : size += 16; break;
+                case ENDCAP_GREGORY_BASIS  : size += 20; break;
                 default:
                     assert(0);
             }
-            offset += nsupports;
         } break;
-        case Characteristic::NODE_RECURSIVE:
-            offset += 4;
-            break;
         case Characteristic::NODE_TERMINAL:
         default:
             assert(0);
             break;
     }
-    _treeOffset = offset;
-    return *this;
+    return size;
 }
 
 //
@@ -238,7 +234,7 @@ Characteristic::GetTreeNode(float s, float t) const {
 }
 
 void
-Characteristic::EvaluateBasis(Node n, float s, float t,
+Characteristic::evaluateBasis(Node n, float s, float t,
     float wP[], float wDs[], float wDt[]) const {
 
     NodeDescriptor desc = n.GetDescriptor();
@@ -284,7 +280,7 @@ Characteristic::EvaluateBasis(float s, float t,
 
     Node n = GetTreeNode(s, t);
 
-    EvaluateBasis(n, s, t, wP, wDs, wDt);
+    evaluateBasis(n, s, t, wP, wDs, wDt);
 
     return n;
 }
