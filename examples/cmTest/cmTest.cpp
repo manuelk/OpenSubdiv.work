@@ -66,7 +66,14 @@ GLFWmonitor* g_primary=0;
 
 using namespace OpenSubdiv;
 
+enum ShadingMode {
+    SHADING_PATCH_TYPE,
+    SHADING_PATCH_COORD,
+    SHADING_PATCH_NORMAL,
+};
+
 int g_level = 3,
+    g_shadingMode = SHADING_PATCH_TYPE,
     g_tessLevel = 10,
     g_tessLevelMin = 2,
     g_currentShape = 7; //cube = 8 square = 12 pyramid = 45 torus = 49
@@ -534,17 +541,31 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                     limit.AddWithWeight(support, wP[k], wDs[k], wDt[k]);
                 }
 
-                //float c[3] = { s, 0.0f, t };
-                //float const * c = g_palette[ch.GetNodeIndex(node) % 7];
-                float const * c = getAdaptiveColor(node);
+                memcpy(pos, limit.point, 3 * sizeof(float));
 
-                float n[3] = { 0.0f, 0.0f, 0.0f };
+                //float n[3] = { 0.0f, 0.0f, 0.0f };
                 cross(norm, limit.deriv1, limit.deriv2 );
 
-                memcpy(pos, limit.point, 3 * sizeof(float));
+                //float const * c = g_palette[ch.GetNodeIndex(node) % 7];
+                switch (g_shadingMode) {
+                    case ::SHADING_PATCH_TYPE : {
+                        float const * c = getAdaptiveColor(node);
+                        memcpy(col, c, 3 * sizeof(float));
+                    } break;                        
+                    case ::SHADING_PATCH_COORD : {
+                        float c[3] = {s, t, 0.0f};
+                        memcpy(col, c, 3 * sizeof(float));
+                    } break;
+                    case ::SHADING_PATCH_NORMAL : {
+                        memcpy(col, norm, 3 * sizeof(float));
+                    } break;
+                    default:
+                        
+                        break;
+                }
+
                 //memcpy(pos, c, 3 * sizeof(float));
                 //memcpy(norm, n, 3 * sizeof(float));
-                memcpy(col, c, 3 * sizeof(float));
             }
         }
     }
@@ -868,6 +889,13 @@ callbackEndCap(int endCap) {
     rebuildMeshes();
 }
 
+static void
+callbackShadingMode(int b) {
+    g_shadingMode = b;
+    rebuildMeshes();
+}
+
+
 enum HudCheckBox { kHUD_CB_DISPLAY_CONTROL_MESH_EDGES,
                    kHUD_CB_DISPLAY_CONTROL_MESH_VERTS,
                    kHUD_CB_DISPLAY_NODE_IDS,
@@ -1016,6 +1044,11 @@ initHUD() {
     g_hud.AddPullDownButton(endcap_pulldown, "GregoryBasis", Far::ENDCAP_GREGORY_BASIS, g_endCap == Far::ENDCAP_GREGORY_BASIS);
     //g_hud.AddPullDownButton(endcap_pulldown, "LegacyGregory", Far::ENDCAP_LEGACY_GREGORY, g_endCap == Far::ENDCAP_LEGACY_GREGORY);
 
+    int shading_pulldown = g_hud.AddPullDown("Shading (C)", 200, 10, 250, callbackShadingMode, 'c');
+    g_hud.AddPullDownButton(shading_pulldown, "Patch Type", ::SHADING_PATCH_TYPE, g_shadingMode == ::SHADING_PATCH_TYPE);
+    g_hud.AddPullDownButton(shading_pulldown, "Patch Coord", ::SHADING_PATCH_COORD, g_shadingMode == ::SHADING_PATCH_COORD);
+    g_hud.AddPullDownButton(shading_pulldown, "Patch Normal", ::SHADING_PATCH_NORMAL, g_shadingMode == ::SHADING_PATCH_NORMAL);
+
     for (int i = 1; i < 11; ++i) {
         char level[16];
         sprintf(level, "Lv. %d", i);
@@ -1033,7 +1066,6 @@ initHUD() {
 //------------------------------------------------------------------------------
 static void
 initGL() {
-
     glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
