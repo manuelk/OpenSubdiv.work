@@ -110,9 +110,9 @@ public:
 
 private:
 
-    bool nodeIsTerminal(int levelIndex, int faceIndex) const;
+    bool nodeIsTerminal(int levelIndex, int faceIndex, int * evIndex=0) const;
 
-    int writeNode(int leveIndex, int faceIndex, int offset, uint8_t * data) const;
+    int writeTerminalNode(int leveIndex, int faceIndex, int evIndex, int offset, uint8_t * data) const;
 
     int writeRecursiveNode(int leveIndex, int faceIndex, int offset, uint8_t * data) const;
 
@@ -120,7 +120,7 @@ private:
 
     int writeEndNode(int leveIndex, int faceIndex, uint8_t * data) const;
 
-    int writeTerminalNode(int leveIndex, int faceIndex, uint8_t * data) const;
+    int writeNode(int leveIndex, int faceIndex, int offset, uint8_t * data) const;
 
     Characteristic::NodeDescriptor computeNodeDescriptor(Characteristic::NodeType type,
         int levelIndex, Index faceIndex, int boundaryMask, int transitionMask, bool singleCrease) const;
@@ -330,7 +330,6 @@ CharacteristicBuilder::writeRegularNode(
 
         offsetAndPermuteIndices(patchVerts, 16, levelVertOffset, permutation, (Index *)data);
     }
-
     return dataSize;
 }
 
@@ -380,7 +379,6 @@ CharacteristicBuilder::writeEndNode(
         assert(sizeof(Index)==sizeof(int));
         memcpy(data, cvs.begin(), cvs.size() * sizeof(int));
     }
-
     return dataSize;
 }
 
@@ -392,11 +390,13 @@ CharacteristicBuilder::writeRecursiveNode(
     int dataSize = sizeof(NodeDescriptor) + 4 * sizeof(int);
 
     if (data) {
-        ((NodeDescriptor *)data)->Set(Characteristic::NODE_RECURSIVE, levelIndex, false, false, 0, 0, 0, 0);
+        ((NodeDescriptor *)data)->Set(
+            Characteristic::NODE_RECURSIVE, levelIndex, false, false, 0, 0, 0, 0);
 
         int * childrenOffsets = (int *)(data + sizeof(NodeDescriptor));
 
-        ConstIndexArray children = _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
+        ConstIndexArray children =
+            _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
 
         for (int i=0; i<children.size(); ++i) {
 
@@ -417,19 +417,29 @@ CharacteristicBuilder::writeRecursiveNode(
 }
 
 bool
-CharacteristicBuilder::nodeIsTerminal(int levelIndex, int faceIndex) const {
+CharacteristicBuilder::nodeIsTerminal(
+    int levelIndex, int faceIndex, int * evIndex) const {
+
     if (_options.useTerminalNodes) {
-        PatchFaceTag const * levelPatchTags = _levelPatchTags[levelIndex];
+
+        PatchFaceTag const * levelPatchTags = _levelPatchTags[levelIndex+1];
 
         int irregular = 0;
 
-        ConstIndexArray children = _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
+        ConstIndexArray children =
+            _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
+        assert(children.size()==4);
 
         for (int i=0; i<children.size(); ++i) {
 
-            PatchFaceTag const & patchTag = levelPatchTags[faceIndex];
+            PatchFaceTag const & patchTag = levelPatchTags[children[i]];
 
-            if (!patchTag.hasPatch || (patchTag.boundaryCount>0) || patchTag.isSingleCrease) {
+            if (!patchTag.hasPatch ||
+                (patchTag.boundaryCount>0) ||
+                patchTag.isSingleCrease) {
+                if (evIndex) {
+                    *evIndex = i;
+                }
                 ++irregular;
             }
             if (irregular>1) {
@@ -439,6 +449,91 @@ CharacteristicBuilder::nodeIsTerminal(int levelIndex, int faceIndex) const {
         return true;
     }
     return false;
+}
+
+static void PrintNodeIndices(ConstIndexArray cvs);
+
+int
+CharacteristicBuilder::writeTerminalNode(
+    int levelIndex, int faceIndex, int evIndex, int offset, uint8_t * data) const {
+
+    int dataSize = sizeof(NodeDescriptor) + 1*sizeof(int) + 24*sizeof(int);
+
+    if (data) {
+
+        int childLevelIndex = levelIndex + 1,
+            childNodeOffset = 0;
+
+        PatchFaceTag const * levelPatchTags =
+            _levelPatchTags[childLevelIndex];
+
+        Vtr::internal::Level const & childLevel =
+            _refiner.getLevel(childLevelIndex);
+
+        ConstIndexArray childFaceIndices =
+            _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
+
+        Index patchVerts[16];
+
+        for (int i=0, rcount=0; i<childFaceIndices.size(); ++i) {
+
+            int childFaceIndex = childFaceIndices[i];
+
+            PatchFaceTag const & patchTag =
+                _levelPatchTags[childLevelIndex][childFaceIndex];
+
+            if (patchTag.hasPatch) {
+                if (patchTag.isRegular) {
+                    // domain quadrant is a regular patch : grab CVs
+                    childLevel.gatherQuadRegularInteriorPatchPoints(childFaceIndex, patchVerts, 0);
+
+                    // XXXX TODO
+
+                    ++rcount;
+                } else {
+                    assert(evIndex==i);
+
+                    // save the offset to the child node
+                    childNodeOffset = offset + dataSize / sizeof(int);
+
+                    // domain quadrant contains the EV and we have reached the
+                    // max level of isolation : append an end-cap patch
+                    dataSize += writeEndNode(childLevelIndex, childFaceIndex, data + dataSize);
+                }
+            } else {
+                // this domain quadrant contains the EV, but we haven't reached
+                // the max level of isolation : append another terminal node.
+                assert(evIndex==i);
+
+                // save the offset to the child node
+                childNodeOffset = offset + dataSize / sizeof(int);
+
+                dataSize += writeTerminalNode(childLevelIndex,
+                    childFaceIndex, evIndex, childNodeOffset, data+dataSize);
+            }
+        }
+
+        ((NodeDescriptor *)data)->Set(Characteristic::NODE_TERMINAL, levelIndex, false, false, 0, 0, 0, 0);
+
+        int * childNodePtr = (int *)(data + sizeof(NodeDescriptor)),
+            * supportsPtr = (int *)(data + sizeof(NodeDescriptor) + sizeof(int));
+
+        assert(childNodeOffset);
+        *childNodePtr = childNodeOffset;
+
+        // copy & organize the support CVs
+        for (int i=0; i<24; ++i) {
+            supportsPtr[i] = faceIndex;
+        }
+
+
+    } else {
+        int endNodeSize = writeEndNode(0, 0, nullptr),
+            termNodeSize = sizeof(NodeDescriptor) + 1*sizeof(int) + 24*sizeof(int);
+        return dataSize + termNodeSize * (_refiner.GetMaxLevel()-levelIndex-1) + endNodeSize;
+    }
+
+    return dataSize;
 }
 
 int
@@ -456,8 +551,9 @@ CharacteristicBuilder::writeNode(
             dataSize = writeEndNode(levelIndex, faceIndex, data);
         }
     } else {
-        if (nodeIsTerminal(levelIndex, faceIndex)) {
-            // XXX TODO
+        int evIndex = -1;
+        if (nodeIsTerminal(levelIndex, faceIndex, &evIndex)) {
+            dataSize = writeTerminalNode(levelIndex, faceIndex, evIndex, offset, data);
         } else {
             dataSize = writeRecursiveNode(levelIndex, faceIndex, offset, data);
         }
@@ -571,7 +667,7 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
     charmap->_localPointStencils = builder.FinalizeStencils();
     charmap->_localPointVaryingStencils = builder.FinalizeVaryingStencils();
 
-    //PrintCharacteristicsDigraph(&charmap->_characteristics[0], nchars);
+    PrintCharacteristicsDigraph(&charmap->_characteristics[0], nchars);
 
     return charmap;
 }
@@ -582,10 +678,13 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
 
 static void
 PrintNodeIndices(ConstIndexArray cvs) {
+
+    int stride = cvs.size()==16 ? 4 : 5;
+
     for (int i=0; i<cvs.size(); ++i) {
-        if (i>0 && ((i%4)!=0))
+        if (i>0 && ((i%stride)!=0))
             printf(" ");
-        if ((i%4)==0)
+        if ((i%stride)==0)
             printf("\\n");
         printf("%*d", 4, cvs[i]);
     }
@@ -632,13 +731,16 @@ PrintCharacteristicTreeNode(Characteristic::Node node, int charIndex, bool showI
                 }
             } break;
 
-        case Characteristic::NODE_TERMINAL :
-            printf("  %zu [shape=circle, label=\"T", nodeID);
+        case Characteristic::NODE_TERMINAL : {
+            printf("  %zu [shape=box, style=filled, color=grey, label=\"T", nodeID);
             if (showIndices) {
                 PrintNodeIndices(node.GetSupportIndices());
             }
-            printf("\"]");
-
+            printf(" -1 \"]\n");
+            Characteristic::Node child = node.GetChildNode();
+            PrintCharacteristicTreeNode(child, charIndex, showIndices);
+            printf("  %zu -> %zu\n", nodeID, HashNodeID(charIndex, child));
+        } break;
         default:
             assert(0);
     }
@@ -657,6 +759,7 @@ PrintCharacteristicsDigraph(Characteristic const * chars, int nchars) {
         printf("}\n");
     }
     printf("}\n");
+    fflush(stdout);
 }
 
 } // end namespace Far

@@ -76,7 +76,7 @@ int g_level = 3,
     g_shadingMode = SHADING_PATCH_TYPE,
     g_tessLevel = 10,
     g_tessLevelMin = 2,
-    g_currentShape = 7; //cube = 8 square = 12 pyramid = 45 torus = 49
+    g_currentShape = 8; //cube = 8 square = 12 pyramid = 45 torus = 49
 
 int   g_frame = 0,
       g_repeatCount = 0;
@@ -172,7 +172,7 @@ static float g_palette[7][4] = {{1.0f,  1.0f,  1.0f,  1.0f},
                                 {1.0f,  0.5f,  0.0f,  1.0f},
                                 {1.0f,  0.7f,  0.3f,  1.0f}};
 
-static float g_patchColors[42][4] = {
+static float g_patchColors[43][4] = {
         {1.0f,  1.0f,  1.0f,  1.0f},   // regular
         {0.0f,  1.0f,  1.0f,  1.0f},   // regular pattern 0
         {0.0f,  0.5f,  1.0f,  1.0f},   // regular pattern 1
@@ -220,7 +220,9 @@ static float g_patchColors[42][4] = {
         {1.0f,  0.7f,  0.3f,  1.0f},   // gregory basis
         {1.0f,  0.7f,  0.3f,  1.0f},   // gregory basis
         {1.0f,  0.7f,  0.3f,  1.0f},   // gregory basis
-        {1.0f,  0.7f,  0.3f,  1.0f}    // gregory basis
+        {1.0f,  0.7f,  0.3f,  1.0f},   // gregory basis
+
+        {0.5f,  0.5f,  0.5f,  1.0f},   // terminal
 };
 
 static float const *
@@ -251,6 +253,8 @@ getAdaptiveColor(Far::Characteristic::Node node) {
             default:
                 break;
         }
+    } else if (desc.GetType()==Far::Characteristic::NODE_TERMINAL) {
+        patchType = 7;
     } else {
         assert(0);
     }
@@ -419,7 +423,8 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     g_controlMeshVerts->UpdateData(&shape->verts[0], 0, nverts);
     g_controlMeshDisplay.SetTopology(refiner->GetLevel(0));
 
-    bool useSingleCreasePatches = true;
+    bool useSingleCreasePatches = true,
+         useTerminalNodes = true;
 
     // refine adaptively
     {
@@ -437,6 +442,7 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
     Far::CharacteristicMapFactory::Options options;
     options.endCapType = g_endCap;
+    options.useTerminalNodes = useTerminalNodes;
     Far::CharacteristicMap const * charmap =
         Far::CharacteristicMapFactory::Create(*refiner, patchTags, options);
     // create vertex primvar data buffer

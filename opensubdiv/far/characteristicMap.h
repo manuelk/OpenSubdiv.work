@@ -171,6 +171,7 @@ public:
         int GetNumChildrenNodes() const;
 
         /// \brief Returns the node's child at index
+        /// note : 4 children for RECURSIVE nodes, 1 child for TERMINAL nodes
         Node GetChildNode(int childIndex=0) const;
 
         /// \brief Returns the creased edge sharpness

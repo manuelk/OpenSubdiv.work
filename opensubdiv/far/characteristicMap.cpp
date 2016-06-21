@@ -119,8 +119,7 @@ Characteristic::Node::GetChildNode(int childIndex) const {
 
     switch (desc.GetType()) {
         case Characteristic::NODE_TERMINAL:
-            assert(childIndex=0);
-            break;
+            assert(childIndex==0);
         case Characteristic::NODE_RECURSIVE: {
                 int const * offsetPtr = getNodeData() +
                     sizeof(NodeDescriptor)/sizeof(int) + childIndex;
@@ -160,15 +159,19 @@ Characteristic::Node::GetSupportIndices() const {
                 GetCharacteristic()->GetCharacteristicMap()->GetEndCapType();
             int nsupports = 0;
             switch (endType) {
-                case ENDCAP_BSPLINE_BASIS : nsupports = 16; break;
-                case ENDCAP_GREGORY_BASIS : nsupports = 20; break;
+                case ENDCAP_BILINEAR_BASIS : nsupports = 0; break;
+                case ENDCAP_BSPLINE_BASIS  : nsupports = 16; break;
+                case ENDCAP_GREGORY_BASIS  : nsupports = 20; break;
                 default:
                     assert(0);
             }
             return ConstIndexArray(supportsPtr, nsupports);
         }
+        case NODE_TERMINAL: {
+            ++supportsPtr; // skip child node offset
+            return ConstIndexArray(supportsPtr, 24);
+        } break;
         case NODE_RECURSIVE:
-        case NODE_TERMINAL:
         default:
             return ConstIndexArray(nullptr, 0);
     }
@@ -181,15 +184,18 @@ Characteristic::Node::getNodeSize() const {
 
     NodeDescriptor desc = GetDescriptor();
     switch (desc.GetType()) {
+
         case Characteristic::NODE_RECURSIVE:
-            size += 4;
+            size += 4; // children offsets
             break;
+
         case Characteristic::NODE_REGULAR : {
             if (desc.SingleCrease()) {
                 size += sizeof(float)/sizeof(int);
             }
-            size += 16;
+            size += 16; // support indices
         } break;
+
         case Characteristic::NODE_END: {
             EndCapType endType =
                 GetCharacteristic()->GetCharacteristicMap()->GetEndCapType();
@@ -202,7 +208,12 @@ Characteristic::Node::getNodeSize() const {
                     assert(0);
             }
         } break;
-        case Characteristic::NODE_TERMINAL:
+
+        case Characteristic::NODE_TERMINAL: {
+            size += 1;  // child offset
+            size += 25; // support indices
+        } break;
+
         default:
             assert(0);
             break;
@@ -269,6 +280,8 @@ Characteristic::evaluateBasis(Node n, float s, float t,
             default:
                 assert(0);
         }
+    } else if (desc.GetType()==NODE_TERMINAL) {
+        // XXXX TODO
     } else {
         assert(0);
     }
