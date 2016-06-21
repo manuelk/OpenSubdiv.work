@@ -451,18 +451,30 @@ CharacteristicBuilder::nodeIsTerminal(
     return false;
 }
 
-static void PrintNodeIndices(ConstIndexArray cvs);
+static void
+printIndices(Index * cvs, int ncvs) {
+    int stride = ncvs==16 ? 4 : 5;
+    for (int i=0; i<ncvs; ++i) {
+        if (i>0 && ((i%stride)!=0))
+            printf(" ");
+        if ((i%stride)==0)
+            printf("\n");
+        printf("%*d", 4, cvs[i]);
+    }
+    printf("\n");
+}
 
 int
 CharacteristicBuilder::writeTerminalNode(
     int levelIndex, int faceIndex, int evIndex, int offset, uint8_t * data) const {
 
-    int dataSize = sizeof(NodeDescriptor) + 1*sizeof(int) + 24*sizeof(int);
+    int dataSize = sizeof(NodeDescriptor) + 1*sizeof(int) + 25*sizeof(int);
 
     if (data) {
 
         int childLevelIndex = levelIndex + 1,
-            childNodeOffset = 0;
+            childNodeOffset = 0,
+            levelVertOffset = _levelVertOffsets[childLevelIndex];
 
         PatchFaceTag const * levelPatchTags =
             _levelPatchTags[childLevelIndex];
@@ -473,25 +485,78 @@ CharacteristicBuilder::writeTerminalNode(
         ConstIndexArray childFaceIndices =
             _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
 
-        Index patchVerts[16];
+        Index supportIndices[25];
 
-        for (int i=0, rcount=0; i<childFaceIndices.size(); ++i) {
+#if 1
+        for (int k=0; k<25; ++k) {
+            supportIndices[k] = INDEX_INVALID;
+        }
+#endif
 
-            int childFaceIndex = childFaceIndices[i];
+        for (int child=0; child<childFaceIndices.size(); ++child) {
+
+            int childFaceIndex = childFaceIndices[child];
 
             PatchFaceTag const & patchTag =
                 _levelPatchTags[childLevelIndex][childFaceIndex];
 
             if (patchTag.hasPatch) {
+
                 if (patchTag.isRegular) {
-                    // domain quadrant is a regular patch : grab CVs
-                    childLevel.gatherQuadRegularInteriorPatchPoints(childFaceIndex, patchVerts, 0);
 
-                    // XXXX TODO
+                    // domain quadrant is a regular patch : grab supports
 
-                    ++rcount;
+                    assert(patchTag.boundaryCount==0);
+
+                    Index localVerts[16], patchVerts[16];
+                    
+                    childLevel.gatherQuadRegularInteriorPatchPoints(childFaceIndex, localVerts, 0);
+
+                    static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
+                    offsetAndPermuteIndices(localVerts, 16, levelVertOffset, permuteRegular, patchVerts);
+
+//printf("level=%d face=%d ev=%d child=%d ", levelIndex, faceIndex, evIndex, child);
+//printIndices(patchVerts, 16);
+
+                    if (child == ((evIndex+2)%4)) {
+                        // patch diagonal to ev : copy all 16 verts (by rows)
+                        int rowOffs = evIndex < 2 ? 5 : 0,
+                            colOffs = evIndex==1 || evIndex==2 ? 0 : 1;
+                        Index * rowPtr = &supportIndices[rowOffs + colOffs];
+                        for (int k=0; k<4; ++k, rowPtr+=5) {
+                            memcpy(rowPtr, &patchVerts[k*4], 4 * sizeof(Index));
+                        }
+//printf("diag r=%d c=%d", rowOffs, colOffs);                        
+                    } else {
+                        // patch with redundant supports : copy either row or column
+                        int rowIdx = (5-evIndex)%4,
+                            colIdx = (3-evIndex)%4;
+//printf("rowIdx=%d coldIdx=%d\n", rowIdx, colIdx);                        
+                        if (child == rowIdx) {
+                            // copy row
+                            int rowOffs = rowIdx & 0x2 ? 1 : 0,
+                                colOffs = rowIdx==1 || rowIdx==2 ? 1 : 0;
+                            Index * rowPtr = &supportIndices[rowOffs * 20 + colOffs];
+                            memcpy(rowPtr, &patchVerts[rowOffs * 12], 4 * sizeof(Index));
+//printf("row r=%d c=%d", rowOffs, colOffs);                        
+                        } else if (child==colIdx) {
+                            // copy column
+                            int rowOffs = colIdx & 0x2 ? 1 : 0,
+                                colOffs = colIdx==1 || colIdx==2 ? 1 : 0;
+                            Index * src = &patchVerts[colOffs * 3],
+                                  * dst = &supportIndices[rowOffs * 5 + colOffs * 4];
+                            for (int k=0; k<4; ++k, dst+=5, src+=4) {
+                                *dst = *src;
+                            }
+//printf("col r=%d c=%d", rowOffs, colOffs);                        
+                        } else {
+                            assert(0);
+                        }
+                    }
+//printIndices(supportIndices, 25);
+//printf("\n");
                 } else {
-                    assert(evIndex==i);
+                    assert(evIndex==child);
 
                     // save the offset to the child node
                     childNodeOffset = offset + dataSize / sizeof(int);
@@ -503,7 +568,7 @@ CharacteristicBuilder::writeTerminalNode(
             } else {
                 // this domain quadrant contains the EV, but we haven't reached
                 // the max level of isolation : append another terminal node.
-                assert(evIndex==i);
+                assert(evIndex==child);
 
                 // save the offset to the child node
                 childNodeOffset = offset + dataSize / sizeof(int);
@@ -515,21 +580,28 @@ CharacteristicBuilder::writeTerminalNode(
 
         ((NodeDescriptor *)data)->Set(Characteristic::NODE_TERMINAL, levelIndex, false, false, 0, 0, 0, 0);
 
-        int * childNodePtr = (int *)(data + sizeof(NodeDescriptor)),
-            * supportsPtr = (int *)(data + sizeof(NodeDescriptor) + sizeof(int));
-
-        assert(childNodeOffset);
+        int * childNodePtr = (int *)(data + sizeof(NodeDescriptor));
         *childNodePtr = childNodeOffset;
 
         // copy & organize the support CVs
-        for (int i=0; i<24; ++i) {
-            supportsPtr[i] = faceIndex;
+        Index * supportsPtr = (int *)(data + sizeof(NodeDescriptor) + sizeof(int));
+        for (int k=0; k<25; ++k) {
+            //if ( (evIndex==0 && k==0) ||
+            //     (evIndex==1 && k==4) ||
+            //     (evIndex==2 && k==20) ||
+            //     (evIndex==3 && k==24)) {
+            //    supportsPtr[k] = INDEX_INVALID;
+            //} else {
+            //    supportsPtr[k] = supportIndices[k] + levelVertOffset;
+            //}
+            supportsPtr[k] = supportIndices[k];
         }
-
-
+        
+        printf("");
+        
     } else {
         int endNodeSize = writeEndNode(0, 0, nullptr),
-            termNodeSize = sizeof(NodeDescriptor) + 1*sizeof(int) + 24*sizeof(int);
+            termNodeSize = sizeof(NodeDescriptor) + 1*sizeof(int) + 25*sizeof(int);
         return dataSize + termNodeSize * (_refiner.GetMaxLevel()-levelIndex-1) + endNodeSize;
     }
 
@@ -736,7 +808,7 @@ PrintCharacteristicTreeNode(Characteristic::Node node, int charIndex, bool showI
             if (showIndices) {
                 PrintNodeIndices(node.GetSupportIndices());
             }
-            printf(" -1 \"]\n");
+            printf("\"]\n");
             Characteristic::Node child = node.GetChildNode();
             PrintCharacteristicTreeNode(child, charIndex, showIndices);
             printf("  %zu -> %zu\n", nodeID, HashNodeID(charIndex, child));

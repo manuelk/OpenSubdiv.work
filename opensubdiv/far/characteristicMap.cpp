@@ -169,7 +169,7 @@ Characteristic::Node::GetSupportIndices() const {
         }
         case NODE_TERMINAL: {
             ++supportsPtr; // skip child node offset
-            return ConstIndexArray(supportsPtr, 24);
+            return ConstIndexArray(supportsPtr, 25);
         } break;
         case NODE_RECURSIVE:
         default:

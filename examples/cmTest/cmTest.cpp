@@ -536,13 +536,18 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                       t = (float)y / (float)(tessFactor-1);
 
                 Far::Characteristic::Node node = ch.EvaluateBasis(s, t, wP, wDs, wDt);
+                
+                if (node.GetDescriptor().GetType()==Far::Characteristic::NODE_TERMINAL) {
+                    continue;
+                }
+                
                 Far::ConstIndexArray supportIndices = node.GetSupportIndices();
 
                 // interpolate support points with basis weights
                 LimitFrame limit;
                 limit.Clear();
                 for (int k=0; k<supportIndices.size(); ++k) {
-                    assert(supportIndices[k]<supportsBuffer.size());
+                    assert(supportIndices[k]<(int)supportsBuffer.size());
                     Vertex const & support = supportsBuffer[supportIndices[k]];
                     limit.AddWithWeight(support, wP[k], wDs[k], wDt[k]);
                 }

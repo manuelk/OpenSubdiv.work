@@ -40,9 +40,22 @@ namespace Far {
 class CharacteristicMap;
 class StencilTable;
 
-
 ///
 ///  \brief Stores topology characteristic plans
+///
+/// * Topology trees :
+///   A tree representation of the hierarchies of feature adaptive sub-patches.
+///   
+///
+/// * Terminal nodes : 
+///   A sub-patch tree optimization that allows the collapsing portions of a
+///   topological tree into "terminal" nodes. Faces that contain a single
+///   extraordinary vertex, but are otherwise "regular" (no boundaries,
+///   no creases...) generate 3 regular sub-patches for each level of adaptive
+///   isolation.
+///   Each of these sub-patches requires 18 supports, however many of the
+///   supports overlap, so that out of 54 supports, only 24 are not redundant.
+///   Terminal nodes store those supports more efficiently.
 ///
 ///  For more details, see: 
 ///  "Efficient GPU Rendering of SUbdivision Surfaces using Adaptive Quadtrees"
