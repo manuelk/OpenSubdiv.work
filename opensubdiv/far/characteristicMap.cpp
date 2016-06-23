@@ -180,7 +180,7 @@ Characteristic::Node::GetSupportIndices() const {
 int
 Characteristic::Node::getNodeSize() const {
 
-    int size = sizeof(NodeDescriptor)/sizeof(int);    
+    int size = sizeof(NodeDescriptor)/sizeof(int);
 
     NodeDescriptor desc = GetDescriptor();
     switch (desc.GetType()) {
@@ -226,75 +226,114 @@ Characteristic::Node::getNodeSize() const {
 //
 
 Characteristic::Node
-Characteristic::GetTreeNode(float s, float t) const {
+Characteristic::GetTreeNode(float s, float t, unsigned char * quadrant) const {
 
     assert(_tree && sizeof(NodeDescriptor)==sizeof(int));
 
     // traverse the sub-patch tree to the (s,t) coordinates
     int offset = 0, corner = 0;
     NodeDescriptor desc = _tree[offset];
-    while (desc.GetType()==NODE_RECURSIVE) {
-        if (s>0.5f) { corner ^= 1; s = 1 - s; }
-        if (t>0.5f) { corner ^= 2; t = 1 - t; }
+
+//printf("Get Tree Node (%f, %f) ", s, t);
+    Characteristic::NodeType ntype = desc.GetType();
+    while (ntype==NODE_RECURSIVE || ntype==NODE_TERMINAL) {
+
+        if (s>0.5f) { corner ^= 1; s = 1.0f - s; }
+        if (t>0.5f) { corner ^= 2; t = 1.0f - t; }
         s *= 2.0f;
         t *= 2.0f;
-        offset = _tree[offset + 1 + corner];
-        desc = _tree[offset];
+
+        if (ntype==NODE_RECURSIVE) {
+            // fetch next node
+            offset = _tree[offset + 1 + corner];
+            desc = _tree[offset];
+//printf("  Recursive corner=%d\n", corner);
+        } else if (ntype==NODE_TERMINAL) {
+//printf(" Terminal : %f %f corner=%d ev=%d\n", s, t, corner, desc.GetEvIndex());
+            if (corner==3) corner=2; else if (corner==2) corner=3;
+            if (corner==desc.GetEvIndex()) {
+                // traverse to end-cap patch
+                offset = _tree[offset + 1];
+                desc = _tree[offset];
+            } else {
+                // regular sub-patch : exit
+                if (quadrant) {
+                    *quadrant = corner;
+                }
+                break;
+            }
+        }
+        ntype = desc.GetType();
     }
     return Node(this, offset);
 }
 
-void
-Characteristic::evaluateBasis(Node n, float s, float t,
-    float wP[], float wDs[], float wDt[]) const {
+Characteristic::Node
+Characteristic::EvaluateBasis(float s, float t,
+    float wP[], float wDs[], float wDt[], unsigned char * subpatch) const {
+
+    unsigned char quadrant = 0;
+    Node n = GetTreeNode(s, t, &quadrant);
 
     NodeDescriptor desc = n.GetDescriptor();
 
     int depth = desc.GetDepth() - (desc.NonQuadRoot() ? 1 : 0);
 
     PatchParam param;
-    param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), depth,
-        desc.NonQuadRoot(), desc.GetBoundaryMask(), desc.GetTransitionMask());
+    switch (desc.GetType()) {
 
-    if (desc.GetType()==NODE_REGULAR) {
+       case NODE_REGULAR : {
+            param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), depth,
+                desc.NonQuadRoot(), desc.GetBoundaryMask(), desc.GetTransitionMask());
 
-        if (desc.SingleCrease()) {
-            float sharpness = n.GetSharpness();
-            internal::GetBSplineWeights(param, sharpness, s, t, wP, wDs, wDt);
-        } else {
-            internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
-        }
-    } else if (desc.GetType()==NODE_END) {
-
-        EndCapType type =
-            GetCharacteristicMap()->GetEndCapType();
-        switch (type) {
-            case ENDCAP_NONE :
-                return;
-            case ENDCAP_BSPLINE_BASIS :
+            if (desc.SingleCrease()) {
+                float sharpness = n.GetSharpness();
+                internal::GetBSplineWeights(param, sharpness, s, t, wP, wDs, wDt);
+            } else {
                 internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
-                break;
-            case ENDCAP_GREGORY_BASIS :
-                internal::GetGregoryWeights(param, s, t, wP, wDs, wDt);
-                break;
-            default:
-                assert(0);
-        }
-    } else if (desc.GetType()==NODE_TERMINAL) {
-        // XXXX TODO
-    } else {
-        assert(0);
+            }
+        } break;
+
+       case NODE_END : {
+            param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), depth,
+                desc.NonQuadRoot(), desc.GetBoundaryMask(), desc.GetTransitionMask());
+
+            switch (GetCharacteristicMap()->GetEndCapType()) {
+                case ENDCAP_NONE :
+                    break;
+                case ENDCAP_BILINEAR_BASIS :
+                    assert(0);
+                    break;
+                case ENDCAP_BSPLINE_BASIS :
+                    internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
+                    break;
+                case ENDCAP_GREGORY_BASIS :
+                    internal::GetGregoryWeights(param, s, t, wP, wDs, wDt);
+                    break;
+                default:
+                    assert(0);
+            }
+        } break;
+
+       case NODE_TERMINAL : {
+            unsigned short u = desc.GetU(),
+                           v = desc.GetV();
+            switch (quadrant) {
+                case 0 :                 break;
+                case 1 : { u+=1;       } break;
+                case 2 : { u+=1; v+=1; } break;
+                case 3 : {       v+=1; } break;
+            }
+            param.Set(/*face id*/ 0, u, v, depth+1, desc.NonQuadRoot(), 0, 0);
+            internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
+            if (subpatch) {
+                *subpatch = quadrant;
+            }
+        } break;
+
+        default:
+            assert(0);
     }
-}
-
-Characteristic::Node
-Characteristic::EvaluateBasis(float s, float t,
-    float wP[], float wDs[], float wDt[]) const {
-
-    Node n = GetTreeNode(s, t);
-
-    evaluateBasis(n, s, t, wP, wDs, wDt);
-
     return n;
 }
 

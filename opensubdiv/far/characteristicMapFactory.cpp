@@ -122,8 +122,7 @@ private:
 
     int writeNode(int leveIndex, int faceIndex, int offset, uint8_t * data) const;
 
-    Characteristic::NodeDescriptor computeNodeDescriptor(Characteristic::NodeType type,
-        int levelIndex, Index faceIndex, int boundaryMask, int transitionMask, bool singleCrease) const;
+    bool computeSubPatchDomain(int levelIndex, Index faceIndex, short * s, short * t) const;
 
 private:
 
@@ -220,9 +219,8 @@ CharacteristicBuilder::~CharacteristicBuilder() {
 
 typedef Characteristic::NodeDescriptor NodeDescriptor;
 
-NodeDescriptor
-CharacteristicBuilder::computeNodeDescriptor(Characteristic::NodeType type,
-    int levelIndex, Index faceIndex, int boundaryMask, int transitionMask, bool singleCrease) const {
+bool
+CharacteristicBuilder::computeSubPatchDomain(int levelIndex, Index faceIndex, short * s, short * t) const {
 
     // Move up the hierarchy accumulating u,v indices to the coarse level:
     int childIndexInParent = 0,
@@ -254,11 +252,11 @@ CharacteristicBuilder::computeNodeDescriptor(Characteristic::NodeType type,
         faceIndex = parentFaceIndex;
     }
 
-    NodeDescriptor desc;
-    desc.Set(type, nonquad, singleCrease, levelIndex, boundaryMask, transitionMask, u, v);
-    return desc;
+    assert(s && t);
+    *s = u;
+    *t = v;
+    return nonquad;
 }
-
 
 int
 CharacteristicBuilder::writeRegularNode(
@@ -317,10 +315,12 @@ CharacteristicBuilder::writeRegularNode(
             assert(patchTag.boundaryCount <= 2);
         }
 
-        // copy to buffer
-        NodeDescriptor desc = computeNodeDescriptor(Characteristic::NODE_REGULAR, levelIndex, faceIndex, boundaryMask, transitionMask, singleCrease);
+        short u, v;
+        bool nonquad = computeSubPatchDomain(levelIndex, faceIndex, &u, &v);
 
-        *((NodeDescriptor *)data) = desc;
+        // copy to buffer
+        ((NodeDescriptor *)data)->SetPatch(Characteristic::NODE_REGULAR,
+            nonquad, singleCrease, levelIndex, boundaryMask, transitionMask, u, v) ;
         data += sizeof(NodeDescriptor);
 
         if (patchTag.isSingleCrease) {
@@ -360,20 +360,29 @@ CharacteristicBuilder::writeEndNode(
 
         ConstIndexArray cvs;
         switch (_options.endCapType) {
+            case ENDCAP_BILINEAR_BASIS:
                 assert(0);
                 break;
             case ENDCAP_BSPLINE_BASIS:
-                cvs = _endCapBSplineBasis->GetPatchPoints(&level, faceIndex, levelPatchTags, levelVertOffset);
+                cvs = _endCapBSplineBasis->GetPatchPoints(
+                    &level, faceIndex, levelPatchTags, levelVertOffset);
                 break;
             case ENDCAP_GREGORY_BASIS:
-                cvs = _endCapGregoryBasis->GetPatchPoints(&level, faceIndex, levelPatchTags, levelVertOffset);
+                cvs = _endCapGregoryBasis->GetPatchPoints(
+                    &level, faceIndex, levelPatchTags, levelVertOffset);
                 break;
             default:
                 assert(0);
         }
 
         // copy to buffer
-        *(NodeDescriptor *)data = computeNodeDescriptor(Characteristic::NODE_END, levelIndex, faceIndex, 0, 0, false);
+
+        short u, v;
+        bool nonquad = computeSubPatchDomain(levelIndex, faceIndex, &u, &v);
+
+        // copy to buffer
+        ((NodeDescriptor *)data)->SetPatch(Characteristic::NODE_END,
+            nonquad, false, levelIndex, 0, 0, u, v);
         data += sizeof(NodeDescriptor);
 
         assert(sizeof(Index)==sizeof(int));
@@ -390,8 +399,7 @@ CharacteristicBuilder::writeRecursiveNode(
     int dataSize = sizeof(NodeDescriptor) + 4 * sizeof(int);
 
     if (data) {
-        ((NodeDescriptor *)data)->Set(
-            Characteristic::NODE_RECURSIVE, levelIndex, false, false, 0, 0, 0, 0);
+        ((NodeDescriptor *)data)->SetRecursive(levelIndex);
 
         int * childrenOffsets = (int *)(data + sizeof(NodeDescriptor));
 
@@ -434,9 +442,10 @@ CharacteristicBuilder::nodeIsTerminal(
 
             PatchFaceTag const & patchTag = levelPatchTags[children[i]];
 
-            if (!patchTag.hasPatch ||
+            if ((!patchTag.hasPatch) ||
+                (!patchTag.isRegular) ||
                 (patchTag.boundaryCount>0) ||
-                patchTag.isSingleCrease) {
+                (patchTag.isSingleCrease)) {
                 if (evIndex) {
                     *evIndex = i;
                 }
@@ -451,6 +460,7 @@ CharacteristicBuilder::nodeIsTerminal(
     return false;
 }
 
+/* // XXXX remove me !
 static void
 printIndices(Index * cvs, int ncvs) {
     int stride = ncvs==16 ? 4 : 5;
@@ -463,6 +473,7 @@ printIndices(Index * cvs, int ncvs) {
     }
     printf("\n");
 }
+*/
 
 int
 CharacteristicBuilder::writeTerminalNode(
@@ -485,13 +496,7 @@ CharacteristicBuilder::writeTerminalNode(
         ConstIndexArray childFaceIndices =
             _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
 
-        Index supportIndices[25];
-
-#if 1
-        for (int k=0; k<25; ++k) {
-            supportIndices[k] = INDEX_INVALID;
-        }
-#endif
+        Index * supportIndices = (int *)(data + sizeof(NodeDescriptor) + sizeof(int));
 
         for (int child=0; child<childFaceIndices.size(); ++child) {
 
@@ -509,14 +514,11 @@ CharacteristicBuilder::writeTerminalNode(
                     assert(patchTag.boundaryCount==0);
 
                     Index localVerts[16], patchVerts[16];
-                    
+
                     childLevel.gatherQuadRegularInteriorPatchPoints(childFaceIndex, localVerts, 0);
 
                     static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
                     offsetAndPermuteIndices(localVerts, 16, levelVertOffset, permuteRegular, patchVerts);
-
-//printf("level=%d face=%d ev=%d child=%d ", levelIndex, faceIndex, evIndex, child);
-//printIndices(patchVerts, 16);
 
                     if (child == ((evIndex+2)%4)) {
                         // patch diagonal to ev : copy all 16 verts (by rows)
@@ -526,19 +528,16 @@ CharacteristicBuilder::writeTerminalNode(
                         for (int k=0; k<4; ++k, rowPtr+=5) {
                             memcpy(rowPtr, &patchVerts[k*4], 4 * sizeof(Index));
                         }
-//printf("diag r=%d c=%d", rowOffs, colOffs);                        
                     } else {
                         // patch with redundant supports : copy either row or column
                         int rowIdx = (5-evIndex)%4,
                             colIdx = (3-evIndex)%4;
-//printf("rowIdx=%d coldIdx=%d\n", rowIdx, colIdx);                        
                         if (child == rowIdx) {
                             // copy row
                             int rowOffs = rowIdx & 0x2 ? 1 : 0,
                                 colOffs = rowIdx==1 || rowIdx==2 ? 1 : 0;
                             Index * rowPtr = &supportIndices[rowOffs * 20 + colOffs];
                             memcpy(rowPtr, &patchVerts[rowOffs * 12], 4 * sizeof(Index));
-//printf("row r=%d c=%d", rowOffs, colOffs);                        
                         } else if (child==colIdx) {
                             // copy column
                             int rowOffs = colIdx & 0x2 ? 1 : 0,
@@ -548,13 +547,10 @@ CharacteristicBuilder::writeTerminalNode(
                             for (int k=0; k<4; ++k, dst+=5, src+=4) {
                                 *dst = *src;
                             }
-//printf("col r=%d c=%d", rowOffs, colOffs);                        
                         } else {
                             assert(0);
                         }
                     }
-//printIndices(supportIndices, 25);
-//printf("\n");
                 } else {
                     assert(evIndex==child);
 
@@ -578,27 +574,18 @@ CharacteristicBuilder::writeTerminalNode(
             }
         }
 
-        ((NodeDescriptor *)data)->Set(Characteristic::NODE_TERMINAL, levelIndex, false, false, 0, 0, 0, 0);
+        short u, v;
+        bool nonquad = computeSubPatchDomain(childLevelIndex, childFaceIndices[0], &u, &v);
+
+        ((NodeDescriptor *)data)->SetTerminal(nonquad, levelIndex, evIndex, u, v);
 
         int * childNodePtr = (int *)(data + sizeof(NodeDescriptor));
         *childNodePtr = childNodeOffset;
 
-        // copy & organize the support CVs
-        Index * supportsPtr = (int *)(data + sizeof(NodeDescriptor) + sizeof(int));
-        for (int k=0; k<25; ++k) {
-            //if ( (evIndex==0 && k==0) ||
-            //     (evIndex==1 && k==4) ||
-            //     (evIndex==2 && k==20) ||
-            //     (evIndex==3 && k==24)) {
-            //    supportsPtr[k] = INDEX_INVALID;
-            //} else {
-            //    supportsPtr[k] = supportIndices[k] + levelVertOffset;
-            //}
-            supportsPtr[k] = supportIndices[k];
-        }
-        
-        printf("");
-        
+        // set EV support index to INVALID
+        static int emptyIndices[4] = {0, 4, 24, 20 };
+        supportIndices[emptyIndices[evIndex]] = INDEX_INVALID;
+
     } else {
         int endNodeSize = writeEndNode(0, 0, nullptr),
             termNodeSize = sizeof(NodeDescriptor) + 1*sizeof(int) + 25*sizeof(int);
@@ -642,7 +629,7 @@ CharacteristicBuilder::WriteCharacteristicTree(
     ch->_treeSize = nbytes / sizeof(int);
     ch->_tree = new int[ch->_treeSize];
 
-#if 1
+#if 0
     for (int i=0; i<ch->_treeSize; ++i) {
         ch->_tree[i] = -1;
     }
@@ -739,7 +726,7 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
     charmap->_localPointStencils = builder.FinalizeStencils();
     charmap->_localPointVaryingStencils = builder.FinalizeVaryingStencils();
 
-    PrintCharacteristicsDigraph(&charmap->_characteristics[0], nchars);
+    //PrintCharacteristicsDigraph(&charmap->_characteristics[0], nchars);
 
     return charmap;
 }

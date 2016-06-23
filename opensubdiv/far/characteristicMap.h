@@ -47,6 +47,12 @@ class StencilTable;
 ///   A tree representation of the hierarchies of feature adaptive sub-patches.
 ///   
 ///
+/// * End nodes :
+///   Nodes describing the surface around isolated features. While all "End-cap"
+///   patches in a characteristic map must be of the same type, user can select
+///   different types (bilinear, B-spline, gregory).
+///   XXXX manuelk TODO bilinear
+///
 /// * Terminal nodes : 
 ///   A sub-patch tree optimization that allows the collapsing portions of a
 ///   topological tree into "terminal" nodes. Faces that contain a single
@@ -109,7 +115,7 @@ public:
         /// \brief Translation constructor
         NodeDescriptor(int value=0) { field0=value; }
 
-        void Set(unsigned short type, unsigned short nonquad,
+        void SetPatch(unsigned short type, unsigned short nonquad,
             unsigned short singleCrease, unsigned short depth,
                 unsigned short boundary, unsigned short transition,
                     short u, short v) {
@@ -121,6 +127,21 @@ public:
                      ((singleCrease ? 1:0) <<  3) |
                      ((nonquad ? 1:0)      <<  2) |
                       (type & 0x3);
+        }
+
+        void SetRecursive(unsigned short depth) {
+            field0 = ((depth & 0xf)        <<  4) |
+                      (NODE_RECURSIVE & 0x3);
+        }
+
+        void SetTerminal(unsigned short nonquad,
+            unsigned short depth, unsigned short evIndex, short u, short v) {
+            field0 = ((v & 0xff)           << 24) |
+                     ((u & 0xff)           << 16) |
+                     ((evIndex & 0xf)      << 12) |
+                     ((depth & 0xf)        <<  4) |
+                     ((nonquad ? 1:0)      <<  2) |
+                      (NODE_TERMINAL & 0x3);
         }
 
         NodeDescriptor & operator=(int value) { field0 = value; return *this; }
@@ -149,6 +170,9 @@ public:
         /// \brief Returns the number of boundary edges in the sub-patch (-1 for invalid mask)
         unsigned short GetBoundaryCount() const;
 
+        /// \brief Returns local index of the extraordinary vertex in a terminal patch
+        unsigned short GetEvIndex() const { return (unsigned short)((field0 >> 12) & 0xf); }
+
         /// \brief True if the parent coarse face is a non-quad
         bool NonQuadRoot() const { return (field0 >> 2) & 0x1; }
 
@@ -162,6 +186,17 @@ public:
         /// \brief Returns the log2 value of the v parameter at the top left corner of
         /// the patch
         unsigned short GetV() const { return (unsigned short)((field0 >> 24) & 0xff); }
+
+        /// \brief Returns the fraction of normalized parametric space covered by the
+        /// sub-patch.
+        float GetParamFraction() const;
+
+        /// The (u,v) pair is normalized to this sub-parametric space.
+        ///
+        /// @param u  u parameter
+        /// @param v  v parameter
+        ///
+        void Normalize( float & u, float & v ) const;
 
         int field0:32;
     };
@@ -241,7 +276,7 @@ public:
     Node GetTreeRootNode() const { return Node(this, 0); }
 
     /// \brief Returns a the node corresponding to the sub-patch at the given (s,t) location
-    Node GetTreeNode(float s, float t) const;
+    Node GetTreeNode(float s, float t, unsigned char * quadrant=0) const;
 
     /// \brief Returns the node at the given offset in the serialized tree
     Node GetTreeNode(int treeOffset) const { return Node(this, treeOffset); }
@@ -279,12 +314,10 @@ public:
     ///
     /// @return        The leaf node pointing to the sub-patch evaluated
     ///
-    Node EvaluateBasis(float s, float t, float wP[], float wDs[], float wDt[]) const;
+    Node EvaluateBasis(float s, float t,
+        float wP[], float wDs[], float wDt[], unsigned char * subpatch=0) const;
 
     //@}
-
-    // XXXX manuelk temporarily exposed for debugging - should be private
-    void evaluateBasis(Node n, float s, float t, float wP[], float wDs[], float wDt[]) const;
 
 private:
 
@@ -362,7 +395,28 @@ private:
                        * _localPointVaryingStencils; // endcap varying stencils (for convenience)
 };
 
+inline float
+Characteristic::NodeDescriptor::GetParamFraction( ) const {
+    if (NonQuadRoot()) {
+        return 1.0f / float( 1 << (GetDepth()-1) );
+    } else {
+        return 1.0f / float( 1 << GetDepth() );
+    }
+}
 
+inline void
+Characteristic::NodeDescriptor::Normalize( float & u, float & v ) const {
+
+    float frac = GetParamFraction();
+
+    // top left corner
+    float pu = (float)GetU()*frac;
+    float pv = (float)GetV()*frac;
+
+    // normalize u,v coordinates
+    u = (u - pu) / frac,
+    v = (v - pv) / frac;
+}
 
 } // end namespace Far
 

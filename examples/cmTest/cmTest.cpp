@@ -72,7 +72,7 @@ enum ShadingMode {
     SHADING_PATCH_NORMAL,
 };
 
-int g_level = 3,
+int g_level = 2,
     g_shadingMode = SHADING_PATCH_TYPE,
     g_tessLevel = 10,
     g_tessLevelMin = 2,
@@ -222,7 +222,7 @@ static float g_patchColors[43][4] = {
         {1.0f,  0.7f,  0.3f,  1.0f},   // gregory basis
         {1.0f,  0.7f,  0.3f,  1.0f},   // gregory basis
 
-        {0.5f,  0.5f,  0.5f,  1.0f},   // terminal
+        {0.4f,  0.4f,  0.6f,  1.0f},   // terminal
 };
 
 static float const *
@@ -372,8 +372,7 @@ createNodeIDs(Far::CharacteristicMap const & charmap,
 
             NodeDesc desc = it.GetDescriptor();
 
-            if (desc.GetType()!=Far::Characteristic::NODE_REGULAR &&
-                desc.GetType()!=Far::Characteristic::NODE_END)
+            if (desc.GetType()==Far::Characteristic::NODE_RECURSIVE)
                 continue;
 
             OpenSubdiv::Far::ConstIndexArray const cvs = it.GetSupportIndices();
@@ -383,7 +382,10 @@ createNodeIDs(Far::CharacteristicMap const & charmap,
 
             float weight = 1.0f / cvs.size();
             for (int k=0; k<cvs.size(); ++k) {
-                center.AddWithWeight(vertexBuffer[cvs[k]], weight);
+                int support = cvs[k];
+                if (support!=Far::INDEX_INVALID) {
+                    center.AddWithWeight(vertexBuffer[support], weight);
+                }
             }
 
             static char buf[16];
@@ -400,7 +402,30 @@ GLControlMeshDisplay g_controlMeshDisplay;
 
 Osd::GLVertexBuffer * g_controlMeshVerts = 0;
 
-#if 1
+static void
+printIndices(Far::Index const * cvs, int ncvs) {
+    int stride = ncvs==16 ? 4 : 5;
+    for (int i=0; i<ncvs; ++i) {
+        if (i>0 && ((i%stride)!=0))
+            printf(" ");
+        if ((i%stride)==0)
+            printf("\n");
+        printf("%*d", 4, cvs[i]);
+    }
+}
+
+static void
+printBasis(float const * basis) {
+    for (int j=0; j<4; ++j) {
+        for (int i=0; i<4; ++i) {
+            printf("%f, ", basis[4*j+i]);
+        }
+        printf("\n");
+    }
+}
+
+#define CREATE_SHAPE_TESS
+#ifdef CREATE_SHAPE_TESS
 
 static void
 createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
@@ -535,13 +560,31 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 float s = (float)x / (float)(tessFactor-1),
                       t = (float)y / (float)(tessFactor-1);
 
-                Far::Characteristic::Node node = ch.EvaluateBasis(s, t, wP, wDs, wDt);
-                
-                if (node.GetDescriptor().GetType()==Far::Characteristic::NODE_TERMINAL) {
-                    continue;
-                }
-                
+                unsigned char quadrant=-1;
+
+                Far::Characteristic::Node node =
+                    ch.EvaluateBasis(s, t, wP, wDs, wDt, &quadrant);
+
                 Far::ConstIndexArray supportIndices = node.GetSupportIndices();
+
+                if (node.GetDescriptor().GetType()==
+                    Far::Characteristic::NODE_TERMINAL) {
+                    Far::Index supports[16];
+                    static int remap[4][16] = {
+                        {0, 1, 2, 3, 5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18},
+                        {1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19},
+                        {6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24},
+                        {5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 23} };
+                    for (int k=0; k<16; ++k) {
+                        supports[k] = supportIndices[remap[quadrant][k]]; 
+                    }
+                    supportIndices = Far::ConstIndexArray(supports, 16);    
+                }
+//printf("s=%f t=%f depth=%d quadrant=%d\n", s, t, node.GetDescriptor().GetDepth(), quadrant);
+//printBasis(wP);
+//printf("supports=");
+//printIndices(supportIndices.begin(), 16);
+//printf("\n------------------------\n");
 
                 // interpolate support points with basis weights
                 LimitFrame limit;
@@ -741,7 +784,7 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     delete refiner;
     delete charmap;
 }
-#else
+#else /* CREATE_SHAPE_TESS */
 static void
 createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
@@ -751,7 +794,7 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
     g_tessMesh = new GLMesh(topo);
 }
-#endif
+#endif /* CREATE_SHAPE_TESS */
 
 //------------------------------------------------------------------------------
 static void
