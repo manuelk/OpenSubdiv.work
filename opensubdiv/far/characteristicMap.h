@@ -41,27 +41,34 @@ class CharacteristicMap;
 class StencilTable;
 
 ///
-///  \brief Stores topology characteristic plans
+///  \brief Stores a characteristic plan
 ///
 /// * Topology trees :
 ///   A tree representation of the hierarchies of feature adaptive sub-patches.
-///   
+///   The tree contains different types of nodes:
 ///
-/// * End nodes :
-///   Nodes describing the surface around isolated features. While all "End-cap"
-///   patches in a characteristic map must be of the same type, user can select
-///   different types (bilinear, B-spline, gregory).
-///   XXXX manuelk TODO bilinear
+///   * Regular nodes :
+///     Describes a regular sub-domain where the limit surface is a bicubic
+///     B-spline.
 ///
-/// * Terminal nodes : 
-///   A sub-patch tree optimization that allows the collapsing portions of a
-///   topological tree into "terminal" nodes. Faces that contain a single
-///   extraordinary vertex, but are otherwise "regular" (no boundaries,
-///   no creases...) generate 3 regular sub-patches for each level of adaptive
-///   isolation.
-///   Each of these sub-patches requires 18 supports, however many of the
-///   supports overlap, so that out of 54 supports, only 24 are not redundant.
-///   Terminal nodes store those supports more efficiently.
+///   * End nodes :
+///     Nodes describing the surface around isolated features. While all "End-cap"
+///     patches in a characteristic map must be of the same type, user can select
+///     different types (bilinear, B-spline, gregory).
+///     XXXX manuelk TODO bilinear
+///
+///   * Recursive nodes :
+///     Connects to 4 child sub-domain nodes.
+///
+///   * Terminal nodes : 
+///     A sub-patch tree optimization that allows the collapsing portions of a
+///     topological tree into "terminal" nodes. Faces that contain a single
+///     extraordinary vertex, but are otherwise "regular" (no boundaries,
+///     no creases...) generate 3 regular sub-patches for each level of adaptive
+///     isolation.
+///     Each of these sub-patches requires 18 supports, however many of the
+///     supports overlap, so that out of 54 supports, only 24 are not redundant.
+///     Terminal nodes store those supports more efficiently.
 ///
 ///  For more details, see: 
 ///  "Efficient GPU Rendering of SUbdivision Surfaces using Adaptive Quadtrees"
@@ -210,6 +217,8 @@ public:
 
     public:
 
+        Node() { }
+
         /// \brief Returns the node descriptor
         NodeDescriptor GetDescriptor() const {
             return _characteristic->_tree[_treeOffset];
@@ -237,16 +246,11 @@ public:
         int GetTreeOffset() const { return _treeOffset; }
 
         /// \brief Returns the next node in the tree (serial traversal)
-        Node operator ++ () {
-            _treeOffset += getNodeSize();
-            return *this;
-        }
+        /// note : loops back to root node
+        Node operator ++ ();
 
         /// \brief Returns true if the nodes are identical
-        bool operator == (Node const & other) const {
-            return _characteristic == other._characteristic &&
-                _treeOffset == other._treeOffset;
-        }
+        bool operator == (Node const & other) const;
 
     private:
 
@@ -336,6 +340,9 @@ private:
 };
 
 
+///
+///  \brief Stores topology characteristic plans
+///
 class CharacteristicMap {
 
 public:
@@ -394,6 +401,21 @@ private:
     StencilTable const * _localPointStencils,        // endcap basis conversion stencils
                        * _localPointVaryingStencils; // endcap varying stencils (for convenience)
 };
+
+inline Characteristic::Node
+Characteristic::Node::operator ++ () {
+    _treeOffset += getNodeSize();
+    if (_treeOffset > GetCharacteristic()->GetTreeSize()) {
+        _treeOffset = 0;
+    }
+    return *this;
+}
+
+inline bool
+Characteristic::Node::operator == (Characteristic::Node const & other) const {
+    return _characteristic == other._characteristic &&
+        _treeOffset == other._treeOffset;
+}
 
 inline float
 Characteristic::NodeDescriptor::GetParamFraction( ) const {

@@ -76,7 +76,8 @@ int g_level = 2,
     g_shadingMode = SHADING_PATCH_TYPE,
     g_tessLevel = 10,
     g_tessLevelMin = 2,
-    g_currentShape = 8; //cube = 8 square = 12 pyramid = 45 torus = 49
+    g_currentShape = 8, //cube = 8 square = 12 pyramid = 45 torus = 49
+    g_useTerminalNodes = true;
 
 int   g_frame = 0,
       g_repeatCount = 0;
@@ -164,13 +165,7 @@ struct LimitFrame {
           deriv2[3];
 };
 
-static float g_palette[7][4] = {{1.0f,  1.0f,  1.0f,  1.0f},
-                                {1.0f,  0.5f,  0.5f,  1.0f},
-                                {0.8f,  0.0f,  0.0f,  1.0f},
-                                {0.0f,  1.0f,  0.0f,  1.0f},
-                                {1.0f,  1.0f,  0.0f,  1.0f},
-                                {1.0f,  0.5f,  0.0f,  1.0f},
-                                {1.0f,  0.7f,  0.3f,  1.0f}};
+//-----------------------------------------------------------------------------
 
 static float g_patchColors[43][4] = {
         {1.0f,  1.0f,  1.0f,  1.0f},   // regular
@@ -265,6 +260,29 @@ getAdaptiveColor(Far::Characteristic::Node node) {
 }
 
 //------------------------------------------------------------------------------
+
+static void
+printIndices(Far::Index const * cvs, int ncvs) {
+    int stride = ncvs==16 ? 4 : 5;
+    for (int i=0; i<ncvs; ++i) {
+        if (i>0 && ((i%stride)!=0))
+            printf(" ");
+        if ((i%stride)==0)
+            printf("\n");
+        printf("%*d", 4, cvs[i]);
+    }
+}
+
+static void
+printBasis(float const * basis) {
+    for (int j=0; j<4; ++j) {
+        for (int i=0; i<4; ++i) {
+            printf("%f, ", basis[4*j+i]);
+        }
+        printf("\n");
+    }
+}
+
 
 static void
 printArray(Far::ConstIndexArray array) {
@@ -396,33 +414,65 @@ createNodeIDs(Far::CharacteristicMap const & charmap,
 
 }
 
+//------------------------------------------------------------------------------
+int g_currentCharIndex = 0,
+    g_currentNodeIndex = -1;
+
+Far::CharacteristicMap const * g_charmap = 0;
+
+Far::Characteristic::Node g_currentNode;
+
+static void
+createNodeNumbers(Far::CharacteristicMap const * charmap,
+    std::vector<Vertex> const & vertexBuffer) {
+
+    if (!charmap) {
+        return;
+    }
+
+    g_currentCharIndex = std::max(0,
+        std::min(g_currentCharIndex, charmap->GetNumCharacteristics()-1));
+
+    g_currentNodeIndex = std::max(-1, g_currentNodeIndex);
+
+    if (g_currentCharIndex>=0 && g_currentNodeIndex>=0) {
+
+        Far::Characteristic const & ch =
+            charmap->GetCharacteristic(g_currentCharIndex);
+
+        Far::Characteristic::Node node = ch.GetTreeNode(0);
+        for (int count=0; node.GetTreeOffset()<ch.GetTreeSize(); ++node, ++count) {
+
+            if (count==g_currentNodeIndex) {
+
+                g_currentNode = node;
+
+                Far::ConstIndexArray supports = node.GetSupportIndices();
+                for (int k=0; k<supports.size(); ++k) {
+
+                    Far::Index vertIndex = supports[k];
+
+                    if (vertIndex!=Far::INDEX_INVALID) {
+                        Vertex const & vert = vertexBuffer[vertIndex];
+                        static char buf[16];
+                        snprintf(buf, 16, "%d", k);
+                        g_font->Print3D(vert.point, buf, 2);
+                    }
+                }
+                return;
+            }
+        }
+    }
+    g_currentNodeIndex = -1;
+}
+
+//------------------------------------------------------------------------------
+
 GLMesh * g_tessMesh = 0;
 
 GLControlMeshDisplay g_controlMeshDisplay;
 
 Osd::GLVertexBuffer * g_controlMeshVerts = 0;
-
-static void
-printIndices(Far::Index const * cvs, int ncvs) {
-    int stride = ncvs==16 ? 4 : 5;
-    for (int i=0; i<ncvs; ++i) {
-        if (i>0 && ((i%stride)!=0))
-            printf(" ");
-        if ((i%stride)==0)
-            printf("\n");
-        printf("%*d", 4, cvs[i]);
-    }
-}
-
-static void
-printBasis(float const * basis) {
-    for (int j=0; j<4; ++j) {
-        for (int i=0; i<4; ++i) {
-            printf("%f, ", basis[4*j+i]);
-        }
-        printf("\n");
-    }
-}
 
 #define CREATE_SHAPE_TESS
 #ifdef CREATE_SHAPE_TESS
@@ -448,8 +498,7 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     g_controlMeshVerts->UpdateData(&shape->verts[0], 0, nverts);
     g_controlMeshDisplay.SetTopology(refiner->GetLevel(0));
 
-    bool useSingleCreasePatches = true,
-         useTerminalNodes = true;
+    bool useSingleCreasePatches = true;
 
     // refine adaptively
     {
@@ -465,11 +514,13 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
     // build characteristics map
 
+    delete g_charmap;
     Far::CharacteristicMapFactory::Options options;
     options.endCapType = g_endCap;
-    options.useTerminalNodes = useTerminalNodes;
+    options.useTerminalNodes = g_useTerminalNodes;
     Far::CharacteristicMap const * charmap =
         Far::CharacteristicMapFactory::Create(*refiner, patchTags, options);
+
     // create vertex primvar data buffer
     std::vector<Vertex> supportsBuffer;
     {
@@ -508,6 +559,12 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     }
 
     delete shape;
+
+    g_charmap = charmap;
+
+    // draw selected node data
+    createNodeNumbers(g_charmap, supportsBuffer);
+
 
     //
     // tessellate
@@ -576,9 +633,9 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                         {6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24},
                         {5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 23} };
                     for (int k=0; k<16; ++k) {
-                        supports[k] = supportIndices[remap[quadrant][k]]; 
+                        supports[k] = supportIndices[remap[quadrant][k]];
                     }
-                    supportIndices = Far::ConstIndexArray(supports, 16);    
+                    supportIndices = Far::ConstIndexArray(supports, 16);
                 }
 //printf("s=%f t=%f depth=%d quadrant=%d\n", s, t, node.GetDescriptor().GetDepth(), quadrant);
 //printBasis(wP);
@@ -601,21 +658,33 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 cross(norm, limit.deriv1, limit.deriv2 );
 
                 //float const * c = g_palette[ch.GetNodeIndex(node) % 7];
-                switch (g_shadingMode) {
-                    case ::SHADING_PATCH_TYPE : {
-                        float const * c = getAdaptiveColor(node);
-                        memcpy(col, c, 3 * sizeof(float));
-                    } break;                        
-                    case ::SHADING_PATCH_COORD : {
-                        float c[3] = {s, t, 0.0f};
-                        memcpy(col, c, 3 * sizeof(float));
-                    } break;
-                    case ::SHADING_PATCH_NORMAL : {
-                        memcpy(col, norm, 3 * sizeof(float));
-                    } break;
-                    default:
-                        
-                        break;
+
+                bool nodeSelected = false;                
+                if (g_charmap && g_currentCharIndex>=0 &&
+                    g_currentNodeIndex>=0 && g_currentNode==node) {
+                    nodeSelected = true;
+                } 
+                
+                if (nodeSelected) {
+                    float selColor[3] = { 0.0f, 255.0f, 0.0f };
+                    memcpy(col, selColor, 3 * sizeof(float));
+                } else {
+                    switch (g_shadingMode) {
+                        case ::SHADING_PATCH_TYPE : {
+                            float const * c = getAdaptiveColor(node);
+                            memcpy(col, c, 3 * sizeof(float));
+                        } break;
+                        case ::SHADING_PATCH_COORD : {
+                            float c[3] = {s, t, 0.0f};
+                            memcpy(col, c, 3 * sizeof(float));
+                        } break;
+                        case ::SHADING_PATCH_NORMAL : {
+                            memcpy(col, norm, 3 * sizeof(float));
+                        } break;
+                        default:
+
+                            break;
+                    }
                 }
 
                 //memcpy(pos, c, 3 * sizeof(float));
@@ -782,9 +851,10 @@ createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 #endif
 
     delete refiner;
-    delete charmap;
 }
+
 #else /* CREATE_SHAPE_TESS */
+
 static void
 createTessMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
@@ -907,6 +977,42 @@ display() {
         double fps = 1.0/g_fpsTimer.GetElapsed();
         g_fpsTimer.Start();
 
+        // display node data
+        if (g_charmap && g_currentCharIndex>=0 && g_currentNodeIndex>=0) {
+
+            static char * nodeTypes[4] =
+                { "NODE_REGULAR", "NODE_RECURSIVE", "NODE_TERMINAL", "NODE_END" };
+
+            Far::Characteristic::NodeDescriptor desc =
+                g_currentNode.GetDescriptor();
+
+            char const * typeName = nodeTypes[desc.GetType()];
+
+
+            int y = 150;
+            switch (desc.GetType()) {
+                case Far::Characteristic::NODE_REGULAR :
+                case Far::Characteristic::NODE_END : {
+                    g_hud.DrawString(g_width/2-200, y,
+                        "char=%d node=%d type=%s depth=%d nonquad=%d u=%d v=%d",
+                            g_currentCharIndex, g_currentNodeIndex, typeName,
+                               desc.GetDepth(), desc.NonQuadRoot(), desc.GetU(), desc.GetV());
+                } break;
+                case Far::Characteristic::NODE_RECURSIVE : {
+                    g_hud.DrawString(g_width/2-200, y, "char=%d node=%d type=%s",
+                        g_currentCharIndex, g_currentNodeIndex, typeName);
+                } break;
+                case Far::Characteristic::NODE_TERMINAL : {
+                    g_hud.DrawString(g_width/2-200, y,
+                        "char=%d node=%d type=%s depth=%d nonquad=%d evIndex=%d u=%d v=%d",
+                            g_currentCharIndex, g_currentNodeIndex, typeName,
+                                desc.GetDepth(), desc.NonQuadRoot(), desc.GetEvIndex(), desc.GetU(), desc.GetV());
+                } break;
+                default:
+                    assert(0);
+            }
+        }
+
         static char const * schemeNames[3] = { "BILINEAR", "CATMARK", "LOOP" };
 
         g_hud.DrawString(10, -120, "Scheme     : %s", schemeNames[g_shapes[g_currentShape].scheme]);
@@ -949,10 +1055,16 @@ callbackShadingMode(int b) {
     rebuildMeshes();
 }
 
+static void
+callbackFontScale(float value, int) {
+
+    g_font->SetFontScale(value);
+}
 
 enum HudCheckBox { kHUD_CB_DISPLAY_CONTROL_MESH_EDGES,
                    kHUD_CB_DISPLAY_CONTROL_MESH_VERTS,
                    kHUD_CB_DISPLAY_NODE_IDS,
+                   kHUD_CB_USE_TERMINAL_NODES,
                   };
 
 
@@ -970,6 +1082,10 @@ callbackCheckBox(bool checked, int button) {
         case kHUD_CB_DISPLAY_CONTROL_MESH_VERTS:
             g_controlMeshDisplay.SetVerticesDisplay(checked);
             break;
+        case kHUD_CB_USE_TERMINAL_NODES: {
+                g_useTerminalNodes = checked;
+                rebuildMeshes();
+            } break;
         default:
             break;
     }
@@ -1050,7 +1166,7 @@ void windowClose(GLFWwindow*) {
 
 //------------------------------------------------------------------------------
 static void
-keyboard(GLFWwindow *, int key, int /* scancode */, int event, int /* mods */) {
+keyboard(GLFWwindow *, int key, int /* scancode */, int event, int mods) {
 
     if (event == GLFW_RELEASE) return;
     if (g_hud.KeyDown(tolower(key))) return;
@@ -1058,6 +1174,7 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int /* mods */) {
     switch (key) {
         case 'Q': g_running = 0; break;
         case 'F': fitFrame(); break;
+
         case '=':  {
             g_tessLevel+=5;
             rebuildMeshes();
@@ -1066,6 +1183,27 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int /* mods */) {
             g_tessLevel = std::max(g_tessLevelMin, g_tessLevel-5);
             rebuildMeshes();
         } break;
+
+        case '[': {
+            if (mods==GLFW_MOD_SHIFT) {
+                --g_currentCharIndex;
+                g_currentNodeIndex=0;
+            } else {
+                --g_currentNodeIndex;
+            }
+            rebuildMeshes();
+        } break;
+
+        case ']': {
+            if (mods==GLFW_MOD_SHIFT) {
+                ++g_currentCharIndex;
+                g_currentNodeIndex=0;
+            } else {
+                ++g_currentNodeIndex;
+            }
+            rebuildMeshes();
+        } break;
+
         case GLFW_KEY_ESCAPE: g_hud.SetVisible(!g_hud.IsVisible()); break;
     }
 }
@@ -1088,8 +1226,11 @@ initHUD() {
     g_hud.AddCheckBox("Control vertices (J)", g_controlMeshDisplay.GetVerticesDisplay(),
         10, 30, callbackCheckBox, kHUD_CB_DISPLAY_CONTROL_MESH_VERTS, 'j');
 
+    g_hud.AddCheckBox("Terminal Nodes ", g_useTerminalNodes==1,
+        10, 50, callbackCheckBox, kHUD_CB_USE_TERMINAL_NODES);
+
     g_hud.AddCheckBox("Node IDs", g_DrawNodeIDs!=0,
-        10, 50, callbackCheckBox, kHUD_CB_DISPLAY_NODE_IDS);
+        10, 70, callbackCheckBox, kHUD_CB_DISPLAY_NODE_IDS);
 
     int endcap_pulldown = g_hud.AddPullDown("End cap (E)", 10, 230, 200, callbackEndCap, 'e');
     //g_hud.AddPullDownButton(endcap_pulldown, "None", Far::ENDCAP_NONE, g_endCap == Far::ENDCAP_NONE);
@@ -1102,6 +1243,9 @@ initHUD() {
     g_hud.AddPullDownButton(shading_pulldown, "Patch Type", ::SHADING_PATCH_TYPE, g_shadingMode == ::SHADING_PATCH_TYPE);
     g_hud.AddPullDownButton(shading_pulldown, "Patch Coord", ::SHADING_PATCH_COORD, g_shadingMode == ::SHADING_PATCH_COORD);
     g_hud.AddPullDownButton(shading_pulldown, "Patch Normal", ::SHADING_PATCH_NORMAL, g_shadingMode == ::SHADING_PATCH_NORMAL);
+
+    g_hud.AddSlider("Font Scale", 0.0f, 0.1f, 0.01f,
+                    -800, -50, 100, false, callbackFontScale, 0);
 
     for (int i = 1; i < 11; ++i) {
         char level[16];
