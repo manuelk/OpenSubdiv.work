@@ -250,7 +250,10 @@ Characteristic::GetTreeNode(float s, float t, unsigned char * quadrant) const {
 //printf("  Recursive corner=%d\n", corner);
         } else if (ntype==NODE_TERMINAL) {
 //printf(" Terminal : %f %f corner=%d ev=%d\n", s, t, corner, desc.GetEvIndex());
-            if (corner==3) corner=2; else if (corner==2) corner=3;
+
+            //static int const permute[] = { 0, 1, 3, 2 };
+            //corner = permute[corner];
+
             if (corner==desc.GetEvIndex()) {
                 // traverse to end-cap patch
                 offset = _tree[offset + 1];
@@ -318,11 +321,12 @@ Characteristic::EvaluateBasis(float s, float t,
        case NODE_TERMINAL : {
             unsigned short u = desc.GetU(),
                            v = desc.GetV();
+            // ~ bitwise winding order !!!
             switch (quadrant) {
                 case 0 :                 break;
                 case 1 : { u+=1;       } break;
-                case 2 : { u+=1; v+=1; } break;
-                case 3 : {       v+=1; } break;
+                case 2 : {       v+=1; } break;
+                case 3 : { u+=1; v+=1; } break;
             }
             param.Set(/*face id*/ 0, u, v, depth+1, desc.NonQuadRoot(), 0, 0);
             internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);

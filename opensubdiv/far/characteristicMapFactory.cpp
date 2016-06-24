@@ -40,20 +40,6 @@ namespace Far {
 
 inline bool isSharpnessEqual(float s1, float s2) { return (s1 == s2); }
 
-//  Indexing sharpnesses
-static inline int
-assignSharpnessIndex(float sharpness, std::vector<float> & sharpnessValues) {
-
-    // linear search : we don't expect too many different sharpness values...
-    for (int i=0; i<(int)sharpnessValues.size(); ++i) {
-        if (isSharpnessEqual(sharpnessValues[i], sharpness)) {
-            return i;
-        }
-    }
-    sharpnessValues.push_back(sharpness);
-    return (int)sharpnessValues.size()-1;
-}
-
 static inline void
 offsetAndPermuteIndices(Index const indices[], int count,
                         Index offset, int const permutation[],
@@ -455,7 +441,9 @@ CharacteristicBuilder::nodeIsTerminal(
                 return false;
             }
         }
-        return true;
+        if (irregular==1) {
+            return true;
+        }
     }
     return false;
 }
@@ -577,7 +565,12 @@ CharacteristicBuilder::writeTerminalNode(
         short u, v;
         bool nonquad = computeSubPatchDomain(childLevelIndex, childFaceIndices[0], &u, &v);
 
-        ((NodeDescriptor *)data)->SetTerminal(nonquad, levelIndex, evIndex, u, v);
+        // convert from CCW winding to ^ bitwise order
+        static int const permute[] = { 0, 1, 3, 2 };
+        unsigned short cornerIndex = permute[evIndex];
+        //unsigned short cornerIndex = evIndex;
+
+        ((NodeDescriptor *)data)->SetTerminal(nonquad, levelIndex, cornerIndex, u, v);
 
         int * childNodePtr = (int *)(data + sizeof(NodeDescriptor));
         *childNodePtr = childNodeOffset;
