@@ -59,8 +59,9 @@ class StencilTable;
 ///
 ///   * Recursive nodes :
 ///     Connects to 4 child sub-domain nodes.
+///     See domain winding notes.
 ///
-///   * Terminal nodes : 
+///   * Terminal nodes :
 ///     A sub-patch tree optimization that allows the collapsing portions of a
 ///     topological tree into "terminal" nodes. Faces that contain a single
 ///     extraordinary vertex, but are otherwise "regular" (no boundaries,
@@ -70,7 +71,24 @@ class StencilTable;
 ///     supports overlap, so that out of 54 supports, only 24 are not redundant.
 ///     Terminal nodes store those supports more efficiently.
 ///
-///  For more details, see: 
+/// Notes:
+///
+///   * Domain winding
+///     Sub-domain winding in topology trees does not follow the general
+///     sequential winding order used elsewhere in OpenSubdiv. Instead, the
+///     domains of sub-patches are stored with a "^ bitwise" winding order.
+///     Winding patterns:
+///       Sequential    ^ Bitwise          
+///       +---+---+     +---+---+          
+///       | 3 | 2 |     | 2 | 3 |          
+///       +---+---+     +---+---+          
+///       | 0 | 1 |     | 0 | 1 |          
+///       +---+---+     +---+---+          
+///     This winding pattern allows for faster traversal by using simple
+///     bitwise operators.
+///   XXXX manuelk GPU-side gains may not be worth the complexity...
+///
+///  For more details, see:
 ///  "Efficient GPU Rendering of SUbdivision Surfaces using Adaptive Quadtrees"
 ///    W. Brainer, T. Foley, M. Mkraemer, H. Moreton, M. Niessner - Siggraph 2016
 ///
@@ -257,7 +275,7 @@ public:
         int const * getNodeData() const {
             return &_characteristic->_tree[_treeOffset];
         }
-        
+
         int getNodeSize() const;
 
         friend class Characteristic;

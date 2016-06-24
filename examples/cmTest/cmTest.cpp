@@ -427,7 +427,7 @@ Far::CharacteristicMap const * g_charmap = 0;
 
 Far::Characteristic::Node g_currentNode;
 
-static int remap[4][16] = {
+static int remapTerminalIndices[4][16] = {
     {0, 1, 2, 3, 5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18},
     {1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19},
     {5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 23}, // note : winding order is 0, 1, 3, 2
@@ -453,7 +453,7 @@ createNodeNumbers(Far::CharacteristicMap const * charmap,
             charmap->GetCharacteristic(g_currentCharIndex);
 
         Far::Characteristic::Node node = ch.GetTreeNode(0);
-        
+
         for (int count=0; node.GetTreeOffset()<ch.GetTreeSize(); ++node, ++count) {
 
             if (count==g_currentNodeIndex) {
@@ -461,8 +461,7 @@ createNodeNumbers(Far::CharacteristicMap const * charmap,
                 g_currentNode = node;
 
                 Far::ConstIndexArray supports = node.GetSupportIndices();
-
-#if 1
+#if 0
                 Far::Characteristic::NodeDescriptor desc = node.GetDescriptor();
 
                 if (desc.GetType()==Far::Characteristic::NODE_TERMINAL) {
@@ -472,7 +471,7 @@ createNodeNumbers(Far::CharacteristicMap const * charmap,
                          printf("\nchar=%d node=%d quadrant=%d ev=%d",
                              g_currentCharIndex, g_currentNodeIndex, quadrant, desc.GetEvIndex());
                          for (int k=0; k<16; ++k) {
-                             quadSupports[k] = supports[remap[quadrant][k]];
+                             quadSupports[k] = supports[remapTerminalIndices[quadrant][k]];
                          }
                          printIndices(quadSupports, 16);
                     }
@@ -480,16 +479,15 @@ createNodeNumbers(Far::CharacteristicMap const * charmap,
                     fflush(stdout);
                 }
 #endif
-                
                 for (int k=0; k<supports.size(); ++k) {
 
                     Far::Index vertIndex = supports[k];
 
                     if (vertIndex!=Far::INDEX_INVALID) {
                         Vertex const & vert = vertexBuffer[vertIndex];
-                        
+
                         float position[3] = { vert.point[0], vert.point[1], vert.point[2] + k*0.001f, };
-                        
+
                         static char buf[16];
                         snprintf(buf, 16, "%d", k);
                         g_font->Print3D(position, buf, 2);
@@ -508,79 +506,88 @@ GLMesh * g_tessMesh = 0;
 
 static void
 createTessMesh(Far::CharacteristicMap const * charmap, int tessFactor,
-    std::vector<float> positions, std::vector<float> normals, std::vector<float> colors) {
-
-    int nchars = charmap->GetNumCharacteristics(),
-        ntriangles = 2 * (tessFactor-1) * (tessFactor-1) * nchars;
-
-    // create tess mesh
-
-    struct GLMesh::Topology topo;
-    topo.positions = new float[ntriangles * 3 * 3];
-    topo.normals = new float[ntriangles * 3 * 3];
-    topo.colors = new float[ntriangles * 3 * 3];
-    topo.nverts = ntriangles * 3;
-
-    float * pos = topo.positions,
-          * norm = topo.normals,
-          * col = topo.colors;
-
-    for (int i=0, charOffset=0; i<nchars; ++i) {
-
-        Far::Characteristic const & ch = charmap->GetCharacteristic(i);
-
-        if (ch.GetTreeSize()==0) {
-            continue;
-        }
-
-        // generate indices
-        for (int y=0; y<(tessFactor-1); ++y) {
-            for (int x=0; x<(tessFactor-1); ++x) {
-                                                                     //  A o----o B
-                int A = 3 * (charOffset + y * tessFactor + x),       //    |\   |
-                    B = 3 * (charOffset + y * tessFactor + x+1),     //    | \  |
-                    C = 3 * (charOffset + (y+1) * tessFactor + x),   //    |  \ |
-                    D = 3 * (charOffset + (y+1) * tessFactor + x+1); //    |   \|
-                                                                     //  C o----o D
-                assert(A < positions.size() && B < positions.size() &&
-                    C < positions.size() && D < positions.size());
-
-                // first triangle
-                memcpy(pos, &positions[A],  3 * sizeof(float)); pos+=3;
-                memcpy(norm, &normals[A], 3 * sizeof(float)); norm+=3;
-                memcpy(col, &colors[A],  3 * sizeof(float)); col+=3;
-
-                memcpy(pos, &positions[D],  3 * sizeof(float)); pos+=3;
-                memcpy(norm, &normals[D], 3 * sizeof(float)); norm+=3;
-                memcpy(col, &colors[D],  3 * sizeof(float)); col+=3;
-
-                memcpy(pos, &positions[C],  3 * sizeof(float)); pos+=3;
-                memcpy(norm, &normals[C], 3 * sizeof(float)); norm+=3;
-                memcpy(col, &colors[C],  3 * sizeof(float)); col+=3;
-
-                // second triangle
-                memcpy(pos, &positions[A],  3 * sizeof(float)); pos+=3;
-                memcpy(norm, &normals[A], 3 * sizeof(float)); norm+=3;
-                memcpy(col, &colors[A],  3 * sizeof(float)); col+=3;
-
-                memcpy(pos, &positions[B],  3 * sizeof(float)); pos+=3;
-                memcpy(norm, &normals[B], 3 * sizeof(float)); norm+=3;
-                memcpy(col, &colors[B],  3 * sizeof(float)); col+=3;
-
-                memcpy(pos, &positions[D],  3 * sizeof(float)); pos+=3;
-                memcpy(norm, &normals[D], 3 * sizeof(float)); norm+=3;
-                memcpy(col, &colors[D],  3 * sizeof(float)); col+=3;
-            }
-        }
-        charOffset += tessFactor * tessFactor;
-    }
+    std::vector<float> positions, std::vector<float> normals, std::vector<float> colors,
+        bool createPointsMesh=false) {
 
     delete g_tessMesh;
-    g_tessMesh = new GLMesh(topo);
+    if (createPointsMesh) {
+        struct GLMesh::Topology topo;
+        topo.positions = &positions[0];
+        topo.normals = &normals[0];
+        topo.colors = &colors[0];
+        topo.nverts = (int)positions.size()/3;
+        g_tessMesh = new GLMesh(topo, GLMesh::DRAW_POINTS);
+    } else {
+        int nchars = charmap->GetNumCharacteristics(),
+            ntriangles = 2 * (tessFactor-1) * (tessFactor-1) * nchars;
 
-    delete [] topo.positions;
-    delete [] topo.normals;
-    delete [] topo.colors;
+        // create tess mesh
+
+        struct GLMesh::Topology topo;
+        topo.positions = new float[ntriangles * 3 * 3];
+        topo.normals = new float[ntriangles * 3 * 3];
+        topo.colors = new float[ntriangles * 3 * 3];
+        topo.nverts = ntriangles * 3;
+
+        float * pos = topo.positions,
+              * norm = topo.normals,
+              * col = topo.colors;
+
+        for (int i=0, charOffset=0; i<nchars; ++i) {
+
+            Far::Characteristic const & ch = charmap->GetCharacteristic(i);
+
+            if (ch.GetTreeSize()==0) {
+                continue;
+            }
+
+            // generate indices
+            for (int y=0; y<(tessFactor-1); ++y) {
+                for (int x=0; x<(tessFactor-1); ++x) {
+                                                                         //  A o----o B
+                    int A = 3 * (charOffset + y * tessFactor + x),       //    |\   |
+                        B = 3 * (charOffset + y * tessFactor + x+1),     //    | \  |
+                        C = 3 * (charOffset + (y+1) * tessFactor + x),   //    |  \ |
+                        D = 3 * (charOffset + (y+1) * tessFactor + x+1); //    |   \|
+                                                                         //  C o----o D
+                    assert(A < positions.size() && B < positions.size() &&
+                        C < positions.size() && D < positions.size());
+
+                    // first triangle
+                    memcpy(pos, &positions[A],  3 * sizeof(float)); pos+=3;
+                    memcpy(norm, &normals[A], 3 * sizeof(float)); norm+=3;
+                    memcpy(col, &colors[A],  3 * sizeof(float)); col+=3;
+
+                    memcpy(pos, &positions[D],  3 * sizeof(float)); pos+=3;
+                    memcpy(norm, &normals[D], 3 * sizeof(float)); norm+=3;
+                    memcpy(col, &colors[D],  3 * sizeof(float)); col+=3;
+
+                    memcpy(pos, &positions[C],  3 * sizeof(float)); pos+=3;
+                    memcpy(norm, &normals[C], 3 * sizeof(float)); norm+=3;
+                    memcpy(col, &colors[C],  3 * sizeof(float)); col+=3;
+
+                    // second triangle
+                    memcpy(pos, &positions[A],  3 * sizeof(float)); pos+=3;
+                    memcpy(norm, &normals[A], 3 * sizeof(float)); norm+=3;
+                    memcpy(col, &colors[A],  3 * sizeof(float)); col+=3;
+
+                    memcpy(pos, &positions[B],  3 * sizeof(float)); pos+=3;
+                    memcpy(norm, &normals[B], 3 * sizeof(float)); norm+=3;
+                    memcpy(col, &colors[B],  3 * sizeof(float)); col+=3;
+
+                    memcpy(pos, &positions[D],  3 * sizeof(float)); pos+=3;
+                    memcpy(norm, &normals[D], 3 * sizeof(float)); norm+=3;
+                    memcpy(col, &colors[D],  3 * sizeof(float)); col+=3;
+                }
+            }
+            charOffset += tessFactor * tessFactor;
+        }
+        g_tessMesh = new GLMesh(topo);
+
+        delete [] topo.positions;
+        delete [] topo.normals;
+        delete [] topo.colors;
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -745,7 +752,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                     Far::Index supports[16];
 
                     for (int k=0; k<16; ++k) {
-                        supports[k] = supportIndices[remap[quadrant][k]];
+                        supports[k] = supportIndices[remapTerminalIndices[quadrant][k]];
                     }
                     supportIndices = Far::ConstIndexArray(supports, 16);
                 }
@@ -760,10 +767,10 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 limit.Clear();
                 for (int k=0; k<supportIndices.size(); ++k) {
                     assert(supportIndices[k]<(int)supportsBuffer.size());
-                    
+
                     if (supportIndices[k]==-1)
                         continue;
-                    
+
                     Vertex const & support = supportsBuffer[supportIndices[k]];
                     limit.AddWithWeight(support, wP[k], wDs[k], wDt[k]);
                 }
@@ -775,19 +782,19 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
                 //float const * c = g_palette[ch.GetNodeIndex(node) % 7];
 
-                bool nodeSelected = false;                
+                bool nodeSelected = false;
                 if (g_charmap && g_currentCharIndex>=0 &&
                     g_currentNodeIndex>=0 && g_currentNode==node) {
                     nodeSelected = true;
-                } 
-                
+                }
+
                 if (nodeSelected) {
                     static float selColor[3] = { 0.0f, 255.0f, 0.0f },
                                  quadColors[4][3] = {{ 255.0f,    0.0f,   0.0f },
                                                      {   0.0f,  255.0f,   0.0f },
                                                      {   0.0f,    0.0f, 255.0f },
                                                      {  255.0f, 255.0f,   0.0f }};
-                    
+
                     if (desc.GetType()==Far::Characteristic::NODE_TERMINAL) {
                         memcpy(col, quadColors[quadrant], 3 * sizeof(float));
                     } else {
@@ -895,15 +902,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         }
     }
 
-    struct GLMesh::Topology topo;
-    topo.positions = &positions[0];
-    topo.normals = &normals[0];
-    topo.colors = &colors[0];
-    topo.nverts = (int)positions.size()/3;
-
-    delete g_tessMesh;
-    g_tessMesh = new GLMesh(topo, GLMesh::DRAW_POINTS);
-
+    createTessMesh(charmap, tessFactor, positions, normals, colors, true);
 #endif /* TESS_DOMAIN */
 
     delete refiner;
@@ -1287,8 +1286,8 @@ initHUD() {
     g_hud.AddCheckBox("Control vertices (J)", g_controlMeshDisplay.GetVerticesDisplay(),
         10, 30, callbackCheckBox, kHUD_CB_DISPLAY_CONTROL_MESH_VERTS, 'j');
 
-    g_hud.AddCheckBox("Terminal Nodes ", g_useTerminalNodes==1,
-        10, 50, callbackCheckBox, kHUD_CB_USE_TERMINAL_NODES);
+    g_hud.AddCheckBox("Terminal Nodes (T)", g_useTerminalNodes==1,
+        10, 50, callbackCheckBox, kHUD_CB_USE_TERMINAL_NODES, 't');
 
     g_hud.AddCheckBox("Node IDs", g_DrawNodeIDs!=0,
         10, 70, callbackCheckBox, kHUD_CB_DISPLAY_NODE_IDS);

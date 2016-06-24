@@ -226,7 +226,7 @@ CharacteristicBuilder::computeSubPatchDomain(int levelIndex, Index faceIndex, sh
 
         if (parentLevel.getFaceVertices(parentFaceIndex).size() == 4) {
             switch (childIndexInParent) {
-                case 0 :                     break;
+                case 0 :                     break; // CCW winding
                 case 1 : { u+=ofs;         } break;
                 case 2 : { u+=ofs; v+=ofs; } break;
                 case 3 : {         v+=ofs; } break;
@@ -377,7 +377,6 @@ CharacteristicBuilder::writeEndNode(
     return dataSize;
 }
 
-
 int
 CharacteristicBuilder::writeRecursiveNode(
     int levelIndex, int faceIndex, int offset, uint8_t * data) const {
@@ -394,12 +393,12 @@ CharacteristicBuilder::writeRecursiveNode(
 
         for (int i=0; i<children.size(); ++i) {
 
-            // permute from CCW to Z pattern to match bitwise ~= traversal ???
-            static int const permute[] = { 0, 1, 3, 2 };
+            // convert CCW winding to match bitwise ^= traversal
+            static int const permuteWinding[] = { 0, 1, 3, 2 };
 
             int childOffset = offset + dataSize/sizeof(int);
             dataSize += writeNode(levelIndex+1, children[i], childOffset, data+dataSize);
-            childrenOffsets[permute[i]] = childOffset;
+            childrenOffsets[permuteWinding[i]] = childOffset;
         }
     } else {
         ConstIndexArray children = _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
@@ -448,20 +447,47 @@ CharacteristicBuilder::nodeIsTerminal(
     return false;
 }
 
-/* // XXXX remove me !
-static void
-printIndices(Index * cvs, int ncvs) {
-    int stride = ncvs==16 ? 4 : 5;
-    for (int i=0; i<ncvs; ++i) {
-        if (i>0 && ((i%stride)!=0))
-            printf(" ");
-        if ((i%stride)==0)
-            printf("\n");
-        printf("%*d", 4, cvs[i]);
+// Copy indices from 16-wide bicubic basis into 25-wide terminal node.
+// Extraordinary vertex ('X') left "undefined"
+//
+//      Diagonal               Row                  Column
+// +----------------+   +---+------------+   +----------------+
+// | X   .  .  .  . |   | X | o  o  o  o |   | X   .  .  .  . |
+// |   +------------+   |   +------------+   +---+            |
+// | . | o  o  o  o |   | .   .  .  .  . |   | o | .  .  .  . |
+// | . | o  o  o  o |   | .   .  .  .  . |   | o | .  .  .  . |
+// | . | o  o  o  o |   | .   .  .  .  . |   | o | .  .  .  . |
+// | . | o  o  o  o |   | .   .  .  .  . |   | o | .  .  .  . |
+// +---+------------+   +----------------+   +---+------------+
+inline void
+copyDiagonalIndices(int evIndex, Index const * src, Index * dst) {
+    // copy 16 verts by rows
+    int rowOffs = evIndex < 2 ? 5 : 0,
+        colOffs = evIndex==1 || evIndex==2 ? 0 : 1;
+    Index * rowPtr = dst + rowOffs + colOffs;
+    for (int k=0; k<4; ++k, rowPtr+=5) {
+        memcpy(rowPtr, &src[k*4], 4 * sizeof(Index));
     }
-    printf("\n");
 }
-*/
+
+inline void
+copyRowIndices(int rowIndex, Index const * src, Index * dst) {
+    int rowOffs = rowIndex > 1 ? 1 : 0,
+        colOffs = rowIndex==1 || rowIndex==2 ? 1 : 0;
+    Index * rowPtr = dst + rowOffs * 20 + colOffs;
+    memcpy(rowPtr, &src[rowOffs * 12], 4 * sizeof(Index));
+}
+
+inline void
+copyColIndices(int colIndex, Index const * src, Index * dst) {
+    int rowOffs = colIndex > 1 ? 1 : 0,
+        colOffs = colIndex==1 || colIndex==2 ? 1 : 0;
+    src += colOffs * 3;
+    dst += rowOffs * 5 + colOffs * 4;
+    for (int i=0; i<4; ++i, dst+=5, src+=4) {
+        *dst = *src;
+    }
+}
 
 int
 CharacteristicBuilder::writeTerminalNode(
@@ -484,8 +510,8 @@ CharacteristicBuilder::writeTerminalNode(
         ConstIndexArray childFaceIndices =
             _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
 
+        // gather support indices for the 3 sub-patches
         Index * supportIndices = (int *)(data + sizeof(NodeDescriptor) + sizeof(int));
-
         for (int child=0; child<childFaceIndices.size(); ++child) {
 
             int childFaceIndex = childFaceIndices[child];
@@ -493,95 +519,64 @@ CharacteristicBuilder::writeTerminalNode(
             PatchFaceTag const & patchTag =
                 _levelPatchTags[childLevelIndex][childFaceIndex];
 
-            if (patchTag.hasPatch) {
+            if (patchTag.hasPatch && patchTag.isRegular) {
+                // child is a regular patch : get the supports
+                Index localVerts[16], patchVerts[16];
+                childLevel.gatherQuadRegularInteriorPatchPoints(childFaceIndex, localVerts, 0);
+                static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
+                offsetAndPermuteIndices(localVerts, 16, levelVertOffset, permuteRegular, patchVerts);
 
-                if (patchTag.isRegular) {
-
-                    // domain quadrant is a regular patch : grab supports
-
-                    assert(patchTag.boundaryCount==0);
-
-                    Index localVerts[16], patchVerts[16];
-
-                    childLevel.gatherQuadRegularInteriorPatchPoints(childFaceIndex, localVerts, 0);
-
-                    static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
-                    offsetAndPermuteIndices(localVerts, 16, levelVertOffset, permuteRegular, patchVerts);
-
-                    if (child == ((evIndex+2)%4)) {
-                        // patch diagonal to ev : copy all 16 verts (by rows)
-                        int rowOffs = evIndex < 2 ? 5 : 0,
-                            colOffs = evIndex==1 || evIndex==2 ? 0 : 1;
-                        Index * rowPtr = &supportIndices[rowOffs + colOffs];
-                        for (int k=0; k<4; ++k, rowPtr+=5) {
-                            memcpy(rowPtr, &patchVerts[k*4], 4 * sizeof(Index));
-                        }
-                    } else {
-                        // patch with redundant supports : copy either row or column
-                        int rowIdx = (5-evIndex)%4,
-                            colIdx = (3-evIndex)%4;
-                        if (child == rowIdx) {
-                            // copy row
-                            int rowOffs = rowIdx & 0x2 ? 1 : 0,
-                                colOffs = rowIdx==1 || rowIdx==2 ? 1 : 0;
-                            Index * rowPtr = &supportIndices[rowOffs * 20 + colOffs];
-                            memcpy(rowPtr, &patchVerts[rowOffs * 12], 4 * sizeof(Index));
-                        } else if (child==colIdx) {
-                            // copy column
-                            int rowOffs = colIdx & 0x2 ? 1 : 0,
-                                colOffs = colIdx==1 || colIdx==2 ? 1 : 0;
-                            Index * src = &patchVerts[colOffs * 3],
-                                  * dst = &supportIndices[rowOffs * 5 + colOffs * 4];
-                            for (int k=0; k<4; ++k, dst+=5, src+=4) {
-                                *dst = *src;
-                            }
-                        } else {
-                            assert(0);
-                        }
-                    }
+                if (child == ((evIndex+2)%4)) {
+                    copyDiagonalIndices(evIndex, patchVerts, supportIndices);
                 } else {
-                    assert(evIndex==child);
-
-                    // save the offset to the child node
-                    childNodeOffset = offset + dataSize / sizeof(int);
-
-                    // domain quadrant contains the EV and we have reached the
-                    // max level of isolation : append an end-cap patch
-                    dataSize += writeEndNode(childLevelIndex, childFaceIndex, data + dataSize);
+                    int rowIdx = (5-evIndex)%4,
+                        colIdx = (3-evIndex)%4;
+                    if (child == rowIdx) {
+                        copyRowIndices(rowIdx, patchVerts, supportIndices);
+                    } else if (child==colIdx) {
+                        copyColIndices(colIdx, patchVerts, supportIndices);
+                    } else {
+                        assert(0);
+                    }
                 }
             } else {
-                // this domain quadrant contains the EV, but we haven't reached
-                // the max level of isolation : append another terminal node.
+                // child contains the EV
                 assert(evIndex==child);
 
-                // save the offset to the child node
+                // save the offset to the end-cap child node
                 childNodeOffset = offset + dataSize / sizeof(int);
 
-                dataSize += writeTerminalNode(childLevelIndex,
-                    childFaceIndex, evIndex, childNodeOffset, data+dataSize);
+                if (patchTag.hasPatch) {
+                    // we have reached the maximum isolation : end-cap node
+                    dataSize += writeEndNode(childLevelIndex, childFaceIndex, data + dataSize);
+                } else {
+                    dataSize += writeTerminalNode(childLevelIndex,
+                        childFaceIndex, evIndex, childNodeOffset, data+dataSize);
+                }
             }
         }
+        // set support index for the EV to INVALID
+        static int emptyIndices[4] = {0, 4, 24, 20 };
+        supportIndices[emptyIndices[evIndex]] = INDEX_INVALID;
+
 
         short u, v;
         bool nonquad = computeSubPatchDomain(childLevelIndex, childFaceIndices[0], &u, &v);
 
-        // convert from CCW winding to ^ bitwise order
-        static int const permute[] = { 0, 1, 3, 2 };
-        unsigned short cornerIndex = permute[evIndex];
-        //unsigned short cornerIndex = evIndex;
+        // convert from CCW winding to ^ bitwise order (0, 1, 3, 2)
+        static int const permuteWinding[] = { 0, 1, 3, 2 };
 
-        ((NodeDescriptor *)data)->SetTerminal(nonquad, levelIndex, cornerIndex, u, v);
+        ((NodeDescriptor *)data)->SetTerminal(nonquad, levelIndex, permuteWinding[evIndex], u, v);
 
         int * childNodePtr = (int *)(data + sizeof(NodeDescriptor));
         *childNodePtr = childNodeOffset;
 
-        // set EV support index to INVALID
-        static int emptyIndices[4] = {0, 4, 24, 20 };
-        supportIndices[emptyIndices[evIndex]] = INDEX_INVALID;
-
     } else {
+        // XXXX this shoudld be a static method on Node
         int endNodeSize = writeEndNode(0, 0, nullptr),
             termNodeSize = sizeof(NodeDescriptor) + 1*sizeof(int) + 25*sizeof(int);
+        // we don't need to recurse here : we know that there will always be
+        // one terminal node for each level of isolation left and one end-cap node
         return dataSize + termNodeSize * (_refiner.GetMaxLevel()-levelIndex-1) + endNodeSize;
     }
 
