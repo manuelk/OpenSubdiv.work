@@ -127,7 +127,7 @@ GLMesh::~GLMesh() {
 }
 
 void
-GLMesh::Draw(GLuint xformUB, GLuint lightingUB) const {
+GLMesh::Draw(GLuint xformUB, GLuint lightingUB, bool wireframe) const {
 
     glUseProgram(_program);
 
@@ -146,22 +146,20 @@ GLMesh::Draw(GLuint xformUB, GLuint lightingUB) const {
     glEnableVertexAttribArray(_attrColor);
     glVertexAttribPointer(_attrColor, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
 
-
-#define wireframe
-#ifdef wireframe
-    glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
-    glPointSize(2.0f);
-    glLineWidth(1.0f);
-    glEnable( GL_LINE_SMOOTH );
-    if (_drawMode==DRAW_POINTS) {
-        glDrawArrays(GL_POINTS, 0, _numVertices);
-    } else if (_drawMode==DRAW_WIREFRAME) {
+    if (wireframe) {
+        glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+        glPointSize(2.0f);
+        glLineWidth(1.0f);
+        glEnable( GL_LINE_SMOOTH );
+        if (_drawMode==DRAW_POINTS) {
+            glDrawArrays(GL_POINTS, 0, _numVertices);
+        } else if (_drawMode==DRAW_WIREFRAME) {
+            glDrawArrays(GL_TRIANGLES, 0, _numVertices);
+        }
+        glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+    } else {
         glDrawArrays(GL_TRIANGLES, 0, _numVertices);
     }
-    glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
-#else
-    glDrawArrays(GL_TRIANGLES, 0, _numVertices);
-#endif
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);

@@ -66,6 +66,10 @@ GLFWmonitor* g_primary=0;
 
 using namespace OpenSubdiv;
 
+enum DisplayStyle { DISPLAY_STYLE_WIRE,
+                    DISPLAY_STYLE_SHADED,
+                    DISPLAY_STYLE_WIRE_ON_SHADED };
+
 enum ShadingMode {
     SHADING_PATCH_TYPE,
     SHADING_PATCH_COORD,
@@ -89,7 +93,8 @@ Far::EndCapType g_endCap = Far::ENDCAP_BSPLINE_BASIS;
 // GUI variables
 int   g_fullscreen = 0,
       g_mbutton[3] = {0, 0, 0},
-      g_running = 1;
+      g_running = 1,
+      g_displayStyle = DISPLAY_STYLE_WIRE;
 
 float g_rotate[2] = {0, 0},
       g_dolly = 5,
@@ -961,8 +966,8 @@ display() {
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
     // Draw stuff ------------------------------------------
-
-    g_tessMesh->Draw(g_transformUB, g_lightingUB);
+    bool wireframe = g_displayStyle == DISPLAY_STYLE_WIRE;
+    g_tessMesh->Draw(g_transformUB, g_lightingUB, wireframe);
 
     // draw 3D strings (if any)
     if (g_font) {
@@ -1027,6 +1032,11 @@ display() {
 }
 
 //------------------------------------------------------------------------------
+static void
+callbackDisplayStyle(int b) {
+    g_displayStyle = b;
+}
+
 static void
 callbackModel(int m) {
     if (m < 0)
@@ -1232,17 +1242,36 @@ initHUD() {
     g_hud.AddCheckBox("Node IDs", g_DrawNodeIDs!=0,
         10, 70, callbackCheckBox, kHUD_CB_DISPLAY_NODE_IDS);
 
-    int endcap_pulldown = g_hud.AddPullDown("End cap (E)", 10, 230, 200, callbackEndCap, 'e');
-    //g_hud.AddPullDownButton(endcap_pulldown, "None", Far::ENDCAP_NONE, g_endCap == Far::ENDCAP_NONE);
-    //g_hud.AddPullDownButton(endcap_pulldown, "Bilinear", Far::ENDCAP_BILINEAR_BASIS, g_endCap == Far::ENDCAP_BILINEAR_BASIS);
-    g_hud.AddPullDownButton(endcap_pulldown, "BSpline", Far::ENDCAP_BSPLINE_BASIS, g_endCap == Far::ENDCAP_BSPLINE_BASIS);
-    g_hud.AddPullDownButton(endcap_pulldown, "GregoryBasis", Far::ENDCAP_GREGORY_BASIS, g_endCap == Far::ENDCAP_GREGORY_BASIS);
-    //g_hud.AddPullDownButton(endcap_pulldown, "LegacyGregory", Far::ENDCAP_LEGACY_GREGORY, g_endCap == Far::ENDCAP_LEGACY_GREGORY);
+    int endcap_pulldown = g_hud.AddPullDown(
+        "End cap (E)", 10, 230, 200, callbackEndCap, 'e');
+    //g_hud.AddPullDownButton(endcap_pulldown, "None",
+    //    Far::ENDCAP_NONE, g_endCap == Far::ENDCAP_NONE);
+    //g_hud.AddPullDownButton(endcap_pulldown, "Bilinear",
+    //    Far::ENDCAP_BILINEAR_BASIS, g_endCap == Far::ENDCAP_BILINEAR_BASIS);
+    g_hud.AddPullDownButton(endcap_pulldown, "BSpline",
+        Far::ENDCAP_BSPLINE_BASIS, g_endCap == Far::ENDCAP_BSPLINE_BASIS);
+    g_hud.AddPullDownButton(endcap_pulldown, "GregoryBasis",
+        Far::ENDCAP_GREGORY_BASIS, g_endCap == Far::ENDCAP_GREGORY_BASIS);
+    //g_hud.AddPullDownButton(endcap_pulldown, "LegacyGregory",
+    //    Far::ENDCAP_LEGACY_GREGORY, g_endCap == Far::ENDCAP_LEGACY_GREGORY);
 
-    int shading_pulldown = g_hud.AddPullDown("Shading (C)", 200, 10, 250, callbackShadingMode, 'c');
-    g_hud.AddPullDownButton(shading_pulldown, "Patch Type", ::SHADING_PATCH_TYPE, g_shadingMode == ::SHADING_PATCH_TYPE);
-    g_hud.AddPullDownButton(shading_pulldown, "Patch Coord", ::SHADING_PATCH_COORD, g_shadingMode == ::SHADING_PATCH_COORD);
-    g_hud.AddPullDownButton(shading_pulldown, "Patch Normal", ::SHADING_PATCH_NORMAL, g_shadingMode == ::SHADING_PATCH_NORMAL);
+    int displaystyle_pulldown = g_hud.AddPullDown(
+        "DisplayStyle (W)", 200, 10, 250, callbackDisplayStyle, 'w');
+    g_hud.AddPullDownButton(displaystyle_pulldown, "Wire",
+        DISPLAY_STYLE_WIRE, g_displayStyle == DISPLAY_STYLE_WIRE);
+    g_hud.AddPullDownButton(displaystyle_pulldown, "Shaded",
+        DISPLAY_STYLE_SHADED, g_displayStyle == DISPLAY_STYLE_SHADED);
+    //g_hud.AddPullDownButton(displaystyle_pulldown, "Wire+Shaded",
+    //    DISPLAY_STYLE_WIRE_ON_SHADED, g_displayStyle == DISPLAY_STYLE_WIRE_ON_SHADED);
+
+    int shading_pulldown = g_hud.AddPullDown(
+        "Shading (C)", 200, 50, 250, callbackShadingMode, 'c');
+    g_hud.AddPullDownButton(shading_pulldown, "Patch Type",
+        ::SHADING_PATCH_TYPE, g_shadingMode == ::SHADING_PATCH_TYPE);
+    g_hud.AddPullDownButton(shading_pulldown, "Patch Coord",
+        ::SHADING_PATCH_COORD, g_shadingMode == ::SHADING_PATCH_COORD);
+    g_hud.AddPullDownButton(shading_pulldown, "Patch Normal",
+        ::SHADING_PATCH_NORMAL, g_shadingMode == ::SHADING_PATCH_NORMAL);
 
     g_hud.AddSlider("Font Scale", 0.0f, 0.1f, 0.01f,
                     -800, -50, 100, false, callbackFontScale, 0);

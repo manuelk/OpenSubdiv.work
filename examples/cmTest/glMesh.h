@@ -56,7 +56,7 @@ public:
 
     ~GLMesh();
 
-    void Draw(GLuint xformUB, GLuint lightingUB) const;
+    void Draw(GLuint xformUB, GLuint lightingUB, bool wireframe) const;
 
 private:
 
