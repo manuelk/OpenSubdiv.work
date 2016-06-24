@@ -257,6 +257,10 @@ public:
         /// \brief Returns a pointer to the indices of the support points
         ConstIndexArray GetSupportIndices() const;
 
+        /// \brief Copies the support indices of the selected quadrant of
+        //  a terminal node
+        void GetSupportIndices(unsigned char quadrant, Index * indices) const;
+
         /// \brief Returns a pointer to the characteric that owns this node
         Characteristic const * GetCharacteristic() const { return _characteristic; }
 

@@ -72,6 +72,59 @@ offsetAndPermuteIndices(Index const indices[], int count,
     }
 }
 
+// Copy indices from 16-wide bicubic basis into 25-wide terminal node.
+// 'X' : extraordinary vertex
+
+// evIndex =
+//    X . . . .    . . . . X    + + + + .    . + + + +
+//    . + + + +    + + + + .    + + + + .    . + + + +
+//    . + + + +    + + + + .    + + + + .    . + + + +
+//    . + + + +    + + + + .    + + + + .    . + + + +
+//    . + + + +    + + + + .    . . . . X    X . . . .
+inline void
+copyDiagonalIndices(int evIndex, Index const * src, Index * dst) {
+    // copy 16 verts by rows
+    int rowOffs = evIndex < 2 ? 5 : 0,
+        colOffs = evIndex==1 || evIndex==2 ? 0 : 1;
+    Index * rowPtr = dst + rowOffs + colOffs;
+    for (int k=0; k<4; ++k, rowPtr+=5) {
+        memcpy(rowPtr, &src[k*4], 4 * sizeof(Index));
+    }
+}
+
+// rowIndex =
+//        0            1            2            3
+//    X + + + +    + + + + X    . . . . .    . . . . .
+//    . . . . .    . . . . .    . . . . .    . . . . .
+//    . . . . .    . . . . .    . . . . .    . . . . .
+//    . . . . .    . . . . .    . . . . .    . . . . .
+//    . . . . .    . . . . .    + + + + X    X + + + +
+inline void
+copyRowIndices(int rowIndex, Index const * src, Index * dst) {
+    int rowOffs = rowIndex > 1 ? 1 : 0,
+        colOffs = rowIndex==1 || rowIndex==2 ? 1 : 0;
+    Index * rowPtr = dst + rowOffs * 20 + colOffs;
+    memcpy(rowPtr, &src[rowOffs * 12], 4 * sizeof(Index));
+}
+
+// colIndex =
+//        0            1            2            3
+//    X . . . .    . . . . X    . . . . +    + . . . .
+//    + . . . .    . . . . +    . . . . +    + . . . .
+//    + . . . .    . . . . +    . . . . +    + . . . .
+//    + . . . .    . . . . +    . . . . +    + . . . .
+//    + . . . .    . . . . +    . . . . X    X . . . .
+inline void
+copyColIndices(int colIndex, Index const * src, Index * dst) {
+    int rowOffs = colIndex > 1 ? 1 : 0,
+        colOffs = colIndex==1 || colIndex==2 ? 1 : 0;
+    src += colOffs * 3;
+    dst += rowOffs * 5 + colOffs * 4;
+    for (int i=0; i<4; ++i, dst+=5, src+=4) {
+        *dst = *src;
+    }
+}
+
 
 //
 // Builder
@@ -447,48 +500,6 @@ CharacteristicBuilder::nodeIsTerminal(
     return false;
 }
 
-// Copy indices from 16-wide bicubic basis into 25-wide terminal node.
-// Extraordinary vertex ('X') left "undefined"
-//
-//      Diagonal               Row                  Column
-// +----------------+   +---+------------+   +----------------+
-// | X   .  .  .  . |   | X | o  o  o  o |   | X   .  .  .  . |
-// |   +------------+   |   +------------+   +---+            |
-// | . | o  o  o  o |   | .   .  .  .  . |   | o | .  .  .  . |
-// | . | o  o  o  o |   | .   .  .  .  . |   | o | .  .  .  . |
-// | . | o  o  o  o |   | .   .  .  .  . |   | o | .  .  .  . |
-// | . | o  o  o  o |   | .   .  .  .  . |   | o | .  .  .  . |
-// +---+------------+   +----------------+   +---+------------+
-inline void
-copyDiagonalIndices(int evIndex, Index const * src, Index * dst) {
-    // copy 16 verts by rows
-    int rowOffs = evIndex < 2 ? 5 : 0,
-        colOffs = evIndex==1 || evIndex==2 ? 0 : 1;
-    Index * rowPtr = dst + rowOffs + colOffs;
-    for (int k=0; k<4; ++k, rowPtr+=5) {
-        memcpy(rowPtr, &src[k*4], 4 * sizeof(Index));
-    }
-}
-
-inline void
-copyRowIndices(int rowIndex, Index const * src, Index * dst) {
-    int rowOffs = rowIndex > 1 ? 1 : 0,
-        colOffs = rowIndex==1 || rowIndex==2 ? 1 : 0;
-    Index * rowPtr = dst + rowOffs * 20 + colOffs;
-    memcpy(rowPtr, &src[rowOffs * 12], 4 * sizeof(Index));
-}
-
-inline void
-copyColIndices(int colIndex, Index const * src, Index * dst) {
-    int rowOffs = colIndex > 1 ? 1 : 0,
-        colOffs = colIndex==1 || colIndex==2 ? 1 : 0;
-    src += colOffs * 3;
-    dst += rowOffs * 5 + colOffs * 4;
-    for (int i=0; i<4; ++i, dst+=5, src+=4) {
-        *dst = *src;
-    }
-}
-
 int
 CharacteristicBuilder::writeTerminalNode(
     int levelIndex, int faceIndex, int evIndex, int offset, uint8_t * data) const {
@@ -572,11 +583,10 @@ CharacteristicBuilder::writeTerminalNode(
         *childNodePtr = childNodeOffset;
 
     } else {
-        // XXXX this shoudld be a static method on Node
-        int endNodeSize = writeEndNode(0, 0, nullptr),
-            termNodeSize = sizeof(NodeDescriptor) + 1*sizeof(int) + 25*sizeof(int);
         // we don't need to recurse here : we know that there will always be
         // one terminal node for each level of isolation left and one end-cap node
+        int endNodeSize = writeEndNode(0, 0, nullptr),
+            termNodeSize = sizeof(NodeDescriptor) + 1*sizeof(int) + 25*sizeof(int);
         return dataSize + termNodeSize * (_refiner.GetMaxLevel()-levelIndex-1) + endNodeSize;
     }
 

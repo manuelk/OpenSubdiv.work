@@ -748,12 +748,9 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
                 Far::ConstIndexArray supportIndices = node.GetSupportIndices();
 
+                Far::Index supports[16];
                 if (desc.GetType()==Far::Characteristic::NODE_TERMINAL) {
-                    Far::Index supports[16];
-
-                    for (int k=0; k<16; ++k) {
-                        supports[k] = supportIndices[remapTerminalIndices[quadrant][k]];
-                    }
+                    node.GetSupportIndices(quadrant, supports);
                     supportIndices = Far::ConstIndexArray(supports, 16);
                 }
 //printf("s=%f t=%f depth=%d quadrant=%d\n", s, t, node.GetDescriptor().GetDepth(), quadrant);

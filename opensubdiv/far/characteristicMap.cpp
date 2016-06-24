@@ -148,13 +148,13 @@ Characteristic::Node::GetSupportIndices() const {
 
     NodeDescriptor desc = GetDescriptor();
     switch (desc.GetType()) {
-        case Characteristic::NODE_REGULAR : {
+        case NODE_REGULAR : {
             if (desc.SingleCrease()) {
                 supportsPtr += sizeof(float)/sizeof(int);
             }
             return ConstIndexArray(supportsPtr, 16);
         }
-        case Characteristic::NODE_END: {
+        case NODE_END: {
             EndCapType endType =
                 GetCharacteristic()->GetCharacteristicMap()->GetEndCapType();
             int nsupports = 0;
@@ -176,6 +176,29 @@ Characteristic::Node::GetSupportIndices() const {
             return ConstIndexArray(nullptr, 0);
     }
 }
+
+void
+Characteristic::Node::GetSupportIndices(
+    unsigned char quadrant, Index * indices) const {
+
+    assert(GetDescriptor().GetType()==NODE_TERMINAL);
+
+    static int permuteTerminal[4][16] = {
+        {0, 1, 2, 3, 5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18},
+        {1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19},
+        {5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 23}, // note : winding order is 0, 1, 3, 2
+        {6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24},
+    };
+
+    // get all 25 indices
+    ConstIndexArray supportIndices = GetSupportIndices();
+
+    // copy the 16 support indices for quadrant    
+    for (int k=0; k<16; ++k) {
+        indices[k] = supportIndices[permuteTerminal[quadrant][k]];
+    }
+}
+
 
 int
 Characteristic::Node::getNodeSize() const {
