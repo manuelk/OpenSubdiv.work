@@ -501,6 +501,39 @@ createNodeNumbers(Far::CharacteristicMap const * charmap,
 }
 
 //------------------------------------------------------------------------------
+static void
+writeDiagraph(Far::CharacteristicMap const * charmap, int charIndex) {
+
+    if (!charmap) {
+        return;
+    }
+
+    static int counter=0;
+    char fname[64];
+    snprintf(fname, 64, "diagraph.%d.dot", counter++);
+
+    FILE * fout = fopen(fname, "w");
+    if (!fout) {
+        fprintf(stderr, "Could not open %s\n", fname);
+    }
+
+    if (charIndex>=0 && charIndex<charmap->GetNumCharacteristics()) {
+
+        Far::Characteristic const & ch = charmap->GetCharacteristic(charIndex);
+
+        bool showIndices = true,
+             isSubgraph = false;
+        ch.WriteTreeDiagraph(fout, charIndex, showIndices, isSubgraph);
+    } else {
+        bool showIndices = true;
+        charmap->WriteCharacteristicsDiagraphs(fout, showIndices);
+    }
+    fclose(fout);
+    fprintf(stdout, "Saved %s\n", fname);
+    fflush(stdout);
+}
+
+//------------------------------------------------------------------------------
 
 GLMesh * g_tessMesh = 0;
 
@@ -1231,6 +1264,9 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int mods) {
     switch (key) {
         case 'Q': g_running = 0; break;
         case 'F': fitFrame(); break;
+
+        case 'D': writeDiagraph(g_charmap, mods==GLFW_MOD_SHIFT ?
+            -1 : g_currentCharIndex); break;
 
         case '=':  {
             g_tessLevel+=5;

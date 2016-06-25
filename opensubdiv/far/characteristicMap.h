@@ -317,6 +317,10 @@ public:
         }
         return -1;
     }
+
+    /// \brief Writes a GraphViz 'dot' diagraph of the tree
+    void WriteTreeDiagraph(FILE * fout,
+        int charIndex=0, bool showIndices=true, bool isSubgraph=false) const;
     //@}
 
 public:
@@ -404,6 +408,9 @@ public:
     //@}
 
     EndCapType GetEndCapType() const { return EndCapType(_endCapType); }
+
+    /// \brief Writes a GraphViz 'dot' diagraph of all the characteristic trees
+    void WriteCharacteristicsDiagraphs(FILE * fout, bool showIndices=true) const;
 
 private:
 

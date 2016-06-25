@@ -644,13 +644,13 @@ CharacteristicBuilder::WriteCharacteristicTree(
     ch->_tree = new int[ch->_treeSize];
 
 #if 0
+    // force memory painting (debug)
     for (int i=0; i<ch->_treeSize; ++i) {
         ch->_tree[i] = -1;
     }
 #endif
 
     writeNode(levelIndex, faceIndex, 0, (uint8_t *)ch->_tree);
-    //PrintCharacteristicTreeNode(ch->tree, 0, 0);
 }
 
 StencilTable const *
@@ -676,11 +676,10 @@ CharacteristicBuilder::FinalizeVaryingStencils() {
 }
 
 
-static void PrintCharacteristicsDigraph(Characteristic const * chars, int nchars);
-
 //
 // Characteristic factory
 //
+
 
 CharacteristicMap const *
 CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
@@ -740,98 +739,7 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
     charmap->_localPointStencils = builder.FinalizeStencils();
     charmap->_localPointVaryingStencils = builder.FinalizeVaryingStencils();
 
-    //PrintCharacteristicsDigraph(&charmap->_characteristics[0], nchars);
     return charmap;
-}
-
-//
-// Debug functions
-//
-
-static void
-PrintNodeIndices(ConstIndexArray cvs) {
-
-    int stride = cvs.size()==16 ? 4 : 5;
-
-    for (int i=0; i<cvs.size(); ++i) {
-        if (i>0 && ((i%stride)!=0))
-            printf(" ");
-        if ((i%stride)==0)
-            printf("\\n");
-        printf("%*d", 4, cvs[i]);
-    }
-}
-
-inline size_t
-HashNodeID(int charIndex, Characteristic::Node node) {
-    size_t hash = node.GetTreeOffset() + ((size_t)charIndex << 32);
-    return hash;
-}
-
-static void
-PrintCharacteristicTreeNode(Characteristic::Node node, int charIndex, bool showIndices=false) {
-
-    typedef Characteristic::NodeDescriptor Descriptor;
-
-    Descriptor const & desc = node.GetDescriptor();
-
-    size_t nodeID = HashNodeID(charIndex, node);
-
-    switch (desc.GetType()) {
-        case Characteristic::NODE_REGULAR : {
-                printf("  %zu [label=\"R\\n", nodeID);
-                if (showIndices) {
-                    PrintNodeIndices(node.GetSupportIndices());
-                }
-                printf("\", shape=box]\n");
-            } break;
-
-        case Characteristic::NODE_END : {
-                printf("  %zu [label=\"E\\n", nodeID);
-                if (showIndices) {
-                    PrintNodeIndices(node.GetSupportIndices());
-                }
-                printf("\", shape=box, style=filled, color=darkorange]\n");
-            } break;
-
-        case Characteristic::NODE_RECURSIVE : {
-                printf("  %zu [label=\"I\", shape=square, style=filled, color=dodgerblue]\n",nodeID );
-                for (int i=0; i<4; ++i) {
-                    Characteristic::Node child = node.GetChildNode(i);
-                    PrintCharacteristicTreeNode(child, charIndex, showIndices);
-                    printf("  %zu -> %zu [label=\"%d\"]\n", nodeID, HashNodeID(charIndex, child), i);
-                }
-            } break;
-
-        case Characteristic::NODE_TERMINAL : {
-            printf("  %zu [shape=box, style=filled, color=grey, label=\"T", nodeID);
-            if (showIndices) {
-                PrintNodeIndices(node.GetSupportIndices());
-            }
-            printf("\"]\n");
-            Characteristic::Node child = node.GetChildNode();
-            PrintCharacteristicTreeNode(child, charIndex, showIndices);
-            printf("  %zu -> %zu\n", nodeID, HashNodeID(charIndex, child));
-        } break;
-        default:
-            assert(0);
-    }
-}
-
-static void
-PrintCharacteristicsDigraph(Characteristic const * chars, int nchars) {
-
-    printf("digraph {\n");
-    for (int i=0; i<nchars; ++i) {
-
-        Characteristic const & ch = chars[i];
-
-        printf("subgraph {\n");
-        PrintCharacteristicTreeNode(ch.GetTreeRootNode(), i, /*show indices*/true);
-        printf("}\n");
-    }
-    printf("}\n");
-    fflush(stdout);
 }
 
 } // end namespace Far

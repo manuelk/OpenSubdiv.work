@@ -193,7 +193,7 @@ Characteristic::Node::GetSupportIndices(
     // get all 25 indices
     ConstIndexArray supportIndices = GetSupportIndices();
 
-    // copy the 16 support indices for quadrant    
+    // copy the 16 support indices for quadrant
     for (int k=0; k<16; ++k) {
         indices[k] = supportIndices[permuteTerminal[quadrant][k]];
     }
@@ -359,6 +359,116 @@ Characteristic::EvaluateBasis(float s, float t,
     return n;
 }
 
+//
+// Debug functions
+//
+
+static void
+printNodeIndices(FILE * fout, ConstIndexArray cvs) {
+
+    int stride = cvs.size()==16 ? 4 : 5;
+
+    for (int i=0; i<cvs.size(); ++i) {
+        if (i>0 && ((i%stride)!=0))
+            fprintf(fout, " ");
+        if ((i%stride)==0)
+            fprintf(fout, "\\n");
+        fprintf(fout, "%*d", 4, cvs[i]);
+    }
+}
+
+inline size_t
+hashNodeID(int charIndex, Characteristic::Node node) {
+    size_t hash = node.GetTreeOffset() + ((size_t)charIndex << 32);
+    return hash;
+}
+
+static void
+printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charIndex, bool showIndices=false) {
+
+    typedef Characteristic::NodeDescriptor Descriptor;
+
+    Descriptor const & desc = node.GetDescriptor();
+
+    size_t nodeID = hashNodeID(charIndex, node);
+
+    switch (desc.GetType()) {
+        case Characteristic::NODE_REGULAR : {
+                fprintf(fout, "  %zu [label=\"R\\n", nodeID);
+                if (showIndices) {
+                    printNodeIndices(fout, node.GetSupportIndices());
+                }
+                if (desc.SingleCrease()) {
+                    fprintf(fout, "\\n\\nsharp=%f", node.GetSharpness());
+                }
+                fprintf(fout, "\" ");
+                if (desc.SingleCrease()) {
+                    fprintf(fout, " , style=filled, color=darksalmon");
+                }
+                fprintf(fout, ", shape=box]\n");
+            } break;
+
+        case Characteristic::NODE_END : {
+                fprintf(fout, "  %zu [label=\"E\\n", nodeID);
+                if (showIndices) {
+                    printNodeIndices(fout, node.GetSupportIndices());
+                }
+                fprintf(fout, "\", shape=box, style=filled, color=darkorange]\n");
+            } break;
+
+        case Characteristic::NODE_RECURSIVE : {
+                fprintf(fout, "  %zu [label=\"I\", shape=square, style=filled, color=dodgerblue]\n",nodeID );
+                for (int i=0; i<4; ++i) {
+                    Characteristic::Node child = node.GetChildNode(i);
+                    printCharacteristicTreeNode(fout, child, charIndex, showIndices);
+                    fprintf(fout, "  %zu -> %zu [label=\"%d\"]\n", nodeID, hashNodeID(charIndex, child), i);
+                }
+            } break;
+
+        case Characteristic::NODE_TERMINAL : {
+            fprintf(fout, "  %zu [shape=box, style=filled, color=grey, label=\"T", nodeID);
+            if (showIndices) {
+                printNodeIndices(fout, node.GetSupportIndices());
+            }
+            fprintf(fout, "\"]\n");
+
+            Characteristic::Node child = node.GetChildNode();
+
+            printCharacteristicTreeNode(fout, child, charIndex, showIndices);
+
+            fprintf(fout, "  %zu -> %zu\n", nodeID, hashNodeID(charIndex, child));
+        } break;
+        default:
+            assert(0);
+    }
+}
+
+void
+Characteristic::WriteTreeDiagraph(FILE * fout, int charIndex, bool showIndices, bool isSubgraph) const {
+
+    if (isSubgraph) {
+        fprintf(fout, "subgraph {\n");
+    } else {
+        fprintf(fout, "digraph {\n");
+    }
+
+    printCharacteristicTreeNode(fout, GetTreeRootNode(), charIndex, showIndices);
+
+    fprintf(fout, "}\n");
+}
+
+void
+CharacteristicMap::WriteCharacteristicsDiagraphs(FILE * fout, bool showIndices) const {
+
+    fprintf(fout, "digraph {\n");
+    for (int charIndex=0; charIndex<GetNumCharacteristics(); ++charIndex) {
+
+        Characteristic const & ch = GetCharacteristic(charIndex);
+
+        ch.WriteTreeDiagraph(fout, charIndex, showIndices, /*isSubgraph*/ true);
+    }
+    fprintf(fout, "}\n");
+}
 
 } // end namespace Far
 
