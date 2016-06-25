@@ -28,6 +28,7 @@
 #include "../far/endCapGregoryBasisPatchFactory.h"
 #include "../far/patchFaceTag.h"
 #include "../far/topologyRefinerFactory.h"
+#include "../vtr/refinement.h"
 
 namespace OpenSubdiv {
 namespace OPENSUBDIV_VERSION {
@@ -470,30 +471,47 @@ CharacteristicBuilder::nodeIsTerminal(
 
         PatchFaceTag const * levelPatchTags = _levelPatchTags[levelIndex+1];
 
-        int irregular = 0;
-
         ConstIndexArray children =
             _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
         assert(children.size()==4);
 
+        int regular = 0, irregular = 0;
+
         for (int i=0; i<children.size(); ++i) {
 
-            PatchFaceTag const & patchTag = levelPatchTags[children[i]];
+            int child = children[i];
 
-            if ((!patchTag.hasPatch) ||
-                (!patchTag.isRegular) ||
-                (patchTag.boundaryCount>0) ||
-                (patchTag.isSingleCrease)) {
-                if (evIndex) {
-                    *evIndex = i;
+            PatchFaceTag const & patchTag = levelPatchTags[child];
+
+            
+            if (patchTag.isRegular) {
+                assert(patchTag.hasPatch);
+                ++regular;
+            } else {
+
+                // trivial rejection for boundaries or creases
+                if ((patchTag.boundaryCount>0) || patchTag.isSingleCrease) {
+                    return false;
                 }
-                ++irregular;
-            }
-            if (irregular>1) {
-                return false;
+
+                // complete check
+                Vtr::internal::Level const * level = &_refiner.getLevel(levelIndex);
+
+                Vtr::ConstIndexArray fVerts = level->getFaceVertices(faceIndex);
+                assert(fVerts.size() == 4);
+
+                Vtr::internal::Level::VTag vt = level->getFaceCompositeVTag(fVerts);
+                if (vt._semiSharp || vt._semiSharpEdges || vt._rule!=Sdc::Crease::RULE_SMOOTH) {
+                    return false;
+                }
+
+                irregular = i;
             }
         }
-        if (irregular==1) {
+        if (regular==3) {
+            if (evIndex) {
+                *evIndex = irregular;
+            }
             return true;
         }
     }
@@ -530,7 +548,7 @@ CharacteristicBuilder::writeTerminalNode(
             PatchFaceTag const & patchTag =
                 _levelPatchTags[childLevelIndex][childFaceIndex];
 
-            if (patchTag.hasPatch && patchTag.isRegular) {
+            if (evIndex!=child) {
                 // child is a regular patch : get the supports
                 Index localVerts[16], patchVerts[16];
                 childLevel.gatherQuadRegularInteriorPatchPoints(childFaceIndex, localVerts, 0);
@@ -570,7 +588,6 @@ CharacteristicBuilder::writeTerminalNode(
         static int emptyIndices[4] = {0, 4, 24, 20 };
         supportIndices[emptyIndices[evIndex]] = INDEX_INVALID;
 
-
         short u, v;
         bool nonquad = computeSubPatchDomain(childLevelIndex, childFaceIndices[0], &u, &v);
 
@@ -589,7 +606,6 @@ CharacteristicBuilder::writeTerminalNode(
             termNodeSize = sizeof(NodeDescriptor) + 1*sizeof(int) + 25*sizeof(int);
         return dataSize + termNodeSize * (_refiner.GetMaxLevel()-levelIndex-1) + endNodeSize;
     }
-
     return dataSize;
 }
 
@@ -725,7 +741,6 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
     charmap->_localPointVaryingStencils = builder.FinalizeVaryingStencils();
 
     //PrintCharacteristicsDigraph(&charmap->_characteristics[0], nchars);
-
     return charmap;
 }
 
