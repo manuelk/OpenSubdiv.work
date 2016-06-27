@@ -140,6 +140,7 @@ public:
         /// \brief Translation constructor
         NodeDescriptor(int value=0) { field0=value; }
 
+        /// \brief Set bitfields for REGULAR / END nodes
         void SetPatch(unsigned short type, unsigned short nonquad,
             unsigned short singleCrease, unsigned short depth,
                 unsigned short boundary, unsigned short transition,
@@ -154,11 +155,13 @@ public:
                       (type & 0x3);
         }
 
+        /// \brief Set bitfields for RECURSIVE nodes
         void SetRecursive(unsigned short depth) {
             field0 = ((depth & 0xf)        <<  4) |
                       (NODE_RECURSIVE & 0x3);
         }
 
+        /// \brief Set bitfields for TERMINAL nodes
         void SetTerminal(unsigned short nonquad,
             unsigned short depth, unsigned short evIndex, short u, short v) {
             field0 = ((v & 0xff)           << 24) |
@@ -168,8 +171,6 @@ public:
                      ((nonquad ? 1:0)      <<  2) |
                       (NODE_TERMINAL & 0x3);
         }
-
-        NodeDescriptor & operator=(int value) { field0 = value; return *this; }
 
         /// \brief Resets everything to 0
         void Clear() { field0 = 0; }
@@ -257,7 +258,7 @@ public:
         /// \brief Returns a pointer to the indices of the support points
         ConstIndexArray GetSupportIndices() const;
 
-        /// \brief Copies the support indices of the selected quadrant of
+        /// \brief Copies the 16 support indices of the selected quadrant of
         //  a terminal node
         void GetSupportIndices(unsigned char quadrant, Index * indices) const;
 
@@ -292,7 +293,7 @@ public:
     };
 
 
-    /// \brief Returns the size (in bytes) of the patches tree
+    /// \brief Returns the size of the patches tree (number of ints)
     int GetTreeSize() const { return _treeSize; }
 
     /// \brief Returns the tree data
@@ -345,7 +346,7 @@ public:
     /// @return        The leaf node pointing to the sub-patch evaluated
     ///
     Node EvaluateBasis(float s, float t,
-        float wP[], float wDs[], float wDt[], unsigned char * subpatch=0) const;
+        float wP[], float wDs[], float wDt[], unsigned char * quadrant=0) const;
 
     //@}
 
@@ -382,6 +383,7 @@ public:
         return (int)_characteristics.size();
     }
 
+    /// \brief Returns the characteristic for index
     Characteristic const & GetCharacteristic(Index charIndex) const {
         return _characteristics[charIndex];
     }
@@ -407,6 +409,7 @@ public:
     }
     //@}
 
+    /// \brief Returns the type of end-cap patches
     EndCapType GetEndCapType() const { return EndCapType(_endCapType); }
 
     /// \brief Writes a GraphViz 'dot' diagraph of all the characteristic trees
@@ -424,12 +427,17 @@ private:
     // flags
     unsigned int _endCapType:2;
 
-    // XXXX this eventually will be a map : right now it's just 1 characteristic per face
+    // XXXX manuelk this eventually will be a sparse map : right now it's just
+    // one characteristic per face
     std::vector<Characteristic> _characteristics;
 
     StencilTable const * _localPointStencils,        // endcap basis conversion stencils
                        * _localPointVaryingStencils; // endcap varying stencils (for convenience)
 };
+
+//
+// Implementation
+//
 
 inline Characteristic::Node
 Characteristic::Node::operator ++ () {

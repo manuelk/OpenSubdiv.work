@@ -321,6 +321,7 @@ Characteristic::EvaluateBasis(float s, float t,
                 case ENDCAP_NONE :
                     break;
                 case ENDCAP_BILINEAR_BASIS :
+                    // XXXX manuelk TODO
                     assert(0);
                     break;
                 case ENDCAP_BSPLINE_BASIS :
