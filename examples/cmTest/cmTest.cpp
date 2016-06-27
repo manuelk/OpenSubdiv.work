@@ -74,6 +74,7 @@ enum ShadingMode {
     SHADING_PATCH_TYPE,
     SHADING_PATCH_COORD,
     SHADING_PATCH_NORMAL,
+    SHADING_TREE_DEPTH,
 };
 
 int g_level = 2,
@@ -423,8 +424,6 @@ createNodeIDs(Far::CharacteristicMap const & charmap,
 int g_currentCharIndex = 0,
     g_currentNodeIndex = -1;
 
-Far::CharacteristicMap const * g_charmap = 0;
-
 Far::Characteristic::Node g_currentNode;
 
 static int remapTerminalIndices[4][16] = {
@@ -632,6 +631,10 @@ GLControlMeshDisplay g_controlMeshDisplay;
 
 Osd::GLVertexBuffer * g_controlMeshVerts = 0;
 
+Far::CharacteristicMap const * g_charmap = 0;
+
+int g_treeSizeTotal = 0;
+
 static void
 createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
@@ -754,6 +757,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
           * norm = &normals[0],
           * col = &colors[0];
 
+    g_treeSizeTotal = 0;
     for (int i=0; i<nchars; ++i) {
 
         Far::Characteristic const & ch = charmap->GetCharacteristic(i);
@@ -761,6 +765,8 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         if (ch.GetTreeSize()==0) {
             continue; // skip holes
         }
+
+        g_treeSizeTotal += ch.GetTreeSize();
 
         // interpolate vertices
         float wP[20], wDs[20], wDt[20];
@@ -807,10 +813,32 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
                 memcpy(pos, limit.point, 3 * sizeof(float));
 
-                //float n[3] = { 0.0f, 0.0f, 0.0f };
+                // normal
                 cross(norm, limit.deriv1, limit.deriv2 );
+                normalize(norm);
 
-                //float const * c = g_palette[ch.GetNodeIndex(node) % 7];
+                // color
+                switch (g_shadingMode) {
+                    case ::SHADING_PATCH_TYPE : {
+                        float const * c = getAdaptiveColor(node);
+                        memcpy(col, c, 3 * sizeof(float));
+                    } break;
+                    case ::SHADING_PATCH_COORD : {
+                        float c[3] = {s, t, 0.0f};
+                        memcpy(col, c, 3 * sizeof(float));
+                    } break;
+                    case ::SHADING_PATCH_NORMAL : {
+                        memcpy(col, norm, 3 * sizeof(float));
+                    } break;
+                    case ::SHADING_TREE_DEPTH : {
+                        float depth = desc.GetDepth() * 0.1f;
+                        float c[3] = { depth, 0.0f, 1.0f - depth };
+                        memcpy(col, c, 3 * sizeof(float));
+                    } break;
+                    default:
+
+                        break;
+                }
 
                 bool nodeSelected = false;
                 if (g_charmap && g_currentCharIndex>=0 &&
@@ -819,8 +847,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 }
 
                 if (nodeSelected) {
-                    static float selColor[3] = { 0.0f, 255.0f, 0.0f },
-                                 quadColors[4][3] = {{ 255.0f,    0.0f,   0.0f },
+                    static float quadColors[4][3] = {{ 255.0f,    0.0f,   0.0f },
                                                      {   0.0f,  255.0f,   0.0f },
                                                      {   0.0f,    0.0f, 255.0f },
                                                      {  255.0f, 255.0f,   0.0f }};
@@ -828,25 +855,12 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                     if (desc.GetType()==Far::Characteristic::NODE_TERMINAL) {
                         memcpy(col, quadColors[quadrant], 3 * sizeof(float));
                     } else {
-                        memcpy(col, selColor, 3 * sizeof(float));
+                        //memcpy(col, selColor, 3 * sizeof(float));
+                        col[0] *= 2.0f;
+                        col[1] *= 2.0f;
+                        col[2] *= 2.0f;
                     }
                 } else {
-                    switch (g_shadingMode) {
-                        case ::SHADING_PATCH_TYPE : {
-                            float const * c = getAdaptiveColor(node);
-                            memcpy(col, c, 3 * sizeof(float));
-                        } break;
-                        case ::SHADING_PATCH_COORD : {
-                            float c[3] = {s, t, 0.0f};
-                            memcpy(col, c, 3 * sizeof(float));
-                        } break;
-                        case ::SHADING_PATCH_NORMAL : {
-                            memcpy(col, norm, 3 * sizeof(float));
-                        } break;
-                        default:
-
-                            break;
-                    }
                 }
 
                 //memcpy(pos, c, 3 * sizeof(float));
@@ -1102,7 +1116,11 @@ display() {
 
         g_hud.DrawString(10, -120, "Scheme     : %s", schemeNames[g_shapes[g_currentShape].scheme]);
         g_hud.DrawString(10, -100, "Tess (+,-) : %d", g_tessLevel);
+        g_hud.DrawString(10, -40,  "Triangles  : %d", g_tessMesh ? g_tessMesh->GetNumTriangles() : -1);
         g_hud.DrawString(10, -20,  "FPS        : %3.1f", fps);
+
+        g_hud.DrawString(-280, -120, "Characteristics : %d", g_charmap ? g_charmap->GetNumCharacteristics() : -1);
+        g_hud.DrawString(-280, -100, "Trees (bytes) : %d", g_charmap ? g_treeSizeTotal * sizeof(int) : -1);
 
         g_hud.Flush();
     }
@@ -1355,6 +1373,8 @@ initHUD() {
         ::SHADING_PATCH_COORD, g_shadingMode == ::SHADING_PATCH_COORD);
     g_hud.AddPullDownButton(shading_pulldown, "Patch Normal",
         ::SHADING_PATCH_NORMAL, g_shadingMode == ::SHADING_PATCH_NORMAL);
+    g_hud.AddPullDownButton(shading_pulldown, "Tree Depth",
+        ::SHADING_TREE_DEPTH, g_shadingMode == ::SHADING_TREE_DEPTH);
 
     g_hud.AddSlider("Font Scale", 0.0f, 0.1f, 0.01f,
                     -800, -50, 100, false, callbackFontScale, 0);

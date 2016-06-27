@@ -126,6 +126,11 @@ GLMesh::~GLMesh() {
     glDeleteBuffers(1, &_bufColors);
 }
 
+int
+GLMesh::GetNumTriangles() const {
+    return _numVertices / 3;
+}
+
 void
 GLMesh::Draw(GLuint xformUB, GLuint lightingUB, bool wireframe) const {
 

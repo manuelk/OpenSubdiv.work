@@ -58,6 +58,8 @@ public:
 
     void Draw(GLuint xformUB, GLuint lightingUB, bool wireframe) const;
 
+    int GetNumTriangles() const;
+
 private:
 
     DrawMode _drawMode;
