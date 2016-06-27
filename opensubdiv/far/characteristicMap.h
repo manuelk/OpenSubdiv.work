@@ -122,19 +122,6 @@ public:
     ///
     /// Note : this descriptor *must* have the size of an int !
     ///
-    /// Bitfield layout :
-    ///
-    ///  Field1       | Bits | Content
-    ///  -------------|:----:|------------------------------------------------------
-    ///  type         | 2    | type
-    ///  nonquad      | 1    | whether the patch is the child of a non-quad face
-    ///  singleCrease | 1    | true if "single crease" patch
-    ///  depth        | 4    | the subdivision level of the node
-    ///  transition   | 4    | transition edge mask encoding
-    ///  boundary     | 4    | boundary edge mask encoding
-    ///  v            | 8    | log2 value of u parameter at first patch corner
-    ///  u            | 8    | log2 value of v parameter at first patch corner
-    ///
     struct NodeDescriptor {
 
         /// \brief Translation constructor
@@ -143,12 +130,10 @@ public:
         /// \brief Set bitfields for REGULAR / END nodes
         void SetPatch(unsigned short type, unsigned short nonquad,
             unsigned short singleCrease, unsigned short depth,
-                unsigned short boundary, unsigned short transition,
-                    short u, short v) {
-            field0 = ((v & 0xff)           << 24) |
-                     ((u & 0xff)           << 16) |
-                     ((boundary & 0xf)     << 12) |
-                     ((transition & 0xf)   <<  8) |
+                unsigned short boundary, short u, short v) {
+            field0 = ((v & 0x3ff)          << 22) |
+                     ((u & 0x3ff)          << 12) |
+                     ((boundary & 0xf)     <<  8) |
                      ((depth & 0xf)        <<  4) |
                      ((singleCrease ? 1:0) <<  3) |
                      ((nonquad ? 1:0)      <<  2) |
@@ -164,9 +149,9 @@ public:
         /// \brief Set bitfields for TERMINAL nodes
         void SetTerminal(unsigned short nonquad,
             unsigned short depth, unsigned short evIndex, short u, short v) {
-            field0 = ((v & 0xff)           << 24) |
-                     ((u & 0xff)           << 16) |
-                     ((evIndex & 0xf)      << 12) |
+            field0 = ((v & 0x3ff)          << 22) |
+                     ((u & 0x3ff)          << 12) |
+                     ((evIndex & 0xf)      <<  8) |
                      ((depth & 0xf)        <<  4) |
                      ((nonquad ? 1:0)      <<  2) |
                       (NODE_TERMINAL & 0x3);
@@ -184,20 +169,14 @@ public:
         // XXXX manuelk characteristic plan evaluation does not need transition
         // masks -> we should recover those 4 bits and use them for (u,v) instead...
 
-        /// \brief Returns the transition edge encoding for the patch.
-        unsigned short GetTransitionMask() const { return (unsigned short)((field0 >> 8) & 0xf); }
-
-        /// \brief Returns the number of transition edges in the sub-patch (-1 for invalid mask)
-        unsigned short GetTransitionCount() const;
-
         /// \brief Returns the boundary edge encoding for the sub-patch.
-        unsigned short GetBoundaryMask() const { return (unsigned short)((field0 >> 12) & 0xf); }
+        unsigned short GetBoundaryMask() const { return (unsigned short)((field0 >> 8) & 0xf); }
 
         /// \brief Returns the number of boundary edges in the sub-patch (-1 for invalid mask)
         unsigned short GetBoundaryCount() const;
 
         /// \brief Returns local index of the extraordinary vertex in a terminal patch
-        unsigned short GetEvIndex() const { return (unsigned short)((field0 >> 12) & 0xf); }
+        unsigned short GetEvIndex() const { return (unsigned short)((field0 >> 8) & 0xf); }
 
         /// \brief True if the parent coarse face is a non-quad
         bool NonQuadRoot() const { return (field0 >> 2) & 0x1; }
@@ -207,11 +186,11 @@ public:
 
         /// \brief Returns the log2 value of the u parameter at the top left corner of
         /// the patch
-        unsigned short GetU() const { return (unsigned short)((field0 >> 16) & 0xff); }
+        unsigned short GetU() const { return (unsigned short)((field0 >> 12) & 0x3ff); }
 
         /// \brief Returns the log2 value of the v parameter at the top left corner of
         /// the patch
-        unsigned short GetV() const { return (unsigned short)((field0 >> 24) & 0xff); }
+        unsigned short GetV() const { return (unsigned short)((field0 >> 22) & 0x3ff); }
 
         /// \brief Returns the fraction of normalized parametric space covered by the
         /// sub-patch.

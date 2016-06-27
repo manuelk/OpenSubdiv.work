@@ -260,7 +260,7 @@ getAdaptiveColor(Far::Characteristic::Node node) {
         assert(0);
     }
 
-    int pattern = desc.GetTransitionCount();
+    int pattern = 0; //desc.GetTransitionCount();
 
     return g_patchColors[6*patchType + pattern];
 }
@@ -359,7 +359,7 @@ printCharmapNodes(Far::CharacteristicMap const * charmap) {
 
             Far::PatchParam param;
             param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), desc.GetDepth(),
-                desc.NonQuadRoot(), desc.GetBoundaryMask(), desc.GetTransitionMask());
+                desc.NonQuadRoot(), desc.GetBoundaryMask(), 0);
             param.Print();
             printf(" ");
 

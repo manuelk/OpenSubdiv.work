@@ -360,7 +360,7 @@ CharacteristicBuilder::writeRegularNode(
 
         // copy to buffer
         ((NodeDescriptor *)data)->SetPatch(Characteristic::NODE_REGULAR,
-            nonquad, singleCrease, levelIndex, boundaryMask, transitionMask, u, v) ;
+            nonquad, singleCrease, levelIndex, boundaryMask, u, v) ;
         data += sizeof(NodeDescriptor);
 
         if (patchTag.isSingleCrease) {
@@ -422,7 +422,7 @@ CharacteristicBuilder::writeEndNode(
 
         // copy to buffer
         ((NodeDescriptor *)data)->SetPatch(Characteristic::NODE_END,
-            nonquad, false, levelIndex, 0, 0, u, v);
+            nonquad, false, levelIndex, 0, u, v);
         data += sizeof(NodeDescriptor);
 
         assert(sizeof(Index)==sizeof(int));

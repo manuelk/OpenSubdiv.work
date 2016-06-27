@@ -92,15 +92,6 @@ Characteristic::NodeDescriptor::GetBoundaryCount() const {
     return masks[GetBoundaryMask()];
 }
 
-unsigned short
-Characteristic::NodeDescriptor::GetTransitionCount() const {
-    // 0000, 0001, 0010, 0011, 0100, 0101, 0110, 0111,
-    // 1000, 1001, 1010, 1011, 1100, 1101, 1110, 1111
-    static int masks[] = { 0,  1,  1,  2,  1,  2,  2,  3,
-                           1,  2,  2,  3,  2,  3,  3,  4,  };
-    return masks[GetTransitionMask()];
-}
-
 int
 Characteristic::Node::GetNumChildrenNodes() const {
     NodeDescriptor desc = GetDescriptor();
@@ -303,7 +294,7 @@ Characteristic::EvaluateBasis(float s, float t,
 
        case NODE_REGULAR : {
             param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), depth,
-                desc.NonQuadRoot(), desc.GetBoundaryMask(), desc.GetTransitionMask());
+                desc.NonQuadRoot(), desc.GetBoundaryMask(), 0);
 
             if (desc.SingleCrease()) {
                 float sharpness = n.GetSharpness();
@@ -315,7 +306,7 @@ Characteristic::EvaluateBasis(float s, float t,
 
        case NODE_END : {
             param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), depth,
-                desc.NonQuadRoot(), desc.GetBoundaryMask(), desc.GetTransitionMask());
+                desc.NonQuadRoot(), desc.GetBoundaryMask(), 0);
 
             switch (GetCharacteristicMap()->GetEndCapType()) {
                 case ENDCAP_NONE :
