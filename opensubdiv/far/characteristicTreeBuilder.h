@@ -35,7 +35,6 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 struct EndCapBuilder;
-class Characteristic;
 struct PatchFaceTag;
 typedef std::vector<PatchFaceTag> PatchFaceTagVector;
 class StencilTable;
@@ -54,7 +53,11 @@ public:
 
     ~CharacteristicTreeBuilder();
 
-    void WriteCharacteristicTree(Characteristic * ch, int levelIndex, int faceIndex) const;
+    // returns the size of the tree for the given face
+    int GetTreeSize(int levelIndex, int faceIndex) const;
+
+    // writes the tree into treePtr
+    void WriteTree(int levelIndex, int faceIndex, int * treePtr) const;
 
     StencilTable const * FinalizeStencils();
 

@@ -43,7 +43,7 @@ namespace Far {
 
 struct EndCapBuilder {
 
-    EndCapBuilder::EndCapBuilder(TopologyRefiner const & refiner, EndCapType t) :
+    EndCapBuilder(TopologyRefiner const & refiner, EndCapType t) :
         type(t) {
 
         // create stencil tables for end caps w/ matching factory
@@ -65,7 +65,6 @@ struct EndCapBuilder {
             default:
                 break;
         }
-        type = t;
     }
 
     EndCapBuilder::~EndCapBuilder() {
@@ -150,10 +149,10 @@ offsetAndPermuteIndices(Index const indices[], int count,
     }
 }
 
-// Copy indices from 16-wide bicubic basis into 25-wide terminal node.
-// 'X' : extraordinary vertex
+// Terminal node helpers : copy indices from 16-wide bicubic basis into
+// 25-wide terminal node. ('X' = extraordinary vertex)
 
-// evIndex =
+// evIndex
 //    X . . . .    . . . . X    + + + + .    . + + + +
 //    . + + + +    + + + + .    + + + + .    . + + + +
 //    . + + + +    + + + + .    + + + + .    . + + + +
@@ -170,7 +169,7 @@ copyDiagonalIndices(int evIndex, Index const * src, Index * dst) {
     }
 }
 
-// rowIndex =
+// rowIndex
 //        0            1            2            3
 //    X + + + +    + + + + X    . . . . .    . . . . .
 //    . . . . .    . . . . .    . . . . .    . . . . .
@@ -185,7 +184,7 @@ copyRowIndices(int rowIndex, Index const * src, Index * dst) {
     memcpy(rowPtr, &src[rowOffs * 12], 4 * sizeof(Index));
 }
 
-// colIndex =
+// colIndex
 //        0            1            2            3
 //    X . . . .    . . . . X    . . . . +    + . . . .
 //    + . . . .    . . . . +    . . . . +    + . . . .
@@ -423,16 +422,20 @@ CharacteristicTreeBuilder::nodeIsTerminal(
 
         ConstIndexArray children =
             _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
-        assert(children.size()==4);
+
+        if (children.size()!=4) {
+            return false;
+        }
 
         int regular = 0, irregular = 0;
-
         for (int i=0; i<children.size(); ++i) {
-
-            int child = children[i];
+        
+            Index child = children[i];
+            if (child==INDEX_INVALID) {
+                return false;
+            }
 
             PatchFaceTag const & patchTag = levelPatchTags[child];
-
 
             if (patchTag.isRegular) {
                 assert(patchTag.hasPatch);
@@ -584,23 +587,19 @@ CharacteristicTreeBuilder::writeNode(
     return dataSize;
 }
 
+int
+CharacteristicTreeBuilder::GetTreeSize(
+    int levelIndex, int faceIndex) const {
+
+    return writeNode(levelIndex, faceIndex, 0, nullptr) / sizeof(int);
+}
+
 void
-CharacteristicTreeBuilder::WriteCharacteristicTree(
-    Characteristic * ch, int levelIndex, int faceIndex) const {
+CharacteristicTreeBuilder::WriteTree(
+    int levelIndex, int faceIndex, int * treePtr) const {
 
-    int nbytes = writeNode(levelIndex, faceIndex, 0, nullptr);
-
-    ch->_treeSize = nbytes / sizeof(int);
-    ch->_tree = new int[ch->_treeSize];
-
-#if 0
-    // force memory painting (debug)
-    for (int i=0; i<ch->_treeSize; ++i) {
-        ch->_tree[i] = -1;
-    }
-#endif
-
-    writeNode(levelIndex, faceIndex, 0, (uint8_t *)ch->_tree);
+    assert(treePtr);
+    writeNode(levelIndex, faceIndex, 0, (uint8_t *)treePtr);
 }
 
 StencilTable const *

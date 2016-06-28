@@ -37,6 +37,7 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Far {
 
+class CharacteristicTreeBuilder;
 struct PatchFaceTag;
 class TopologyRefiner;
 
@@ -86,6 +87,9 @@ public:
            Options options=Options());
 
 private:
+
+    static void writeCharacteristicTree(CharacteristicTreeBuilder & builder,
+        int levelIndex, int faceIndex, Characteristic * ch);
 
 };
 

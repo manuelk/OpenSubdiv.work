@@ -41,6 +41,26 @@ namespace Far {
 // Characteristic factory
 //
 
+void
+CharacteristicMapFactory::writeCharacteristicTree(
+    CharacteristicTreeBuilder & builder, int levelIndex, int faceIndex, Characteristic * ch) {
+
+    int treeSize = builder.GetTreeSize(levelIndex, faceIndex);
+
+    int * treePtr = new int[treeSize];
+
+#if 0
+    // debug : paint memory
+    for (int i=0; i<treeSize; ++i) {
+        treePtr[i]=-1;
+    }
+#endif
+
+    builder.WriteTree(levelIndex, faceIndex, treePtr);
+
+    ch->_treeSize = treeSize;
+    ch->_tree = treePtr;
+}
 
 CharacteristicMap const *
 CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
@@ -85,14 +105,18 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
         ConstIndexArray verts = coarseLevel.GetFaceVertices(face);
 
         if (verts.size()==regFaceSize) {
+
+            writeCharacteristicTree(builder, 0, face, ch);
+
             ch->_characteristicMap = charmap;
-            builder.WriteCharacteristicTree(ch, 0, face);
             ++ch;
         } else {
             ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
-            for (int child=0; child<children.size(); ++child) {
+            for (int i=0; i<children.size(); ++i) {
+
+                writeCharacteristicTree(builder, 1, children[i], ch);
+
                 ch->_characteristicMap = charmap;
-                builder.WriteCharacteristicTree(ch, 1, children[child]);
                 ++ch;
             }
         }
