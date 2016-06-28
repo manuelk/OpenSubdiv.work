@@ -73,6 +73,9 @@ public:
         TopologyRefiner const & refiner, std::vector<PatchFaceTag> & patchTags,
             int maxIsolationLevel, bool useSingleCreasePatch);
 
+    // debug print
+    void Print() const;
+
 private:
 
     void assignBoundaryPropertiesFromEdgeMask(int boundaryEdgeMask);

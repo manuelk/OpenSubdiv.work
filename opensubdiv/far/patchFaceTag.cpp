@@ -42,6 +42,15 @@ PatchFaceTag::Clear() {
 }
 
 void
+PatchFaceTag::Print() const {
+
+    printf("hasPatch=%d isRegular=%d transitionMask=%d, boundaryMask=%d, "
+        "boundaryIndex=%d, boundaryCount=%d, hasBoundaryEdge=%d, isSingleCrease=%d",
+            hasPatch, isRegular, transitionMask, boundaryMask,
+                boundaryIndex, boundaryCount, hasBoundaryEdge, isSingleCrease);
+}
+
+void
 PatchFaceTag::assignBoundaryPropertiesFromEdgeMask(int boundaryEdgeMask) {
     //
     //  The number of rotations to apply for boundary or corner patches varies on both

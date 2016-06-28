@@ -27,6 +27,7 @@
 set(SOURCE_FILES
     characteristicMapFactory.cpp
     characteristicMap.cpp
+    characteristicTreeBuilder.cpp
     error.cpp
     endCapBSplineBasisPatchFactory.cpp
     endCapGregoryBasisPatchFactory.cpp
@@ -48,10 +49,11 @@ set(SOURCE_FILES
 )
 
 set(PRIVATE_HEADER_FILES
-    gregoryBasis.h
+    characteristicTreeBuilder.h
     endCapBSplineBasisPatchFactory.h
     endCapGregoryBasisPatchFactory.h
     endCapLegacyGregoryPatchFactory.h
+    gregoryBasis.h
     patchBasis.h
     stencilBuilder.h
 )

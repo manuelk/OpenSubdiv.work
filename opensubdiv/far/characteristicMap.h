@@ -339,7 +339,7 @@ private:
 
 private:
 
-    friend class CharacteristicBuilder;
+    friend class CharacteristicTreeBuilder;
     friend class CharacteristicMapFactory;
 
     CharacteristicMap const * _characteristicMap;

@@ -193,6 +193,12 @@ public:
     /// \brief Clears the stencils from the table
     void Clear();
 
+    StencilTable() : _numControlVertices(0) {}
+
+    StencilTable(int numControlVerts)
+        : _numControlVertices(numControlVerts) 
+    { }
+
 protected:
 
     // Update values by applying cached stencil weights to new control values
@@ -215,12 +221,7 @@ protected:
     void finalize();
 
 protected:
-    StencilTable() : _numControlVertices(0) {}
-    StencilTable(int numControlVerts)
-        : _numControlVertices(numControlVerts) 
-    { }
-
-    friend class CharacteristicBuilder;
+    friend struct EndCapBuilder;
     friend class StencilTableFactory;
     friend class PatchTableFactory;
     // XXX: temporarily, GregoryBasis class will go away.
