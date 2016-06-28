@@ -38,6 +38,7 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 class CharacteristicTreeBuilder;
+class NeighborhoodBuilder;
 class TopologyRefiner;
 
 struct PatchFaceTag;
@@ -58,6 +59,7 @@ public:
     struct Options {
 
         Options() :
+             hashSize(10000),
              endCapType(ENDCAP_BSPLINE_BASIS),
              useTerminalNodes(false) { }
 
@@ -66,6 +68,8 @@ public:
 
         /// \brief Set endcap patch type
         void SetEndCapType(EndCapType e) { endCapType = e; }
+
+        int hashSize;
 
         unsigned int endCapType       : 3, ///< Type of end-cap patches
                      useTerminalNodes : 1; ///< Use "terminal" nodes on patches with single EV
@@ -83,14 +87,19 @@ public:
     /// @return                     A new instance of PatchTable
     ///
     static CharacteristicMap const * Create(TopologyRefiner const & refiner,
-        PatchFaceTagVector const & patchTags,
-           Options options=Options());
+        PatchFaceTagVector const & patchTags, Options options=Options());
 
 private:
 
-    static void writeCharacteristicTree(CharacteristicTreeBuilder & builder,
-        int levelIndex, int faceIndex, Characteristic * ch);
+    class Context;
 
+    static void addCharacteristicToHash(
+        TopologyLevel const & level, NeighborhoodBuilder & neighborhoodBuilder,
+            int faceIndex, int charIndex, int valence, CharacteristicMap * charmap);
+
+    static Index findOrAddCharacteristic(TopologyRefiner const & refiner,
+        NeighborhoodBuilder & builder, CharacteristicTreeBuilder & treeBuilder,
+            int faceIndex, CharacteristicMap * charmap);
 };
 
 } // end namespace Far

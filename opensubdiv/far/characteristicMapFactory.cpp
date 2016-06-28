@@ -26,6 +26,7 @@
 #include "../far/characteristicTreeBuilder.h"
 #include "../far/endCapBSplineBasisPatchFactory.h"
 #include "../far/endCapGregoryBasisPatchFactory.h"
+#include "../far/neighborhoodBuilder.h"
 #include "../far/patchFaceTag.h"
 #include "../far/topologyRefiner.h"
 
@@ -40,24 +41,85 @@ namespace Far {
 //
 
 void
-CharacteristicMapFactory::writeCharacteristicTree(
-    CharacteristicTreeBuilder & builder, int levelIndex, int faceIndex, Characteristic * ch) {
+writeCharacteristicTree(CharacteristicTreeBuilder & builder,
+    int levelIndex, int faceIndex, int * treeSize, int ** treePtr) {
 
-    int treeSize = builder.GetTreeSize(levelIndex, faceIndex);
+    assert(treeSize && treePtr);
 
-    int * treePtr = new int[treeSize];
+    int size = builder.GetTreeSize(levelIndex, faceIndex);
+    int * ptr = new int[size];
 
 #if 0
     // debug : paint memory
     for (int i=0; i<treeSize; ++i) {
-        treePtr[i]=-1;
+        ptr[i]=-1;
     }
 #endif
 
-    builder.WriteTree(levelIndex, faceIndex, treePtr);
+    builder.WriteTree(levelIndex, faceIndex, ptr);
 
-    ch->_treeSize = treeSize;
-    ch->_tree = treePtr;
+    *treeSize = size;
+    *treePtr = ptr;
+}
+
+Index
+CharacteristicMapFactory::findOrAddCharacteristic(TopologyRefiner const & refiner,
+    NeighborhoodBuilder & neighborhoodBuilder, CharacteristicTreeBuilder & treeBuilder,
+         int faceIndex, CharacteristicMap * charmap) {
+
+    TopologyLevel const & coarseLevel = refiner.GetLevel(0);
+
+    Neighborhood const * n = neighborhoodBuilder.Create(coarseLevel, faceIndex);
+
+    Index charIndex = INDEX_INVALID;
+
+    int hash = n->GetHash(),
+        hashCount = (int)charmap->_characteristicsHash.size(),
+        rotation = 0;
+
+    for (int i=0; i<hashCount; ++i) {
+
+        int hashIndex = (hash + i) % hashCount;
+
+        charIndex = charmap->_characteristicsHash[hashIndex];
+        if (charIndex==INDEX_INVALID) {
+            charIndex = charmap->GetNumCharacteristics();
+            break;
+        }
+
+        Characteristic const * ch = charmap->_characteristics[charIndex];
+        for (int j=0; j<ch->GetNumNeighborhoods(); ++j) {
+            if (n->IsEquivalent(*ch->GetNeighborhood(j))) {
+                rotation = ch->GetStartingEdge(j);
+                return charIndex;
+            }
+        }
+    }
+
+    assert(charIndex!=INDEX_INVALID);
+
+    int valence = n->GetValence(),
+        regValence = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType());
+
+    if (valence!=regValence) {
+        ConstIndexArray childFaces = coarseLevel.GetFaceChildFaces(faceIndex);
+        for (int i=0; i<valence; ++i) {
+            Characteristic * ch = new Characteristic(charmap);
+            writeCharacteristicTree(treeBuilder, 1, childFaces[i],  &ch->_treeSize, &ch->_tree);
+            charmap->_characteristics.push_back(ch);
+        }
+    } else {
+        Characteristic * ch = new Characteristic(charmap);
+        writeCharacteristicTree(treeBuilder, 0, faceIndex, &ch->_treeSize, &ch->_tree);
+        charmap->_characteristics.push_back(ch);
+    }
+
+    charmap->addCharacteristicToHash(
+        coarseLevel, neighborhoodBuilder, faceIndex, charIndex, valence);
+
+    delete n;
+
+    return charIndex;
 }
 
 CharacteristicMap const *
@@ -70,15 +132,34 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
         return nullptr;
     }
 
-    CharacteristicTreeBuilder builder(refiner,
+    CharacteristicTreeBuilder treesBuilder(refiner,
         patchTags, options.GetEndCapType(), options.useTerminalNodes);
 
     TopologyLevel const & coarseLevel = refiner.GetLevel(0);
 
-    int regFaceSize =
-        Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType());
+    int nfaces = coarseLevel.GetNumFaces();
 
-    int nfaces = coarseLevel.GetNumFaces(),
+    CharacteristicMap * charmap =
+        new CharacteristicMap(options.GetEndCapType());
+
+//#define DO_HASH
+#ifdef DO_HASH
+    charmap->_characteristicsHash.resize(options.hashSize, INDEX_INVALID);
+
+    NeighborhoodBuilder neighborhoodBuilder;
+
+    for (int face = 0; face < nfaces; ++face) {
+
+        if (coarseLevel.IsFaceHole(face)) {
+            continue;
+        }
+
+        findOrAddCharacteristic(refiner, neighborhoodBuilder, treesBuilder, face, charmap);
+    }
+
+#else
+
+    int regFaceSize = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType()),
         nchars = 0;
 
     // Count the number of characteristics (non-quads have more than 1)
@@ -89,9 +170,6 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
         ConstIndexArray fverts = coarseLevel.GetFaceVertices(face);
         nchars += fverts.size()==regFaceSize ? 1 : fverts.size();
     }
-
-    CharacteristicMap * charmap =
-        new CharacteristicMap(options.GetEndCapType());
 
     // Allocate & write the characteristics
     charmap->_characteristics.reserve(nchars);
@@ -106,28 +184,25 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
 
         if (verts.size()==regFaceSize) {
 
-            Characteristic * ch = new Characteristic;
-            ch->_characteristicMap = charmap;
-
-            writeCharacteristicTree(builder, 0, face, ch);
+            Characteristic * ch = new Characteristic(charmap);
+            writeCharacteristicTree(treesBuilder, 0, face, &ch->_treeSize, &ch->_tree);
 
             charmap->_characteristics.push_back(ch);            
         } else {
             ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
             for (int i=0; i<children.size(); ++i) {
 
-                Characteristic * ch = new Characteristic;
-                ch->_characteristicMap = charmap;
-
-                writeCharacteristicTree(builder, 1, children[i], ch);
+                Characteristic * ch = new Characteristic(charmap);
+                writeCharacteristicTree(treesBuilder, 1, children[i],  &ch->_treeSize, &ch->_tree);
 
                 charmap->_characteristics.push_back(ch);            
             }
         }
     }
+#endif
 
-    charmap->_localPointStencils = builder.FinalizeStencils();
-    charmap->_localPointVaryingStencils = builder.FinalizeVaryingStencils();
+    charmap->_localPointStencils = treesBuilder.FinalizeStencils();
+    charmap->_localPointVaryingStencils = treesBuilder.FinalizeVaryingStencils();
 
     return charmap;
 }

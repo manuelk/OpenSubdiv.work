@@ -37,7 +37,9 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Far {
 
+class NeighborhoodBuilder;
 class StencilTable;
+class TopologyLevel;
 
 ///
 ///  \brief Stores topology characteristic plans
@@ -94,15 +96,26 @@ private:
     CharacteristicMap(EndCapType endcaps) :
         _endCapType(endcaps), _localPointStencils(0), _localPointVaryingStencils(0) { }
 
-private:
-
     // flags
     unsigned int _endCapType:2;
 
-    // XXXX manuelk this eventually will be a sparse map : right now it's just
-    // one characteristic per face
+private:
+
+    //
+    // Open-addressing hash
+    //
+
+    void addCharacteristicToHash(TopologyLevel const & level,
+        NeighborhoodBuilder & neighborhoodBuilder,
+             int faceIndex, int charIndex, int valence);
+
+    std::vector<int> _characteristicsHash;
+
     std::vector<Characteristic *> _characteristics;
 
+private:
+
+    // endcap stencils
     StencilTable const * _localPointStencils,        // endcap basis conversion stencils
                        * _localPointVaryingStencils; // endcap varying stencils (for convenience)
 };

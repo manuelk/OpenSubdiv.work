@@ -23,12 +23,59 @@
 //
 
 #include "../far/characteristicMap.h"
-#include "../far/patchBasis.h"
+#include "../far/neighborhoodBuilder.h"
 
 namespace OpenSubdiv {
 namespace OPENSUBDIV_VERSION {
 
 namespace Far {
+
+void
+CharacteristicMap::addCharacteristicToHash(
+    TopologyLevel const & level, NeighborhoodBuilder & neighborhoodBuilder,
+        int faceIndex, int charIndex, int valence) {
+
+    Characteristic * ch = _characteristics[charIndex];
+
+    ch->reserveNeighborhoods(valence);
+
+    for (int i=0; i<valence; ++i) {
+
+        Neighborhood const * n = neighborhoodBuilder.Create(level, faceIndex, i);
+
+        if (ch->FindEquivalentNeighborhood(*n)!=INDEX_INVALID) {
+            continue;
+        }
+
+        unsigned int hash = n->GetHash(),
+                     hashCount = (unsigned int)_characteristicsHash.size();
+
+        for (unsigned int j=0; j<hashCount; ++j) {
+
+            unsigned int hashIndex = (hash+j) % hashCount;
+
+            assert(hashIndex<hashCount);
+
+            int existingCharIndex = _characteristicsHash[hashIndex];
+
+            if (existingCharIndex == INDEX_INVALID) {
+                _characteristicsHash[hashIndex] = charIndex;
+                break;
+            }
+        }
+
+        // XXXX Wade says that startEdge reversing probably counters bug in
+        // fastsubdiv code : we probably shouldn't be doing this...
+        int startEdge = (valence-i) % valence; 
+        ch->addNeighborhood(n, startEdge);
+
+        // XXXX if (macro patches) break;
+    }
+
+    // XXXX is this really necessary ?
+    ch->shrink_to_fit();
+}
+
 
 void
 CharacteristicMap::WriteCharacteristicsDiagraphs(FILE * fout, bool showIndices) const {

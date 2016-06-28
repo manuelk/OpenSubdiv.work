@@ -36,6 +36,7 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 class CharacteristicMap;
+class Neighborhood;
 
 ///
 ///  \brief Stores a characteristic plan
@@ -95,8 +96,42 @@ class Characteristic {
 
 public:
 
+    /// \brief Destructor
+    ~Characteristic();
+
     /// \brief Returns the map this characteristic belongs to
     CharacteristicMap const * GetCharacteristicMap() const { return _characteristicMap; }
+
+public:
+
+
+    ///
+    /// Neighborhoods
+    ///
+
+    //@{
+    ///  @name Neighborhood access methods
+    ///
+
+    /// \brief Returns the number of (rotated) neighborhoods
+    int GetNumNeighborhoods() const {
+        return (int)_neighborhoods.size();
+    }
+    
+    /// \brief Returns the neighborhood at 'index'
+    Neighborhood const * GetNeighborhood(int index) const {
+        return _neighborhoods[index];
+    }
+
+    /// \brief Returns the starting edge (rotation) at 'index'
+    int GetStartingEdge(int index) const {
+        return _startEdges[index];
+    }
+
+    /// \brief Returns the index of a neighborhood equivalent to
+    /// 'n' (or INDEX_INVALID)
+    int FindEquivalentNeighborhood(Neighborhood const & n) const;
+    //@}
 
 public:
 
@@ -336,8 +371,27 @@ private:
 
 private:
 
+    //
+    // Neighborhoods
+    //
+
+    void reserveNeighborhoods(int count);
+
+    void addNeighborhood(Neighborhood const * n, int startEdge);
+
+    void shrink_to_fit();
+
+    std::vector<Neighborhood const *> _neighborhoods;
+    std::vector<int> _startEdges;
+
+private:
+
     friend class CharacteristicTreeBuilder;
     friend class CharacteristicMapFactory;
+    friend class CharacteristicMap;
+
+    Characteristic(CharacteristicMap const * charmap) :
+        _characteristicMap(charmap) { }
 
     CharacteristicMap const * _characteristicMap;
 };

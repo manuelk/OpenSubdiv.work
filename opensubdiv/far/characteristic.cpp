@@ -24,6 +24,7 @@
 
 #include "../far/characteristic.h"
 #include "../far/characteristicMap.h"
+#include "../far/neighborhood.h"
 #include "../far/patchBasis.h"
 
 namespace OpenSubdiv {
@@ -448,6 +449,54 @@ Characteristic::WriteTreeDiagraph(FILE * fout, int charIndex, bool showIndices, 
 
     fprintf(fout, "}\n");
 }
+
+//
+// Neighborhoods
+//
+
+void
+Characteristic::reserveNeighborhoods(int count) {
+    _neighborhoods.reserve(count);
+    _startEdges.reserve(count);
+}
+
+void
+Characteristic::addNeighborhood(Neighborhood const * n, int startEdge) {
+    _neighborhoods.push_back(n);
+    _startEdges.push_back(startEdge);
+}
+
+void
+Characteristic::shrink_to_fit() {
+#if __cplusplus <= 199711L
+    int count = GetNumNeighborhoods();
+    _neighborhoods.resize(count);
+    _startEdges.resize(count);
+#else
+    _neighborhoods.shrink_to_fit();
+    _startEdges.shrink_to_fit();
+#endif
+}
+
+int
+Characteristic::FindEquivalentNeighborhood(Neighborhood const & n) const {
+    for (int i=0; i<GetNumNeighborhoods(); ++i) {
+        if (n.IsEquivalent(*_neighborhoods[i])) {
+            return i;
+        }
+    }
+    return INDEX_INVALID;
+}
+
+
+Characteristic::~Characteristic() {
+    for (int i=0; i<(int)_neighborhoods.size(); ++i) {
+        delete _neighborhoods[i];
+    }
+}
+
+
+
 
 } // end namespace Far
 
