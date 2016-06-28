@@ -22,8 +22,8 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
-#ifndef OPENSUBDIV3_FAR_CHARACTERISTIC_FACTORY_H
-#define OPENSUBDIV3_FAR_CHARACTERISTIC_FACTORY_H
+#ifndef OPENSUBDIV3_FAR_CHARACTERISTIC_MAP_FACTORY_H
+#define OPENSUBDIV3_FAR_CHARACTERISTIC_MAP_FACTORY_H
 
 
 #include "../version.h"
@@ -38,9 +38,9 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 class CharacteristicTreeBuilder;
-struct PatchFaceTag;
 class TopologyRefiner;
 
+struct PatchFaceTag;
 typedef std::vector<PatchFaceTag> PatchFaceTagVector;
 
 
@@ -99,5 +99,5 @@ private:
 using namespace OPENSUBDIV_VERSION;
 } // end namespace OpenSubdiv
 
-#endif /* OPENSUBDIV3_FAR_CHARACTERISTIC_FACTORY_H */
+#endif /* OPENSUBDIV3_FAR_CHARACTERISTIC_MAP_FACTORY_H */
 

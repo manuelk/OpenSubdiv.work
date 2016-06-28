@@ -112,5 +112,5 @@ private:
 using namespace OPENSUBDIV_VERSION;
 } // end namespace OpenSubdiv
 
-#endif /* OPENSUBDIV3_FAR_CHARACTERISTIC_FACTORY_H */
+#endif /* OPENSUBDIV3_FAR_CHARACTERISTIC_TREE_BUILDER_H */
 

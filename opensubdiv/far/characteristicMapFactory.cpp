@@ -23,13 +23,11 @@
 //
 
 #include "../far/characteristicMapFactory.h"
-#include "../far/characteristicMap.h"
 #include "../far/characteristicTreeBuilder.h"
 #include "../far/endCapBSplineBasisPatchFactory.h"
 #include "../far/endCapGregoryBasisPatchFactory.h"
 #include "../far/patchFaceTag.h"
-#include "../far/topologyRefinerFactory.h"
-#include "../vtr/refinement.h"
+#include "../far/topologyRefiner.h"
 
 namespace OpenSubdiv {
 namespace OPENSUBDIV_VERSION {
