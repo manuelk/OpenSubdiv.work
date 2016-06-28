@@ -85,6 +85,9 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
 
     // Count the number of characteristics (non-quads have more than 1)
     for (int face = 0; face < nfaces; ++face) {
+        if (coarseLevel.IsFaceHole(face)) {
+            continue;
+        }
         ConstIndexArray fverts = coarseLevel.GetFaceVertices(face);
         nchars += fverts.size()==regFaceSize ? 1 : fverts.size();
     }
@@ -93,8 +96,7 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
         new CharacteristicMap(options.GetEndCapType());
 
     // Allocate & write the characteristics
-    charmap->_characteristics.resize(nchars);
-    Characteristic * ch = &charmap->_characteristics[0];
+    charmap->_characteristics.reserve(nchars);
 
     for (int face = 0; face < coarseLevel.GetNumFaces(); ++face) {
 
@@ -106,18 +108,22 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
 
         if (verts.size()==regFaceSize) {
 
+            Characteristic * ch = new Characteristic;
+            ch->_characteristicMap = charmap;
+
             writeCharacteristicTree(builder, 0, face, ch);
 
-            ch->_characteristicMap = charmap;
-            ++ch;
+            charmap->_characteristics.push_back(ch);            
         } else {
             ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
             for (int i=0; i<children.size(); ++i) {
 
+                Characteristic * ch = new Characteristic;
+                ch->_characteristicMap = charmap;
+
                 writeCharacteristicTree(builder, 1, children[i], ch);
 
-                ch->_characteristicMap = charmap;
-                ++ch;
+                charmap->_characteristics.push_back(ch);            
             }
         }
     }

@@ -33,6 +33,8 @@ set(SOURCE_FILES
     endCapGregoryBasisPatchFactory.cpp
     endCapLegacyGregoryPatchFactory.cpp
     gregoryBasis.cpp
+    neighborhood.cpp
+    neighborhoodBuilder.cpp
     patchBasis.cpp
     patchDescriptor.cpp
     patchFaceTag.cpp
@@ -54,6 +56,7 @@ set(PRIVATE_HEADER_FILES
     endCapGregoryBasisPatchFactory.h
     endCapLegacyGregoryPatchFactory.h
     gregoryBasis.h
+    neighborhoodBuilder.h
     patchBasis.h
     stencilBuilder.h
 )
@@ -62,6 +65,7 @@ set(PUBLIC_HEADER_FILES
     characteristicMapFactory.h
     characteristicMap.h
     error.h
+    neighborhood.h
     patchDescriptor.h
     patchFaceTag.h
     patchParam.h

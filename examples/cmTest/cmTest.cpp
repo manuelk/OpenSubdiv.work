@@ -341,12 +341,12 @@ printCharmapNodes(Far::CharacteristicMap const * charmap) {
     int nchars = charmap->GetNumCharacteristics();
     for (int i=0; i<nchars; ++i) {
 
-        Far::Characteristic const & ch = charmap->GetCharacteristic(i);
+        Far::Characteristic const * ch = charmap->GetCharacteristic(i);
 
         printf("Characteristic : %d\n", i);
 
         int nodeIndex = 0;
-        for (Node it = ch.GetTreeNode(0); it.GetTreeOffset()<ch.GetTreeSize(); ++it, ++nodeIndex) {
+        for (Node it = ch->GetTreeNode(0); it.GetTreeOffset()<ch->GetTreeSize(); ++it, ++nodeIndex) {
 
             NodeDesc desc = it.GetDescriptor();
 
@@ -389,10 +389,10 @@ createNodeIDs(Far::CharacteristicMap const & charmap,
 
     for (int i=0; i<nchars; ++i) {
 
-        Far::Characteristic const & ch = charmap.GetCharacteristic(i);
+        Far::Characteristic const * ch = charmap.GetCharacteristic(i);
 
-        Node it = ch.GetTreeNode(0);
-        for (int nindex=0; it.GetTreeOffset()<ch.GetTreeSize(); ++nindex, ++it) {
+        Node it = ch->GetTreeNode(0);
+        for (int nindex=0; it.GetTreeOffset()<ch->GetTreeSize(); ++nindex, ++it) {
 
             NodeDesc desc = it.GetDescriptor();
 
@@ -448,12 +448,12 @@ createNodeNumbers(Far::CharacteristicMap const * charmap,
 
     if (g_currentCharIndex>=0 && g_currentNodeIndex>=0) {
 
-        Far::Characteristic const & ch =
+        Far::Characteristic const * ch =
             charmap->GetCharacteristic(g_currentCharIndex);
 
-        Far::Characteristic::Node node = ch.GetTreeNode(0);
+        Far::Characteristic::Node node = ch->GetTreeNode(0);
 
-        for (int count=0; node.GetTreeOffset()<ch.GetTreeSize(); ++node, ++count) {
+        for (int count=0; node.GetTreeOffset()<ch->GetTreeSize(); ++node, ++count) {
 
             if (count==g_currentNodeIndex) {
 
@@ -518,11 +518,11 @@ writeDiagraph(Far::CharacteristicMap const * charmap, int charIndex) {
 
     if (charIndex>=0 && charIndex<charmap->GetNumCharacteristics()) {
 
-        Far::Characteristic const & ch = charmap->GetCharacteristic(charIndex);
+        Far::Characteristic const * ch = charmap->GetCharacteristic(charIndex);
 
         bool showIndices = true,
              isSubgraph = false;
-        ch.WriteTreeDiagraph(fout, charIndex, showIndices, isSubgraph);
+        ch->WriteTreeDiagraph(fout, charIndex, showIndices, isSubgraph);
     } else {
         bool showIndices = true;
         charmap->WriteCharacteristicsDiagraphs(fout, showIndices);
@@ -567,9 +567,9 @@ createTessMesh(Far::CharacteristicMap const * charmap, int tessFactor,
 
         for (int i=0, charOffset=0; i<nchars; ++i) {
 
-            Far::Characteristic const & ch = charmap->GetCharacteristic(i);
+            Far::Characteristic const * ch = charmap->GetCharacteristic(i);
 
-            if (ch.GetTreeSize()==0) {
+            if (ch->GetTreeSize()==0) {
                 continue;
             }
 
@@ -760,13 +760,13 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     g_treeSizeTotal = 0;
     for (int i=0; i<nchars; ++i) {
 
-        Far::Characteristic const & ch = charmap->GetCharacteristic(i);
+        Far::Characteristic const * ch = charmap->GetCharacteristic(i);
 
-        if (ch.GetTreeSize()==0) {
+        if (ch->GetTreeSize()==0) {
             continue; // skip holes
         }
 
-        g_treeSizeTotal += ch.GetTreeSize();
+        g_treeSizeTotal += ch->GetTreeSize();
 
         // interpolate vertices
         float wP[20], wDs[20], wDt[20];
@@ -781,7 +781,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 unsigned char quadrant=0;
 
                 Far::Characteristic::Node node =
-                    ch.EvaluateBasis(s, t, wP, wDs, wDt, &quadrant);
+                    ch->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant);
 
                 Far::Characteristic::NodeDescriptor desc = node.GetDescriptor();
 
@@ -1119,8 +1119,8 @@ display() {
         g_hud.DrawString(10, -40,  "Triangles  : %d", g_tessMesh ? g_tessMesh->GetNumTriangles() : -1);
         g_hud.DrawString(10, -20,  "FPS        : %3.1f", fps);
 
-        g_hud.DrawString(-280, -120, "Characteristics : %d", g_charmap ? g_charmap->GetNumCharacteristics() : -1);
-        g_hud.DrawString(-280, -100, "Trees (bytes) : %d", g_charmap ? g_treeSizeTotal * sizeof(int) : -1);
+        g_hud.DrawString(-280, -120, "Chars : %d", g_charmap ? g_charmap->GetNumCharacteristics() : -1);
+        g_hud.DrawString(-280, -100, "Trees : %.1f (kb)", g_charmap ? g_treeSizeTotal * sizeof(int) / 1024.0f : 0.0f);
 
         g_hud.Flush();
     }

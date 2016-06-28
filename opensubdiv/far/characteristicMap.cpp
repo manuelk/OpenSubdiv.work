@@ -455,9 +455,10 @@ CharacteristicMap::WriteCharacteristicsDiagraphs(FILE * fout, bool showIndices) 
     fprintf(fout, "digraph {\n");
     for (int charIndex=0; charIndex<GetNumCharacteristics(); ++charIndex) {
 
-        Characteristic const & ch = GetCharacteristic(charIndex);
-
-        ch.WriteTreeDiagraph(fout, charIndex, showIndices, /*isSubgraph*/ true);
+        Characteristic const * ch = GetCharacteristic(charIndex);
+        if (ch) {
+            ch->WriteTreeDiagraph(fout, charIndex, showIndices, /*isSubgraph*/ true);
+        }
     }
     fprintf(fout, "}\n");
 }

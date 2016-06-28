@@ -363,7 +363,7 @@ public:
     }
 
     /// \brief Returns the characteristic for index
-    Characteristic const & GetCharacteristic(Index charIndex) const {
+    Characteristic const * GetCharacteristic(Index charIndex) const {
         return _characteristics[charIndex];
     }
 
@@ -408,7 +408,7 @@ private:
 
     // XXXX manuelk this eventually will be a sparse map : right now it's just
     // one characteristic per face
-    std::vector<Characteristic> _characteristics;
+    std::vector<Characteristic *> _characteristics;
 
     StencilTable const * _localPointStencils,        // endcap basis conversion stencils
                        * _localPointVaryingStencils; // endcap varying stencils (for convenience)
