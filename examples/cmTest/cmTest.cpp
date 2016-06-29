@@ -89,7 +89,9 @@ int g_level = 2,
 int   g_frame = 0,
       g_repeatCount = 0;
 
-bool g_DrawNodeIDs = false;
+bool g_DrawVertIDs = false,
+     g_DrawFaceIDs = false,
+     g_DrawNodeIDs = false;
 
 Far::EndCapType g_endCap = Far::ENDCAP_BSPLINE_BASIS;
 
@@ -436,6 +438,41 @@ static int remapTerminalIndices[4][16] = {
 };
 
 static void
+createVertNumbers(Far::TopologyRefiner const & refiner,
+    std::vector<Vertex> const & verts) {
+
+    int nverts = refiner.GetLevel(0).GetNumVertices();
+    static char buf[16];
+    for (int i=0; i<nverts; ++i) {
+        snprintf(buf, 16, "%d", i);
+        g_font->Print3D(verts[i].point, buf, 1);
+    }
+}
+
+static void
+createFaceNumbers(Far::TopologyRefiner const & refiner,
+    std::vector<Vertex> const & verts) {
+
+    Far::TopologyLevel const & level = refiner.GetLevel(0);
+
+    for (int face=0; face<level.GetNumFaces(); ++face) {
+
+        Far::ConstIndexArray fverts = level.GetFaceVertices(face);
+
+        float weight = 1.0f / fverts.size();
+
+        Vertex center;
+        center.Clear();
+        for (int vert=0; vert<fverts.size(); ++vert) {
+            center.AddWithWeight(verts[fverts[vert]], weight);
+        }
+        static char buf[16];
+        snprintf(buf, 16, "%d", face);
+        g_font->Print3D(center.point, buf, 2);
+    }
+}
+
+static void
 createNodeNumbers(Far::CharacteristicMap const * charmap,
     std::vector<Vertex> const & vertexBuffer) {
 
@@ -722,6 +759,13 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     delete shape;
 
     g_charmap = charmap;
+
+    if (g_DrawVertIDs) {
+        createVertNumbers(*refiner, supportsBuffer);
+    }
+    if (g_DrawFaceIDs) {
+        createFaceNumbers(*refiner, supportsBuffer);
+    }
 
     // draw selected node data
     createNodeNumbers(g_charmap, supportsBuffer);
@@ -1174,6 +1218,8 @@ callbackFontScale(float value, int) {
 
 enum HudCheckBox { kHUD_CB_DISPLAY_CONTROL_MESH_EDGES,
                    kHUD_CB_DISPLAY_CONTROL_MESH_VERTS,
+                   kHUD_CB_DISPLAY_VERT_IDS,
+                   kHUD_CB_DISPLAY_FACE_IDS,
                    kHUD_CB_DISPLAY_NODE_IDS,
                    kHUD_CB_USE_TOPOLOGY_HASHING,
                    kHUD_CB_USE_TERMINAL_NODES,
@@ -1184,27 +1230,24 @@ static void
 callbackCheckBox(bool checked, int button) {
 
     switch (button) {
-        case kHUD_CB_DISPLAY_NODE_IDS: {
-                g_DrawNodeIDs = checked;
-                rebuildMeshes();
-            } break;
+        case kHUD_CB_DISPLAY_NODE_IDS: g_DrawNodeIDs = checked; break;
+        case kHUD_CB_DISPLAY_VERT_IDS: g_DrawVertIDs = checked; break;
+        case kHUD_CB_DISPLAY_FACE_IDS: g_DrawFaceIDs = checked; break;
+
         case kHUD_CB_DISPLAY_CONTROL_MESH_EDGES:
             g_controlMeshDisplay.SetEdgesDisplay(checked);
             break;
         case kHUD_CB_DISPLAY_CONTROL_MESH_VERTS:
             g_controlMeshDisplay.SetVerticesDisplay(checked);
             break;
-        case kHUD_CB_USE_TOPOLOGY_HASHING: {
-                g_useTopologyHashing = checked;
-                rebuildMeshes();
-            } break;
-        case kHUD_CB_USE_TERMINAL_NODES: {
-                g_useTerminalNodes = checked;
-                rebuildMeshes();
-            } break;
+
+        case kHUD_CB_USE_TOPOLOGY_HASHING: g_useTopologyHashing = checked; break;
+        case kHUD_CB_USE_TERMINAL_NODES: g_useTerminalNodes = checked; break;
         default:
             break;
     }
+
+    rebuildMeshes();
 }
 
 
@@ -1351,8 +1394,14 @@ initHUD() {
     g_hud.AddCheckBox("Topology Hashing", g_useTopologyHashing==1,
         10, 70, callbackCheckBox, kHUD_CB_USE_TOPOLOGY_HASHING);
 
+    g_hud.AddCheckBox("Vert IDs", g_DrawVertIDs!=0,
+        10, 120, callbackCheckBox, kHUD_CB_DISPLAY_VERT_IDS);
+
+    g_hud.AddCheckBox("Face IDs", g_DrawFaceIDs!=0,
+        10, 140, callbackCheckBox, kHUD_CB_DISPLAY_FACE_IDS);
+
     g_hud.AddCheckBox("Node IDs", g_DrawNodeIDs!=0,
-        10, 120, callbackCheckBox, kHUD_CB_DISPLAY_NODE_IDS);
+        10, 180, callbackCheckBox, kHUD_CB_DISPLAY_NODE_IDS);
 
     int endcap_pulldown = g_hud.AddPullDown(
         "End cap (E)", 10, 230, 200, callbackEndCap, 'e');
