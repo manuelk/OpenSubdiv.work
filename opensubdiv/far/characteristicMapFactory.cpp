@@ -71,10 +71,9 @@ CharacteristicMapFactory::findOrAddCharacteristic(TopologyRefiner const & refine
 
     Neighborhood const * n = neighborhoodBuilder.Create(coarseLevel, faceIndex);
 
-    //n->Print();
+    unsigned int hash = n->GetHash();
 
-    int hash = n->GetHash(),
-        hashCount = (int)charmap->_characteristicsHash.size(),
+    int hashCount = (int)charmap->_characteristicsHash.size(),
         charIndex = INDEX_INVALID,
         rotation = 0;
 
@@ -143,64 +142,72 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
     CharacteristicMap * charmap =
         new CharacteristicMap(options.GetEndCapType());
 
-//#define DO_HASH
-#ifdef DO_HASH
-    charmap->_characteristicsHash.resize(options.hashSize, INDEX_INVALID);
+    if (options.hashSize>0) {
 
-    NeighborhoodBuilder neighborhoodBuilder;
+        // hash topology : faces with redundant topological configurations share
+        // the same characteristic
 
-    for (int face = 0; face < nfaces; ++face) {
+        // XXXX manuelk TODO this can only work with localized stencils for
+        // support verts. Right now, characteristic trees only gather global
+        // stencil indices.
 
-        if (coarseLevel.IsFaceHole(face)) {
-            continue;
+        charmap->_characteristicsHash.resize(options.hashSize, INDEX_INVALID);
+
+        NeighborhoodBuilder neighborhoodBuilder;
+
+        for (int face = 0; face < nfaces; ++face) {
+
+            if (coarseLevel.IsFaceHole(face)) {
+                continue;
+            }
+
+            findOrAddCharacteristic(refiner, neighborhoodBuilder, treesBuilder, face, charmap);
+        }
+    } else {
+
+        // hash map size set to 0 : each face gets its own characteristic
+
+        int regFaceSize = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType()),
+            nchars = 0;
+
+        // Count the number of characteristics (non-quads have more than 1)
+        for (int face = 0; face < nfaces; ++face) {
+            if (coarseLevel.IsFaceHole(face)) {
+                continue;
+            }
+            ConstIndexArray fverts = coarseLevel.GetFaceVertices(face);
+            nchars += fverts.size()==regFaceSize ? 1 : fverts.size();
         }
 
-        findOrAddCharacteristic(refiner, neighborhoodBuilder, treesBuilder, face, charmap);
-    }
+        // Allocate & write the characteristics
+        charmap->_characteristics.reserve(nchars);
 
-#else
+        for (int face = 0; face < coarseLevel.GetNumFaces(); ++face) {
 
-    int regFaceSize = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType()),
-        nchars = 0;
+            if (coarseLevel.IsFaceHole(face)) {
+                continue;
+            }
 
-    // Count the number of characteristics (non-quads have more than 1)
-    for (int face = 0; face < nfaces; ++face) {
-        if (coarseLevel.IsFaceHole(face)) {
-            continue;
-        }
-        ConstIndexArray fverts = coarseLevel.GetFaceVertices(face);
-        nchars += fverts.size()==regFaceSize ? 1 : fverts.size();
-    }
+            ConstIndexArray verts = coarseLevel.GetFaceVertices(face);
 
-    // Allocate & write the characteristics
-    charmap->_characteristics.reserve(nchars);
-
-    for (int face = 0; face < coarseLevel.GetNumFaces(); ++face) {
-
-        if (coarseLevel.IsFaceHole(face)) {
-            continue;
-        }
-
-        ConstIndexArray verts = coarseLevel.GetFaceVertices(face);
-
-        if (verts.size()==regFaceSize) {
-
-            Characteristic * ch = new Characteristic(charmap);
-            writeCharacteristicTree(treesBuilder, 0, face, &ch->_treeSize, &ch->_tree);
-
-            charmap->_characteristics.push_back(ch);            
-        } else {
-            ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
-            for (int i=0; i<children.size(); ++i) {
+            if (verts.size()==regFaceSize) {
 
                 Characteristic * ch = new Characteristic(charmap);
-                writeCharacteristicTree(treesBuilder, 1, children[i],  &ch->_treeSize, &ch->_tree);
+                writeCharacteristicTree(treesBuilder, 0, face, &ch->_treeSize, &ch->_tree);
 
                 charmap->_characteristics.push_back(ch);            
+            } else {
+                ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
+                for (int i=0; i<children.size(); ++i) {
+
+                    Characteristic * ch = new Characteristic(charmap);
+                    writeCharacteristicTree(treesBuilder, 1, children[i],  &ch->_treeSize, &ch->_tree);
+
+                    charmap->_characteristics.push_back(ch);            
+                }
             }
         }
     }
-#endif
 
     charmap->_localPointStencils = treesBuilder.FinalizeStencils();
     charmap->_localPointVaryingStencils = treesBuilder.FinalizeVaryingStencils();

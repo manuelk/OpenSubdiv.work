@@ -82,7 +82,9 @@ int g_level = 2,
     g_tessLevel = 10,
     g_tessLevelMin = 2,
     g_currentShape = 42, //cube = 8 square = 12 pyramid = 45 torus = 49
+    g_useTopologyHashing = false,
     g_useTerminalNodes = true;
+
 
 int   g_frame = 0,
       g_repeatCount = 0;
@@ -674,6 +676,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
     delete g_charmap;
     Far::CharacteristicMapFactory::Options options;
+    options.hashSize = g_useTopologyHashing ? 5000 : 0;
     options.endCapType = g_endCap;
     options.useTerminalNodes = g_useTerminalNodes;
     Far::CharacteristicMap const * charmap =
@@ -1172,6 +1175,7 @@ callbackFontScale(float value, int) {
 enum HudCheckBox { kHUD_CB_DISPLAY_CONTROL_MESH_EDGES,
                    kHUD_CB_DISPLAY_CONTROL_MESH_VERTS,
                    kHUD_CB_DISPLAY_NODE_IDS,
+                   kHUD_CB_USE_TOPOLOGY_HASHING,
                    kHUD_CB_USE_TERMINAL_NODES,
                   };
 
@@ -1190,6 +1194,10 @@ callbackCheckBox(bool checked, int button) {
         case kHUD_CB_DISPLAY_CONTROL_MESH_VERTS:
             g_controlMeshDisplay.SetVerticesDisplay(checked);
             break;
+        case kHUD_CB_USE_TOPOLOGY_HASHING: {
+                g_useTopologyHashing = checked;
+                rebuildMeshes();
+            } break;
         case kHUD_CB_USE_TERMINAL_NODES: {
                 g_useTerminalNodes = checked;
                 rebuildMeshes();
@@ -1340,8 +1348,11 @@ initHUD() {
     g_hud.AddCheckBox("Terminal Nodes (T)", g_useTerminalNodes==1,
         10, 50, callbackCheckBox, kHUD_CB_USE_TERMINAL_NODES, 't');
 
+    g_hud.AddCheckBox("Topology Hashing", g_useTopologyHashing==1,
+        10, 70, callbackCheckBox, kHUD_CB_USE_TOPOLOGY_HASHING);
+
     g_hud.AddCheckBox("Node IDs", g_DrawNodeIDs!=0,
-        10, 70, callbackCheckBox, kHUD_CB_DISPLAY_NODE_IDS);
+        10, 120, callbackCheckBox, kHUD_CB_DISPLAY_NODE_IDS);
 
     int endcap_pulldown = g_hud.AddPullDown(
         "End cap (E)", 10, 230, 200, callbackEndCap, 'e');
