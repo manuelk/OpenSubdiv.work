@@ -277,7 +277,7 @@ CharacteristicTreeBuilder::writeRegularNode(
                 singleCrease = true;
                 boundaryMask = (1<<bIndex);
                 sharpness = level.getEdgeSharpness((level.getFaceEdges(faceIndex)[bIndex]));
-                sharpness = std::min(sharpness, (float)(_maxIsolationLevel-levelIndex));
+                sharpness = std::min(sharpness, (float)(_options.maxIsolationLevel-levelIndex));
             }
         } else if (patchTag.boundaryCount == 1) {
             // Expand boundary patch vertices and rotate to restore correct orientation.
@@ -416,7 +416,7 @@ bool
 CharacteristicTreeBuilder::nodeIsTerminal(
     int levelIndex, int faceIndex, int * evIndex) const {
 
-    if (_useTerminalNodes) {
+    if (_options.useTerminalNode) {
 
         PatchFaceTag const * levelPatchTags = _levelPatchTags[levelIndex+1];
 
@@ -429,7 +429,7 @@ CharacteristicTreeBuilder::nodeIsTerminal(
 
         int regular = 0, irregular = 0;
         for (int i=0; i<children.size(); ++i) {
-        
+
             Index child = children[i];
             if (child==INDEX_INVALID) {
                 return false;
@@ -618,15 +618,12 @@ CharacteristicTreeBuilder::FinalizeVaryingStencils() {
 CharacteristicTreeBuilder::CharacteristicTreeBuilder(
     TopologyRefiner const & refiner,
     PatchFaceTagVector const & patchTags,
-    unsigned int maxIsolation,
-    EndCapType endcapType,
-    bool useTerminalNodes) :
+    Options options) :
         _refiner(refiner),
         _patchTags(patchTags),
-        _maxIsolationLevel(maxIsolation),
-        _useTerminalNodes(useTerminalNodes) {
+        _options(options) {
 
-    _endcapBuilder = new EndCapBuilder(refiner, endcapType);
+    _endcapBuilder = new EndCapBuilder(refiner, options.GetEndCapType());
 
     // gather starting offsets for patch tags & vertex indices for each
     // subdivision level

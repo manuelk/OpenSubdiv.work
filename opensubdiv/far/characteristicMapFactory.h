@@ -44,6 +44,9 @@ class TopologyRefiner;
 struct PatchFaceTag;
 typedef std::vector<PatchFaceTag> PatchFaceTagVector;
 
+// XXXX manuelk TODO characteristic maps should be able to gather topology
+// from multiple meshes : the function in this factory needs to move to the
+// charmap class as a method to extend the map
 
 ///\brief Factory for constructing CharacteristicMaps from topology.
 ///

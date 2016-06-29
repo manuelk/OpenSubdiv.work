@@ -46,11 +46,24 @@ class CharacteristicTreeBuilder {
 
 public:
 
+    struct Options {
+
+        Options(unsigned int maxIsolation, EndCapType etype, bool useTerminalNodes) :
+             maxIsolationLevel(maxIsolation),
+             endCapType(etype),
+             useTerminalNode(useTerminalNodes) { }
+
+        EndCapType GetEndCapType() const { return (EndCapType)endCapType; }
+
+        void SetEndCapType(EndCapType e) { endCapType = e; }
+
+        unsigned int maxIsolationLevel    : 4,
+                     endCapType           : 3,
+                     useTerminalNode      : 1;
+    };
+
     CharacteristicTreeBuilder(TopologyRefiner const & refiner,
-                              PatchFaceTagVector const & patchTags,
-                              unsigned int maxIsolation=10,
-                              EndCapType endcapType=ENDCAP_BSPLINE_BASIS,
-                              bool useTerminalNodes=true);
+        PatchFaceTagVector const & patchTags, Options options);
 
     ~CharacteristicTreeBuilder();
 
@@ -90,8 +103,7 @@ private:
 
     PatchFaceTagVector const & _patchTags;
 
-    unsigned int _maxIsolationLevel : 4, // Cap adaptive feature isolation to the given level (max. 10)
-                 _useTerminalNodes : 1;
+    Options _options;
 
     //
     // End-cap stencils
