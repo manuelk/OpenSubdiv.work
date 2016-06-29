@@ -42,7 +42,7 @@ static void dumpArray(char const * name, ConstIndexArray const & a) {
 }
 
 void
-Neighborhood::Dump() const {
+Neighborhood::Print() const {
     printf("Neighborhood {\n");
     dumpArray("\tface valences", GetFaceValences());
     dumpArray("\tface verts", GetFaceVerts());
@@ -57,6 +57,7 @@ Neighborhood::Dump() const {
     }
     dumpArray("\tvert remaps", GetVertRemaps());
     printf("\thash = 0x%X\n}\n", GetHash());
+    fflush(stdout);
 }
 
 } // end namespace Far

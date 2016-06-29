@@ -81,7 +81,7 @@ int g_level = 2,
     g_shadingMode = SHADING_PATCH_TYPE,
     g_tessLevel = 10,
     g_tessLevelMin = 2,
-    g_currentShape = 8, //cube = 8 square = 12 pyramid = 45 torus = 49
+    g_currentShape = 42, //cube = 8 square = 12 pyramid = 45 torus = 49
     g_useTerminalNodes = true;
 
 int   g_frame = 0,
@@ -1387,7 +1387,7 @@ initHUD() {
 
     int shapes_pulldown = g_hud.AddPullDown("Shape (N)", -300, 10, 300, callbackModel, 'n');
     for (int i = 0; i < (int)g_shapes.size(); ++i) {
-        g_hud.AddPullDownButton(shapes_pulldown, g_shapes[i].name.c_str(),i);
+        g_hud.AddPullDownButton(shapes_pulldown, g_shapes[i].name.c_str(), i, i==g_currentShape);
     }
 
     g_hud.Rebuild(windowWidth, windowHeight, frameBufferWidth, frameBufferHeight);

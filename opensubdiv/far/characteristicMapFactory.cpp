@@ -71,10 +71,11 @@ CharacteristicMapFactory::findOrAddCharacteristic(TopologyRefiner const & refine
 
     Neighborhood const * n = neighborhoodBuilder.Create(coarseLevel, faceIndex);
 
-    Index charIndex = INDEX_INVALID;
+    //n->Print();
 
     int hash = n->GetHash(),
         hashCount = (int)charmap->_characteristicsHash.size(),
+        charIndex = INDEX_INVALID,
         rotation = 0;
 
     for (int i=0; i<hashCount; ++i) {

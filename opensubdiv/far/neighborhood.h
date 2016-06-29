@@ -114,7 +114,7 @@ public:
 public:
 
     // Debug printout
-    void Dump() const;
+    void Print() const;
 
 private:
 
