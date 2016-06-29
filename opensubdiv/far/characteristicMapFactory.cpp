@@ -71,54 +71,37 @@ CharacteristicMapFactory::findOrAddCharacteristic(TopologyRefiner const & refine
 
     Neighborhood const * n = neighborhoodBuilder.Create(coarseLevel, faceIndex);
 
-    unsigned int hash = n->GetHash();
+    int rotation = 0;
+    Index charIndex = charmap->findCharacteristic(*n, &rotation);
 
-    int hashCount = (int)charmap->_characteristicsHash.size(),
-        charIndex = INDEX_INVALID,
-        rotation = 0;
+    if (charIndex==INDEX_INVALID) {
 
-    for (int i=0; i<hashCount; ++i) {
+        // topological configuration does not exist in the map : create a new
+        // characteristic & add to the map
 
-        int hashIndex = (hash + i) % hashCount;
+        charIndex = charmap->GetNumCharacteristics();
+        assert(charIndex!=INDEX_INVALID);
 
-        charIndex = charmap->_characteristicsHash[hashIndex];
-        if (charIndex==INDEX_INVALID) {
-            charIndex = charmap->GetNumCharacteristics();
-            break;
-        }
+        int valence = n->GetValence(),
+            regValence = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType());
 
-        Characteristic const * ch = charmap->_characteristics[charIndex];
-        for (int j=0; j<ch->GetNumNeighborhoods(); ++j) {
-            if (n->IsEquivalent(*ch->GetNeighborhood(j))) {
-                rotation = ch->GetStartingEdge(j);
-                return charIndex;
+        if (valence!=regValence) {
+            ConstIndexArray childFaces = coarseLevel.GetFaceChildFaces(faceIndex);
+            for (int i=0; i<valence; ++i) {
+                Characteristic * ch = new Characteristic(charmap);
+                writeCharacteristicTree(treeBuilder, 1, childFaces[i],  &ch->_treeSize, &ch->_tree);
+                charmap->_characteristics.push_back(ch);
             }
-        }
-    }
-
-    assert(charIndex!=INDEX_INVALID);
-
-    int valence = n->GetValence(),
-        regValence = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType());
-
-    if (valence!=regValence) {
-        ConstIndexArray childFaces = coarseLevel.GetFaceChildFaces(faceIndex);
-        for (int i=0; i<valence; ++i) {
+        } else {
             Characteristic * ch = new Characteristic(charmap);
-            writeCharacteristicTree(treeBuilder, 1, childFaces[i],  &ch->_treeSize, &ch->_tree);
+            writeCharacteristicTree(treeBuilder, 0, faceIndex, &ch->_treeSize, &ch->_tree);
             charmap->_characteristics.push_back(ch);
         }
-    } else {
-        Characteristic * ch = new Characteristic(charmap);
-        writeCharacteristicTree(treeBuilder, 0, faceIndex, &ch->_treeSize, &ch->_tree);
-        charmap->_characteristics.push_back(ch);
+
+        charmap->addCharacteristicToHash(
+            coarseLevel, neighborhoodBuilder, faceIndex, charIndex, valence);
     }
-
-    charmap->addCharacteristicToHash(
-        coarseLevel, neighborhoodBuilder, faceIndex, charIndex, valence);
-
     delete n;
-
     return charIndex;
 }
 

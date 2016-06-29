@@ -66,7 +66,7 @@ CharacteristicMap::addCharacteristicToHash(
 
         // XXXX Wade says that startEdge reversing probably counters bug in
         // fastsubdiv code : we probably shouldn't be doing this...
-        int startEdge = (valence-i) % valence; 
+        int startEdge = (valence-i) % valence;
         ch->addNeighborhood(n, startEdge);
 
         // XXXX if (macro patches) break;
@@ -74,6 +74,37 @@ CharacteristicMap::addCharacteristicToHash(
 
     // XXXX is this really necessary ?
     ch->shrink_to_fit();
+}
+
+Index
+CharacteristicMap::findCharacteristic(Neighborhood const & n,
+    int * rotation) const {
+
+    unsigned int hash = n.GetHash();
+
+    int hashCount = (int)_characteristicsHash.size(),
+        charIndex = INDEX_INVALID;
+
+    for (int i=0; i<hashCount; ++i) {
+
+        int hashIndex = (hash + i) % hashCount;
+
+        charIndex = _characteristicsHash[hashIndex];
+        if (charIndex==INDEX_INVALID) {
+                return charIndex;
+        }
+
+        Characteristic const * ch = _characteristics[charIndex];
+        for (int j=0; j<ch->GetNumNeighborhoods(); ++j) {
+            if (n.IsEquivalent(*ch->GetNeighborhood(j))) {
+                if (rotation) {
+                    *rotation = ch->GetStartingEdge(j);
+                }
+                return charIndex;
+            }
+        }
+    }
+    return charIndex;
 }
 
 

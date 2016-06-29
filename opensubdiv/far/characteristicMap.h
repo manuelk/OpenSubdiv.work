@@ -37,6 +37,7 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Far {
 
+class Neighborhood;
 class NeighborhoodBuilder;
 class StencilTable;
 class TopologyLevel;
@@ -104,6 +105,7 @@ private:
     //
     // Open-addressing hash
     //
+    Index findCharacteristic(Neighborhood const & n, int * rotation=0) const;
 
     void addCharacteristicToHash(TopologyLevel const & level,
         NeighborhoodBuilder & neighborhoodBuilder,
