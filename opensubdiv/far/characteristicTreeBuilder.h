@@ -48,6 +48,7 @@ public:
 
     CharacteristicTreeBuilder(TopologyRefiner const & refiner,
                               PatchFaceTagVector const & patchTags,
+                              unsigned int maxIsolation=10,
                               EndCapType endcapType=ENDCAP_BSPLINE_BASIS,
                               bool useTerminalNodes=true);
 
@@ -89,7 +90,8 @@ private:
 
     PatchFaceTagVector const & _patchTags;
 
-    bool _useTerminalNodes;
+    unsigned int _maxIsolationLevel : 4, // Cap adaptive feature isolation to the given level (max. 10)
+                 _useTerminalNodes : 1;
 
     //
     // End-cap stencils

@@ -77,11 +77,11 @@ enum ShadingMode {
     SHADING_TREE_DEPTH,
 };
 
-int g_level = 2,
+int g_level = 3,
     g_shadingMode = SHADING_PATCH_TYPE,
     g_tessLevel = 10,
     g_tessLevelMin = 2,
-    g_currentShape = 42, //cube = 8 square = 12 pyramid = 45 torus = 49
+    g_currentShape = 50, //cube = 8 square = 12 pyramid = 45 torus = 49
     g_useTopologyHashing = false,
     g_useTerminalNodes = true;
 
@@ -706,7 +706,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
     // build characteristics map
     delete g_charmap;
-    Far::CharacteristicMapFactory::Options options;
+    Far::CharacteristicMapFactory::Options options(g_level);
     options.hashSize = g_useTopologyHashing ? 5000 : 0;
     options.endCapType = g_endCap;
     options.useSingleCreasePatch = useSingleCreasePatches;
@@ -1130,21 +1130,27 @@ display() {
             char const * typeName = nodeTypes[desc.GetType()];
 
 
-            int y = 150;
+            int x = g_width/2-300, y = 200;
             switch (desc.GetType()) {
-                case Far::Characteristic::NODE_REGULAR :
+                case Far::Characteristic::NODE_REGULAR : {
+                    float sharp = desc.SingleCrease() ? g_currentNode.GetSharpness() : 0.0f;
+                    g_hud.DrawString(x, y,
+                        "char=%d node=%d type=%s depth=%d nonquad=%d singleCrease=%d sharp=%f u=%d v=%d",
+                            g_currentCharIndex, g_currentNodeIndex, typeName,
+                               desc.GetDepth(), desc.NonQuadRoot(), desc.SingleCrease(), sharp, desc.GetU(), desc.GetV());
+                } break;
                 case Far::Characteristic::NODE_END : {
-                    g_hud.DrawString(g_width/2-200, y,
+                    g_hud.DrawString(x, y,
                         "char=%d node=%d type=%s depth=%d nonquad=%d u=%d v=%d",
                             g_currentCharIndex, g_currentNodeIndex, typeName,
                                desc.GetDepth(), desc.NonQuadRoot(), desc.GetU(), desc.GetV());
                 } break;
                 case Far::Characteristic::NODE_RECURSIVE : {
-                    g_hud.DrawString(g_width/2-200, y, "char=%d node=%d type=%s",
+                    g_hud.DrawString(x, y, "char=%d node=%d type=%s",
                         g_currentCharIndex, g_currentNodeIndex, typeName);
                 } break;
                 case Far::Characteristic::NODE_TERMINAL : {
-                    g_hud.DrawString(g_width/2-200, y,
+                    g_hud.DrawString(x, y,
                         "char=%d node=%d type=%s depth=%d nonquad=%d evIndex=%d u=%d v=%d",
                             g_currentCharIndex, g_currentNodeIndex, typeName,
                                 desc.GetDepth(), desc.NonQuadRoot(), desc.GetEvIndex(), desc.GetU(), desc.GetV());

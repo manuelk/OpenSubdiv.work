@@ -52,8 +52,9 @@ public:
 
     struct Options {
 
-        Options() :
+        Options(unsigned int maxIsolation=10) :
              hashSize(0),
+             maxIsolationLevel(maxIsolation),
              endCapType(ENDCAP_BSPLINE_BASIS),
              useSingleCreasePatch(false),
              useTerminalNode(false) { }
@@ -66,7 +67,8 @@ public:
 
         int hashSize;
 
-        unsigned int endCapType           : 3, ///< Type of end-cap patches
+        unsigned int maxIsolationLevel    : 4, ///< Cap adaptive feature isolation to the given level (max. 10)
+                     endCapType           : 3, ///< Type of end-cap patches
                      useSingleCreasePatch : 1, ///< Use single crease patch
                      useTerminalNode      : 1; ///< Use "terminal" nodes on patches with single EV
     };

@@ -95,11 +95,11 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner, Options option
     // identify patch types
     Far::PatchFaceTagVector patchTags;
     Far::PatchFaceTag::IdentifyAdaptivePatches(
-        refiner, patchTags, refiner.GetMaxLevel(), options.useSingleCreasePatch);
+        refiner, patchTags, refiner.GetNumLevels(), options.useSingleCreasePatch);
 
 
     CharacteristicTreeBuilder treesBuilder(refiner,
-        patchTags, options.GetEndCapType(), options.useTerminalNode);
+        patchTags, options.maxIsolationLevel, options.GetEndCapType(), options.useTerminalNode);
 
     TopologyLevel const & coarseLevel = refiner.GetLevel(0);
 

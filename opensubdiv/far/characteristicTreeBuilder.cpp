@@ -277,7 +277,7 @@ CharacteristicTreeBuilder::writeRegularNode(
                 singleCrease = true;
                 boundaryMask = (1<<bIndex);
                 sharpness = level.getEdgeSharpness((level.getFaceEdges(faceIndex)[bIndex]));
-                sharpness = std::min(sharpness, (float)(_refiner.GetMaxLevel()-levelIndex));
+                sharpness = std::min(sharpness, (float)(_maxIsolationLevel-levelIndex));
             }
         } else if (patchTag.boundaryCount == 1) {
             // Expand boundary patch vertices and rotate to restore correct orientation.
@@ -618,10 +618,12 @@ CharacteristicTreeBuilder::FinalizeVaryingStencils() {
 CharacteristicTreeBuilder::CharacteristicTreeBuilder(
     TopologyRefiner const & refiner,
     PatchFaceTagVector const & patchTags,
+    unsigned int maxIsolation,
     EndCapType endcapType,
     bool useTerminalNodes) :
         _refiner(refiner),
         _patchTags(patchTags),
+        _maxIsolationLevel(maxIsolation),
         _useTerminalNodes(useTerminalNodes) {
 
     _endcapBuilder = new EndCapBuilder(refiner, endcapType);
