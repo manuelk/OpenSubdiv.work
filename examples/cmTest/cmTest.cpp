@@ -704,20 +704,15 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         refiner->RefineAdaptive(options);
     }
 
-    // identify patch types
-    Far::PatchFaceTagVector patchTags;
-    Far::PatchFaceTag::IdentifyAdaptivePatches(
-        *refiner, patchTags, maxlevel, useSingleCreasePatches);
-
     // build characteristics map
-
     delete g_charmap;
     Far::CharacteristicMapFactory::Options options;
     options.hashSize = g_useTopologyHashing ? 5000 : 0;
     options.endCapType = g_endCap;
-    options.useTerminalNodes = g_useTerminalNodes;
+    options.useSingleCreasePatch = useSingleCreasePatches;
+    options.useTerminalNode = g_useTerminalNodes;
     Far::CharacteristicMap const * charmap =
-        Far::CharacteristicMapFactory::Create(*refiner, patchTags, options);
+        Far::CharacteristicMapFactory::Create(*refiner, options);
 
     // create vertex primvar data buffer
     std::vector<Vertex> supportsBuffer;

@@ -56,38 +56,19 @@ class CharacteristicMapFactory {
 
 public:
 
-    struct Options {
-
-        Options() :
-             hashSize(0),
-             endCapType(ENDCAP_BSPLINE_BASIS),
-             useTerminalNodes(false) { }
-
-        /// \brief Get endcap patch type
-        EndCapType GetEndCapType() const { return (EndCapType)endCapType; }
-
-        /// \brief Set endcap patch type
-        void SetEndCapType(EndCapType e) { endCapType = e; }
-
-        int hashSize;
-
-        unsigned int endCapType       : 3, ///< Type of end-cap patches
-                     useTerminalNodes : 1; ///< Use "terminal" nodes on patches with single EV
-    };
+    typedef CharacteristicMap::Options Options;
 
     /// \brief Factory constructor for CharacteristicMap
     ///
     /// @param refiner              TopologyRefiner from which to generate patches
     ///                             (must be adaptively refined)
     ///
-    /// @param patchTags            Vector of PatchFaceTags extracted from the refiner
-    ///
     /// @param options              Options controlling the creation of the table
     ///
     /// @return                     A new instance of PatchTable
     ///
-    static CharacteristicMap const * Create(TopologyRefiner const & refiner,
-        PatchFaceTagVector const & patchTags, Options options=Options());
+    static CharacteristicMap const * Create(
+        TopologyRefiner const & refiner, Options options=Options());
 
 private:
 

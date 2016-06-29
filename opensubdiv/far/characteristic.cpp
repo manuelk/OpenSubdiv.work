@@ -23,6 +23,7 @@
 //
 
 #include "../far/characteristic.h"
+#include "../far/characteristicTreeBuilder.h"
 #include "../far/characteristicMap.h"
 #include "../far/neighborhood.h"
 #include "../far/patchBasis.h"
@@ -240,6 +241,30 @@ Characteristic::Node::getNodeSize() const {
 // Characteristic
 //
 
+Characteristic::~Characteristic() {
+    delete _tree;
+    for (int i=0; i<(int)_neighborhoods.size(); ++i) {
+        delete _neighborhoods[i];
+    }
+}
+
+void
+Characteristic::writeCharacteristicTree(CharacteristicTreeBuilder & builder,
+    int levelIndex, int faceIndex) {
+
+    _treeSize = builder.GetTreeSize(levelIndex, faceIndex);
+    _tree = new int[_treeSize];
+#if 0
+    // debug : paint memory
+    for (int i=0; i<treeSize; ++i) {
+        _tree[i]=-1;
+    }
+#endif
+    builder.WriteTree(levelIndex, faceIndex, _tree);
+}
+
+
+
 Characteristic::Node
 Characteristic::GetTreeNode(float s, float t, unsigned char * quadrant) const {
 
@@ -437,16 +462,14 @@ printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charInde
 }
 
 void
-Characteristic::WriteTreeDiagraph(FILE * fout, int charIndex, bool showIndices, bool isSubgraph) const {
-
+Characteristic::WriteTreeDiagraph(FILE * fout,
+    int charIndex, bool showIndices, bool isSubgraph) const {
     if (isSubgraph) {
         fprintf(fout, "subgraph {\n");
     } else {
         fprintf(fout, "digraph {\n");
     }
-
     printCharacteristicTreeNode(fout, GetTreeRootNode(), charIndex, showIndices);
-
     fprintf(fout, "}\n");
 }
 
@@ -487,14 +510,6 @@ Characteristic::FindEquivalentNeighborhood(Neighborhood const & n) const {
     }
     return INDEX_INVALID;
 }
-
-
-Characteristic::~Characteristic() {
-    for (int i=0; i<(int)_neighborhoods.size(); ++i) {
-        delete _neighborhoods[i];
-    }
-}
-
 
 
 

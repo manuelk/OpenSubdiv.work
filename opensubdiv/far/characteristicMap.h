@@ -29,6 +29,7 @@
 #include "../version.h"
 
 #include "../far/characteristic.h"
+#include "../far/types.h"
 
 #include <vector>
 
@@ -49,6 +50,28 @@ class CharacteristicMap {
 
 public:
 
+    struct Options {
+
+        Options() :
+             hashSize(0),
+             endCapType(ENDCAP_BSPLINE_BASIS),
+             useSingleCreasePatch(false),
+             useTerminalNode(false) { }
+
+        /// \brief Get endcap patch type
+        EndCapType GetEndCapType() const { return (EndCapType)endCapType; }
+
+        /// \brief Set endcap patch type
+        void SetEndCapType(EndCapType e) { endCapType = e; }
+
+        int hashSize;
+
+        unsigned int endCapType           : 3, ///< Type of end-cap patches
+                     useSingleCreasePatch : 1, ///< Use single crease patch
+                     useTerminalNode      : 1; ///< Use "terminal" nodes on patches with single EV
+    };
+
+
     //@{
     ///  @name Characteristics
     ///
@@ -66,9 +89,7 @@ public:
     //@}
 
     //@{
-    ///  @name change of basis patches
-    ///
-    /// \anchor change_of_basis_patches
+    ///  @name Change of basis patches
     ///
     /// \brief Accessors for change of basis patch points
     ///
@@ -84,8 +105,13 @@ public:
     }
     //@}
 
+    /// \brief Returns the capacity of the hash map
+    int GetHashMapCapacity() const {
+        return (int)_characteristicsHash.capacity();
+    }
+
     /// \brief Returns the type of end-cap patches
-    EndCapType GetEndCapType() const { return EndCapType(_endCapType); }
+    EndCapType GetEndCapType() const { return EndCapType(_options.endCapType); }
 
     /// \brief Writes a GraphViz 'dot' diagraph of all the characteristic trees
     void WriteCharacteristicsDiagraphs(FILE * fout, bool showIndices=true) const;
@@ -94,11 +120,10 @@ private:
 
     friend class CharacteristicMapFactory;
 
-    CharacteristicMap(EndCapType endcaps) :
-        _endCapType(endcaps), _localPointStencils(0), _localPointVaryingStencils(0) { }
+    CharacteristicMap(Options options) : _options(options) { }
 
     // flags
-    unsigned int _endCapType:2;
+    Options _options;
 
 private:
 

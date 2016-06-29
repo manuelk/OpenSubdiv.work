@@ -40,28 +40,6 @@ namespace Far {
 // Characteristic factory
 //
 
-void
-writeCharacteristicTree(CharacteristicTreeBuilder & builder,
-    int levelIndex, int faceIndex, int * treeSize, int ** treePtr) {
-
-    assert(treeSize && treePtr);
-
-    int size = builder.GetTreeSize(levelIndex, faceIndex);
-    int * ptr = new int[size];
-
-#if 0
-    // debug : paint memory
-    for (int i=0; i<treeSize; ++i) {
-        ptr[i]=-1;
-    }
-#endif
-
-    builder.WriteTree(levelIndex, faceIndex, ptr);
-
-    *treeSize = size;
-    *treePtr = ptr;
-}
-
 Index
 CharacteristicMapFactory::findOrAddCharacteristic(TopologyRefiner const & refiner,
     NeighborhoodBuilder & neighborhoodBuilder, CharacteristicTreeBuilder & treeBuilder,
@@ -89,12 +67,12 @@ CharacteristicMapFactory::findOrAddCharacteristic(TopologyRefiner const & refine
             ConstIndexArray childFaces = coarseLevel.GetFaceChildFaces(faceIndex);
             for (int i=0; i<valence; ++i) {
                 Characteristic * ch = new Characteristic(charmap);
-                writeCharacteristicTree(treeBuilder, 1, childFaces[i],  &ch->_treeSize, &ch->_tree);
+                ch->writeCharacteristicTree(treeBuilder, 1, childFaces[i]);
                 charmap->_characteristics.push_back(ch);
             }
         } else {
             Characteristic * ch = new Characteristic(charmap);
-            writeCharacteristicTree(treeBuilder, 0, faceIndex, &ch->_treeSize, &ch->_tree);
+            ch->writeCharacteristicTree(treeBuilder, 0, faceIndex);
             charmap->_characteristics.push_back(ch);
         }
 
@@ -106,8 +84,7 @@ CharacteristicMapFactory::findOrAddCharacteristic(TopologyRefiner const & refine
 }
 
 CharacteristicMap const *
-CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
-    PatchFaceTagVector const & patchTags, Options options) {
+CharacteristicMapFactory::Create(TopologyRefiner const & refiner, Options options) {
 
     // XXXX we do not support those end-cap types yet
     if (options.GetEndCapType()==ENDCAP_BILINEAR_BASIS ||
@@ -115,15 +92,20 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
         return nullptr;
     }
 
+    // identify patch types
+    Far::PatchFaceTagVector patchTags;
+    Far::PatchFaceTag::IdentifyAdaptivePatches(
+        refiner, patchTags, refiner.GetMaxLevel(), options.useSingleCreasePatch);
+
+
     CharacteristicTreeBuilder treesBuilder(refiner,
-        patchTags, options.GetEndCapType(), options.useTerminalNodes);
+        patchTags, options.GetEndCapType(), options.useTerminalNode);
 
     TopologyLevel const & coarseLevel = refiner.GetLevel(0);
 
     int nfaces = coarseLevel.GetNumFaces();
 
-    CharacteristicMap * charmap =
-        new CharacteristicMap(options.GetEndCapType());
+    CharacteristicMap * charmap = new CharacteristicMap(options);
 
     if (options.hashSize>0) {
 
@@ -176,7 +158,7 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
             if (verts.size()==regFaceSize) {
 
                 Characteristic * ch = new Characteristic(charmap);
-                writeCharacteristicTree(treesBuilder, 0, face, &ch->_treeSize, &ch->_tree);
+                ch->writeCharacteristicTree(treesBuilder, 0, face);
 
                 charmap->_characteristics.push_back(ch);            
             } else {
@@ -184,7 +166,7 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner,
                 for (int i=0; i<children.size(); ++i) {
 
                     Characteristic * ch = new Characteristic(charmap);
-                    writeCharacteristicTree(treesBuilder, 1, children[i],  &ch->_treeSize, &ch->_tree);
+                    ch->writeCharacteristicTree(treesBuilder, 1, children[i]);
 
                     charmap->_characteristics.push_back(ch);            
                 }

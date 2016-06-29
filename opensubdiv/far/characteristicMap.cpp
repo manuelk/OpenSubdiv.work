@@ -23,6 +23,7 @@
 //
 
 #include "../far/characteristicMap.h"
+#include "../far/characteristicTreeBuilder.h"
 #include "../far/neighborhoodBuilder.h"
 
 namespace OpenSubdiv {
