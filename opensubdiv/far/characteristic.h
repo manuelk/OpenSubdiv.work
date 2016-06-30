@@ -333,6 +333,9 @@ public:
     /// \brief Returns the size of the patches tree (number of ints)
     int GetTreeSize() const { return _treeSize; }
 
+    /// \brief Returns the offset of the tree (integer stride)
+    int GetTreeOffset() const { return _treeOffset; }
+
     /// \brief Returns the tree data
     int const * GetTreeData() const { return _tree; }
 
@@ -389,6 +392,8 @@ public:
 
 private:
 
+    friend class CharacteristicTreeBuilder;
+
     void writeCharacteristicTree(
         CharacteristicTreeBuilder & builder, int levelIndex, int faceIndex);
 
@@ -396,6 +401,7 @@ private:
     // efficient look-up & traversal on a GPU. Use the Node class to traverse
     // the tree and access each node's data.
     int * _tree,
+          _treeOffset,
           _treeSize;
 
 private:
@@ -414,13 +420,11 @@ private:
     std::vector<int> _startEdges;
 
 private:
-
-    friend class CharacteristicTreeBuilder;
     friend class CharacteristicMapFactory;
     friend class CharacteristicMap;
 
     Characteristic(CharacteristicMap const * charmap) :
-        _characteristicMap(charmap) { }
+        _tree(0), _treeOffset(0), _treeSize(0), _characteristicMap(charmap) { }
 
     CharacteristicMap const * _characteristicMap;
 };

@@ -618,14 +618,15 @@ CharacteristicTreeBuilder::FinalizeVaryingStencils() {
     return _endcapBuilder->FinalizeVaryingStencils();
 }
 
-
+// constructor
 CharacteristicTreeBuilder::CharacteristicTreeBuilder(
     TopologyRefiner const & refiner,
     PatchFaceTagVector const & patchTags,
     Options options) :
         _refiner(refiner),
         _patchTags(patchTags),
-        _options(options) {
+        _options(options),
+        _treeOffset(0) {
 
     _endcapBuilder = new EndCapBuilder(refiner, options.GetEndCapType());
 

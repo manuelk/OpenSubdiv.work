@@ -106,6 +106,7 @@ list(APPEND DOXY_HEADER_FILES ${TBB_PUBLIC_HEADERS})
 # GL code & dependencies
 set(GL_PUBLIC_HEADERS
     cpuGLVertexBuffer.h
+    glCharacteristicMap.h
     glLegacyGregoryPatchTable.h
     glPatchTable.h
     glVertexBuffer.h
@@ -116,6 +117,7 @@ set(GL_PUBLIC_HEADERS
 if( OPENGL_FOUND OR OPENGLES_FOUND )
     list(APPEND GPU_SOURCE_FILES
         cpuGLVertexBuffer.cpp
+        glCharacteristicMap.cpp
         glLegacyGregoryPatchTable.cpp
         glPatchTable.cpp
         glVertexBuffer.cpp

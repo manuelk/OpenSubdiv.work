@@ -112,6 +112,9 @@ public:
         return (int)_characteristicsHash.capacity();
     }
 
+    /// \brief Returns the sum of the characteristic trees sizes
+    int GetCharacteristicTreesSize() const;
+
     /// \brief Returns the type of end-cap patches
     EndCapType GetEndCapType() const { return EndCapType(_options.endCapType); }
 

@@ -108,6 +108,16 @@ CharacteristicMap::findCharacteristic(Neighborhood const & n,
     return charIndex;
 }
 
+int
+CharacteristicMap::GetCharacteristicTreesSize() const {
+
+    int size = 0;
+    for (int i=0; i<GetNumCharacteristics(); ++i) {
+        Characteristic const * ch = GetCharacteristic(i);        
+        size += ch->GetTreeSize();
+    }
+    return size;
+}
 
 void
 CharacteristicMap::WriteCharacteristicsDiagraphs(FILE * fout, bool showIndices) const {

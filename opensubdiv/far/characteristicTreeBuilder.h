@@ -70,6 +70,9 @@ public:
     // Returns the size of the tree for the given face
     int GetTreeSize(int levelIndex, int faceIndex) const;
 
+    // Returns the tree offset (accumulates the sizes of trees as they are created)
+    int GetTreeOffset() const { return _treeOffset; }
+
     // Writes the tree into treePtr
     void WriteTree(int levelIndex, int faceIndex, int * treePtr) const;
 
@@ -119,6 +122,8 @@ private:
 
     std::vector<PatchFaceTag const *> _levelPatchTags;
     std::vector<Index> _levelVertOffsets;
+    
+    int _treeOffset;
 };
 
 
