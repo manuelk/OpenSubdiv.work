@@ -57,9 +57,9 @@ public:
 
         void SetEndCapType(EndCapType e) { endCapType = e; }
 
-        unsigned int maxIsolationLevel    : 4,
-                     endCapType           : 3,
-                     useTerminalNode      : 1;
+        unsigned int maxIsolationLevel    : 4, // Cap adaptive feature isolation to the given level (max. 10)
+                     endCapType           : 3, // End-cap interpolation basis 
+                     useTerminalNode      : 1; // Use "terminal" nodes on patches with single EV
     };
 
     CharacteristicTreeBuilder(TopologyRefiner const & refiner,
@@ -67,12 +67,14 @@ public:
 
     ~CharacteristicTreeBuilder();
 
-    // returns the size of the tree for the given face
+    // Returns the size of the tree for the given face
     int GetTreeSize(int levelIndex, int faceIndex) const;
 
-    // writes the tree into treePtr
+    // Writes the tree into treePtr
     void WriteTree(int levelIndex, int faceIndex, int * treePtr) const;
 
+    // Perform final operations on stencils and returns the tables
+    // Note : should not be called until all trees have been written.    
     StencilTable const * FinalizeStencils();
 
     StencilTable const * FinalizeVaryingStencils();
@@ -87,7 +89,7 @@ private:
 
     int writeRegularNode(int leveIndex, int faceIndex, uint8_t * data) const;
 
-    int writeEndNode(int leveIndex, int faceIndex, uint8_t * data) const;
+    int writeEndCapNode(int leveIndex, int faceIndex, uint8_t * data) const;
 
     int writeNode(int leveIndex, int faceIndex, int offset, uint8_t * data) const;
 

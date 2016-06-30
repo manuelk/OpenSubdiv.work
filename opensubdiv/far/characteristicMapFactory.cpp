@@ -98,7 +98,9 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner, Options option
         refiner, patchTags, refiner.GetNumLevels(), options.useSingleCreasePatch);
 
     CharacteristicTreeBuilder::Options builderOptions(
-        options.maxIsolationLevel, options.endCapType, options.useTerminalNode);
+        options.maxIsolationLevel,
+        options.GetEndCapType(),
+        options.useTerminalNode);
     CharacteristicTreeBuilder treesBuilder(refiner, patchTags, builderOptions);
 
     TopologyLevel const & coarseLevel = refiner.GetLevel(0);
@@ -114,7 +116,7 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner, Options option
 
         // XXXX manuelk TODO this can only work with localized stencils for
         // support verts. Right now, characteristic trees only gather global
-        // stencil indices.
+        // stencil indices. This will have to be revisited...
 
         charmap->_characteristicsHash.resize(options.hashSize, INDEX_INVALID);
 
@@ -128,6 +130,7 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner, Options option
 
             findOrAddCharacteristic(refiner, neighborhoodBuilder, treesBuilder, face, charmap);
         }
+
     } else {
 
         // hash map size set to 0 : each face gets its own characteristic
@@ -160,7 +163,7 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner, Options option
                 Characteristic * ch = new Characteristic(charmap);
                 ch->writeCharacteristicTree(treesBuilder, 0, face);
 
-                charmap->_characteristics.push_back(ch);            
+                charmap->_characteristics.push_back(ch);
             } else {
                 ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
                 for (int i=0; i<children.size(); ++i) {
@@ -168,7 +171,7 @@ CharacteristicMapFactory::Create(TopologyRefiner const & refiner, Options option
                     Characteristic * ch = new Characteristic(charmap);
                     ch->writeCharacteristicTree(treesBuilder, 1, children[i]);
 
-                    charmap->_characteristics.push_back(ch);            
+                    charmap->_characteristics.push_back(ch);
                 }
             }
         }

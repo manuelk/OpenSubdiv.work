@@ -44,7 +44,10 @@ class Neighborhood;
 ///
 /// * Topology trees :
 ///   A tree representation of the hierarchies of feature adaptive sub-patches.
-///   The tree contains different types of nodes:
+///   The nodes are stored in a flat array of integers, with offsets pointing
+///   to children nodes.
+///
+///   The tree contains 4 different types of nodes:
 ///
 ///   * Regular nodes :
 ///     Describes a regular sub-domain where the limit surface is a bicubic
@@ -161,6 +164,16 @@ public:
         NodeDescriptor(int value=0) { field0=value; }
 
         /// \brief Set bitfields for REGULAR / END nodes
+        ///
+        ///  Field         | Bits | Content
+        ///  --------------|:----:|---------------------------------------------------
+        ///  type          | 2    | NodeType
+        ///  nonquad       | 1    | whether the patch is the child of a non-quad face
+        ///  single crease | 1    | Whether the patch is of "single crease" type
+        ///  depth         | 4    | level of isolation of the patch
+        ///  boundary      | 4    | boundary edge mask encoding
+        ///  v             | 10   | log2 value of u parameter at first patch corner
+        ///  u             | 10   | log2 value of v parameter at first patch corner
         void SetPatch(unsigned short type, unsigned short nonquad,
             unsigned short singleCrease, unsigned short depth,
                 unsigned short boundary, short u, short v) {
@@ -174,12 +187,27 @@ public:
         }
 
         /// \brief Set bitfields for RECURSIVE nodes
+        ///
+        ///  Field         | Bits | Content
+        ///  --------------|:----:|---------------------------------------------------
+        ///  type          | 2    | NodeType
+        ///  depth         | 4    | level of isolation of the patches
         void SetRecursive(unsigned short depth) {
             field0 = ((depth & 0xf)        <<  4) |
                       (NODE_RECURSIVE & 0x3);
         }
 
         /// \brief Set bitfields for TERMINAL nodes
+        ///
+        ///  Field         | Bits | Content
+        ///  --------------|:----:|---------------------------------------------------
+        ///  type          | 2    | NodeType
+        ///  nonquad       | 1    | whether the patch is the child of a non-quad face
+        ///  unused        | 1    |
+        ///  depth         | 4    | level of isolation of the patches
+        ///  evIndex       | 4    | local index of the extraordinary vertex
+        ///  v             | 10   | log2 value of u parameter at first patch corner
+        ///  u             | 10   | log2 value of v parameter at first patch corner
         void SetTerminal(unsigned short nonquad,
             unsigned short depth, unsigned short evIndex, short u, short v) {
             field0 = ((v & 0x3ff)          << 22) |
@@ -198,9 +226,6 @@ public:
 
         /// \brief Returns the level of subdivision of the sub-patch
         unsigned short GetDepth() const { return  (unsigned short)((field0 >> 4) & 0xf); }
-
-        // XXXX manuelk characteristic plan evaluation does not need transition
-        // masks -> we should recover those 4 bits and use them for (u,v) instead...
 
         /// \brief Returns the boundary edge encoding for the sub-patch.
         unsigned short GetBoundaryMask() const { return (unsigned short)((field0 >> 8) & 0xf); }

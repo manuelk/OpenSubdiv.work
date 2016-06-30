@@ -40,7 +40,6 @@ namespace Far {
 //
 // Helper class to keep track of end-cap stencils
 //
-
 struct EndCapBuilder {
 
     EndCapBuilder(TopologyRefiner const & refiner, EndCapType t) :
@@ -149,6 +148,21 @@ offsetAndPermuteIndices(Index const indices[], int count,
     }
 }
 
+// convert CCW winding to match bitwise ^= traversal
+//
+//  Sequential      ^ Bitwise     traversal pseudo-code
+//  +---+---+       +---+---+     corner = 0
+//  | 3 | 2 |       | 2 | 3 |     while (recursive)
+//  +---+---+  ==>  +---+---+         if s>0.5 then corner~=1; s=1-s;
+//  | 0 | 1 |       | 0 | 1 |         if t>0.5 then corner~=2; t=1-t;
+//  +---+---+       +---+---+         s *= 2
+//                                    t *= 2
+static LocalIndex
+permuteWinding(LocalIndex i) {
+   static int const permuteWinding[4] = { 0, 1, 3, 2 };
+   return permuteWinding[i];
+}
+
 // Terminal node helpers : copy indices from 16-wide bicubic basis into
 // 25-wide terminal node. ('X' = extraordinary vertex)
 
@@ -160,13 +174,12 @@ offsetAndPermuteIndices(Index const indices[], int count,
 //    . + + + +    + + + + .    . . . . X    X . . . .
 inline void
 copyDiagonalIndices(int evIndex, Index const * src, Index * dst) {
-    // copy 16 verts by rows
-    int rowOffs = evIndex < 2 ? 5 : 0,
-        colOffs = evIndex==1 || evIndex==2 ? 0 : 1;
-    Index * rowPtr = dst + rowOffs + colOffs;
-    for (int k=0; k<4; ++k, rowPtr+=5) {
-        memcpy(rowPtr, &src[k*4], 4 * sizeof(Index));
-    }
+    static int offsets[4] = { 6, 5, 0, 1 };
+    Index * cornerPtr = dst + offsets[evIndex];
+    memcpy(cornerPtr + 0,  src + 0,  4 * sizeof(Index));
+    memcpy(cornerPtr + 5,  src + 4,  4 * sizeof(Index));
+    memcpy(cornerPtr + 10, src + 8,  4 * sizeof(Index));
+    memcpy(cornerPtr + 15, src + 12, 4 * sizeof(Index));
 }
 
 // rowIndex
@@ -177,11 +190,12 @@ copyDiagonalIndices(int evIndex, Index const * src, Index * dst) {
 //    . . . . .    . . . . .    . . . . .    . . . . .
 //    . . . . .    . . . . .    + + + + X    X + + + +
 inline void
-copyRowIndices(int rowIndex, Index const * src, Index * dst) {
-    int rowOffs = rowIndex > 1 ? 1 : 0,
-        colOffs = rowIndex==1 || rowIndex==2 ? 1 : 0;
-    Index * rowPtr = dst + rowOffs * 20 + colOffs;
-    memcpy(rowPtr, &src[rowOffs * 12], 4 * sizeof(Index));
+copyRowIndices(int evIndex, Index const * src, Index * dst) {
+    static int srcOffsets[4] = { 0, 0, 12, 12 },
+               dstOffsets[4] = { 1, 0, 20, 21 };
+    src += srcOffsets[evIndex];
+    dst += dstOffsets[evIndex];
+    memcpy(dst, src, 4 * sizeof(Index));
 }
 
 // colIndex
@@ -192,13 +206,11 @@ copyRowIndices(int rowIndex, Index const * src, Index * dst) {
 //    + . . . .    . . . . +    . . . . +    + . . . .
 //    + . . . .    . . . . +    . . . . X    X . . . .
 inline void
-copyColIndices(int colIndex, Index const * src, Index * dst) {
-    int rowOffs = colIndex > 1 ? 1 : 0,
-        colOffs = colIndex==1 || colIndex==2 ? 1 : 0;
-    src += colOffs * 3;
-    dst += rowOffs * 5 + colOffs * 4;
-    for (int i=0; i<4; ++i, dst+=5, src+=4) {
-        *dst = *src;
+copyColIndices(int evIndex, Index const * src, Index * dst) {
+    static int srcOffsets[4] = { 0, 3, 3, 0 },
+               dstOffsets[4] = { 5, 9, 4, 0 };
+    for (int i=0; i<4; ++i, src+=4, dst+=5) {
+        *(dst+dstOffsets[evIndex]) = *(src+srcOffsets[evIndex]);
     }
 }
 
@@ -264,9 +276,7 @@ CharacteristicTreeBuilder::writeRegularNode(
             levelVertOffset = _levelVertOffsets[levelIndex];
 
         int const * permutation = 0;
-
         bool singleCrease = false;
-
         float sharpness = 0.f;
 
         if (patchTag.boundaryCount == 0) {
@@ -320,7 +330,7 @@ CharacteristicTreeBuilder::writeRegularNode(
 }
 
 int
-CharacteristicTreeBuilder::writeEndNode(
+CharacteristicTreeBuilder::writeEndCapNode(
     int levelIndex, int faceIndex, uint8_t * data) const {
 
     assert(_endcapBuilder);
@@ -395,15 +405,13 @@ CharacteristicTreeBuilder::writeRecursiveNode(
             _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
 
         for (int i=0; i<children.size(); ++i) {
-
-            // convert CCW winding to match bitwise ^= traversal
-            static int const permuteWinding[] = { 0, 1, 3, 2 };
-
+            // save the offset in the nodes array where each child is stored
             int childOffset = offset + dataSize/sizeof(int);
             dataSize += writeNode(levelIndex+1, children[i], childOffset, data+dataSize);
-            childrenOffsets[permuteWinding[i]] = childOffset;
+            childrenOffsets[permuteWinding(i)] = childOffset;
         }
     } else {
+        // traverse each child to accumulate data size
         ConstIndexArray children = _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
         for (int i=0; i<children.size(); ++i) {
             dataSize += writeNode(levelIndex+1, children[i], 0, nullptr);
@@ -479,6 +487,8 @@ CharacteristicTreeBuilder::writeTerminalNode(
 
     if (data) {
 
+        assert(evIndex!=INDEX_INVALID);
+
         int childLevelIndex = levelIndex + 1,
             childNodeOffset = 0,
             levelVertOffset = _levelVertOffsets[childLevelIndex];
@@ -508,18 +518,15 @@ CharacteristicTreeBuilder::writeTerminalNode(
                 static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
                 offsetAndPermuteIndices(localVerts, 16, levelVertOffset, permuteRegular, patchVerts);
 
-                if (child == ((evIndex+2)%4)) {
+                // copy non-overlapping indices into the node
+                       if (child == ((evIndex+2)%4)) {
                     copyDiagonalIndices(evIndex, patchVerts, supportIndices);
+                } else if (child == (5-evIndex)%4) {
+                    copyRowIndices(evIndex, patchVerts, supportIndices);
+                } else if (child == (3-evIndex)%4) {
+                    copyColIndices(evIndex, patchVerts, supportIndices);
                 } else {
-                    int rowIdx = (5-evIndex)%4,
-                        colIdx = (3-evIndex)%4;
-                    if (child == rowIdx) {
-                        copyRowIndices(rowIdx, patchVerts, supportIndices);
-                    } else if (child==colIdx) {
-                        copyColIndices(colIdx, patchVerts, supportIndices);
-                    } else {
-                        assert(0);
-                    }
+                    assert(0);
                 }
             } else {
                 // child contains the EV
@@ -530,7 +537,7 @@ CharacteristicTreeBuilder::writeTerminalNode(
 
                 if (patchTag.hasPatch) {
                     // we have reached the maximum isolation : end-cap node
-                    dataSize += writeEndNode(childLevelIndex, childFaceIndex, data + dataSize);
+                    dataSize += writeEndCapNode(childLevelIndex, childFaceIndex, data + dataSize);
                 } else {
                     dataSize += writeTerminalNode(childLevelIndex,
                         childFaceIndex, evIndex, childNodeOffset, data+dataSize);
@@ -544,18 +551,15 @@ CharacteristicTreeBuilder::writeTerminalNode(
         short u, v;
         bool nonquad = computeSubPatchDomain(childLevelIndex, childFaceIndices[0], &u, &v);
 
-        // convert from CCW winding to ^ bitwise order (0, 1, 3, 2)
-        static int const permuteWinding[] = { 0, 1, 3, 2 };
-
-        ((NodeDescriptor *)data)->SetTerminal(nonquad, levelIndex, permuteWinding[evIndex], u, v);
+        ((NodeDescriptor *)data)->SetTerminal(nonquad, levelIndex, permuteWinding(evIndex), u, v);
 
         int * childNodePtr = (int *)(data + sizeof(NodeDescriptor));
         *childNodePtr = childNodeOffset;
 
     } else {
         // we don't need to recurse here : we know that there will always be
-        // one terminal node for each level of isolation left and one end-cap node
-        int endNodeSize = writeEndNode(0, 0, nullptr),
+        // one terminal node + one end-cap node for each level of isolation left
+        int endNodeSize = writeEndCapNode(0, 0, nullptr),
             termNodeSize = sizeof(NodeDescriptor) + 1*sizeof(int) + 25*sizeof(int);
         return dataSize + termNodeSize * (_refiner.GetMaxLevel()-levelIndex-1) + endNodeSize;
     }
@@ -574,10 +578,10 @@ CharacteristicTreeBuilder::writeNode(
         if (patchTag.isRegular) {
             dataSize = writeRegularNode(levelIndex, faceIndex, data);
         } else {
-            dataSize = writeEndNode(levelIndex, faceIndex, data);
+            dataSize = writeEndCapNode(levelIndex, faceIndex, data);
         }
     } else {
-        int evIndex = -1;
+        int evIndex = INDEX_INVALID;
         if (nodeIsTerminal(levelIndex, faceIndex, &evIndex)) {
             dataSize = writeTerminalNode(levelIndex, faceIndex, evIndex, offset, data);
         } else {
@@ -627,13 +631,12 @@ CharacteristicTreeBuilder::CharacteristicTreeBuilder(
 
     // gather starting offsets for patch tags & vertex indices for each
     // subdivision level
-    int nlevels = _refiner.GetNumLevels();
+    int nlevels = _refiner.GetNumLevels(),
+        levelFaceOffset = 0,
+        levelVertOffset = 0;
 
     _levelPatchTags.resize(nlevels, 0);
     _levelVertOffsets.resize(nlevels,0);
-
-    int levelFaceOffset = 0,
-        levelVertOffset = 0;
 
     for (int i=0; i<nlevels; ++i) {
 

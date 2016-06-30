@@ -81,7 +81,7 @@ int g_level = 3,
     g_shadingMode = SHADING_PATCH_TYPE,
     g_tessLevel = 10,
     g_tessLevelMin = 2,
-    g_currentShape = 50, //cube = 8 square = 12 pyramid = 45 torus = 49
+    g_currentShape = 8, //cube = 8 square = 12 pyramid = 45 torus = 49
     g_useTopologyHashing = false,
     g_useTerminalNodes = true;
 
