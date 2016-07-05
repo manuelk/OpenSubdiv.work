@@ -284,10 +284,11 @@ CharacteristicTreeBuilder::writeRegularNode(
             permutation = permuteRegular;
             level.gatherQuadRegularInteriorPatchPoints(faceIndex, patchVerts, 0);
             if (patchTag.isSingleCrease) {
+                int maxIsolation = _charmap.GetOptions().maxIsolationLevel;
                 singleCrease = true;
                 boundaryMask = (1<<bIndex);
                 sharpness = level.getEdgeSharpness((level.getFaceEdges(faceIndex)[bIndex]));
-                sharpness = std::min(sharpness, (float)(_options.maxIsolationLevel-levelIndex));
+                sharpness = std::min(sharpness, (float)(maxIsolation-levelIndex));
             }
         } else if (patchTag.boundaryCount == 1) {
             // Expand boundary patch vertices and rotate to restore correct orientation.
@@ -424,7 +425,7 @@ bool
 CharacteristicTreeBuilder::nodeIsTerminal(
     int levelIndex, int faceIndex, int * evIndex) const {
 
-    if (_options.useTerminalNode) {
+    if (_charmap.GetOptions().useTerminalNode) {
 
         PatchFaceTag const * levelPatchTags = _levelPatchTags[levelIndex+1];
 
@@ -620,13 +621,19 @@ CharacteristicTreeBuilder::FinalizeVaryingStencils() {
 
 // constructor
 CharacteristicTreeBuilder::CharacteristicTreeBuilder(
-    TopologyRefiner const & refiner,
-    PatchFaceTagVector const & patchTags,
-    Options options) :
-        _refiner(refiner),
-        _patchTags(patchTags),
-        _options(options),
-        _treeOffset(0) {
+    TopologyRefiner const & refiner, CharacteristicMap const & charmap) :
+        _refiner(refiner), _charmap(charmap) {
+
+    CharacteristicMap::Options options = _charmap.GetOptions();
+
+    // if the characteristic map is not empty, we want to append the new trees
+    // at the end of the array, so we need to initialize the offset
+    _treeOffset = _charmap.GetCharacteristicTreeSizeTotal();
+
+    // identify patch types
+    bool useSingleCrease = _charmap.GetOptions().useSingleCreasePatch;
+    Far::PatchFaceTag::IdentifyAdaptivePatches(
+        _refiner, _patchTags, _refiner.GetNumLevels(), useSingleCrease);
 
     _endcapBuilder = new EndCapBuilder(refiner, options.GetEndCapType());
 
@@ -643,7 +650,7 @@ CharacteristicTreeBuilder::CharacteristicTreeBuilder(
 
         TopologyLevel const & level = _refiner.GetLevel(i);
 
-        _levelPatchTags[i] = & patchTags[levelFaceOffset];
+        _levelPatchTags[i] = & _patchTags[levelFaceOffset];
         _levelVertOffsets[i] = levelVertOffset;
 
         levelFaceOffset += level.GetNumFaces();

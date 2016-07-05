@@ -38,10 +38,12 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Far {
 
+class CharacteristicTreeBuilder;
 class Neighborhood;
 class NeighborhoodBuilder;
 class StencilTable;
 class TopologyLevel;
+class TopologyRefiner;
 
 ///
 ///  \brief Stores topology characteristic plans
@@ -73,6 +75,11 @@ public:
                      useTerminalNode      : 1; ///< Use "terminal" nodes on patches with single EV
     };
 
+    /// \brief Constructor
+    CharacteristicMap(Options options=Options()) :
+        _options(options), _localPointStencils(0), _localPointVaryingStencils(0) { }
+
+    void MapTopology(TopologyRefiner const & refiner);
 
     //@{
     ///  @name Characteristics
@@ -95,13 +102,14 @@ public:
     ///
     /// \brief Accessors for change of basis patch points
     ///
-    /// \brief Returns the stencil table to get change of basis patch points.
+    /// \brief Returns the stencil table to get change of basis end-cap
+    ///        patch points.
     StencilTable const * GetLocalPointStencilTable() const {
         return _localPointStencils;
     }
 
-    /// \brief Returns the varying stencil table for the change of basis patch
-    ///        points.
+    /// \brief Returns the varying stencil table for the change of basis
+    ///        end-cap patch points.
     StencilTable const * GetLocalPointVaryingStencilTable() const {
         return _localPointVaryingStencils;
     }
@@ -113,7 +121,7 @@ public:
     }
 
     /// \brief Returns the sum of the characteristic trees sizes
-    int GetCharacteristicTreesSize() const;
+    int GetCharacteristicTreeSizeTotal() const;
 
     /// \brief Returns the type of end-cap patches
     EndCapType GetEndCapType() const { return EndCapType(_options.endCapType); }
@@ -121,11 +129,12 @@ public:
     /// \brief Writes a GraphViz 'dot' diagraph of all the characteristic trees
     void WriteCharacteristicsDiagraphs(FILE * fout, bool showIndices=true) const;
 
+    //// \breif Returns the map's configuration options
+    Options GetOptions() const { return _options; }
+
 private:
 
     friend class CharacteristicMapFactory;
-
-    CharacteristicMap(Options options) : _options(options) { }
 
     // flags
     Options _options;
@@ -140,6 +149,10 @@ private:
     void addCharacteristicToHash(TopologyLevel const & level,
         NeighborhoodBuilder & neighborhoodBuilder,
              int faceIndex, int charIndex, int valence);
+
+    Index findOrAddCharacteristic(
+        TopologyRefiner const & refiner, NeighborhoodBuilder & neighborhoodBuilder,
+            CharacteristicTreeBuilder & treeBuilder, int faceIndex);
 
     std::vector<int> _characteristicsHash;
 

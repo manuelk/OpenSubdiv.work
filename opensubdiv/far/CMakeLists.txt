@@ -27,7 +27,6 @@
 set(SOURCE_FILES
     characteristic.cpp
     characteristicMap.cpp
-    characteristicMapFactory.cpp
     characteristicTreeBuilder.cpp
     error.cpp
     endCapBSplineBasisPatchFactory.cpp
@@ -65,7 +64,6 @@ set(PRIVATE_HEADER_FILES
 set(PUBLIC_HEADER_FILES
     characteristic.h
     characteristicMap.h
-    characteristicMapFactory.h
     error.h
     neighborhood.h
     patchDescriptor.h

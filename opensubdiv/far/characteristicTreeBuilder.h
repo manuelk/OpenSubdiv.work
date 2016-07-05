@@ -36,34 +36,17 @@ namespace Far {
 
 struct EndCapBuilder;
 struct PatchFaceTag;
-typedef std::vector<PatchFaceTag> PatchFaceTagVector;
 class StencilTable;
 class TopologyRefiner;
-
+class CharacteristicMap;
 
 // A specialized builder for subdivision plan hierarchies
 class CharacteristicTreeBuilder {
 
 public:
 
-    struct Options {
-
-        Options(unsigned int maxIsolation, EndCapType etype, bool useTerminalNodes) :
-             maxIsolationLevel(maxIsolation),
-             endCapType(etype),
-             useTerminalNode(useTerminalNodes) { }
-
-        EndCapType GetEndCapType() const { return (EndCapType)endCapType; }
-
-        void SetEndCapType(EndCapType e) { endCapType = e; }
-
-        unsigned int maxIsolationLevel    : 4, // Cap adaptive feature isolation to the given level (max. 10)
-                     endCapType           : 3, // End-cap interpolation basis 
-                     useTerminalNode      : 1; // Use "terminal" nodes on patches with single EV
-    };
-
-    CharacteristicTreeBuilder(TopologyRefiner const & refiner,
-        PatchFaceTagVector const & patchTags, Options options);
+    CharacteristicTreeBuilder(
+        TopologyRefiner const & refiner, CharacteristicMap const & charmap);
 
     ~CharacteristicTreeBuilder();
 
@@ -106,9 +89,9 @@ private:
 
     TopologyRefiner const & _refiner;
 
-    PatchFaceTagVector const & _patchTags;
+    CharacteristicMap const & _charmap;
 
-    Options _options;
+    std::vector<PatchFaceTag> _patchTags;
 
     //
     // End-cap stencils

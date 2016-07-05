@@ -44,7 +44,7 @@ GLFWmonitor* g_primary=0;
 
 #include <osd/glVertexBuffer.h>
 
-#include <far/characteristicMapFactory.h>
+#include <far/characteristicMap.h>
 #include <far/patchFaceTag.h>
 #include <far/patchTableFactory.h>
 #include <far/stencilTable.h>
@@ -706,13 +706,15 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
     // build characteristics map
     delete g_charmap;
-    Far::CharacteristicMapFactory::Options options(g_level);
+    Far::CharacteristicMap::Options options(g_level);
     options.hashSize = g_useTopologyHashing ? 5000 : 0;
     options.endCapType = g_endCap;
     options.useSingleCreasePatch = useSingleCreasePatches;
     options.useTerminalNode = g_useTerminalNodes;
-    Far::CharacteristicMap const * charmap =
-        Far::CharacteristicMapFactory::Create(*refiner, options);
+
+    Far::CharacteristicMap * charmap = new Far::CharacteristicMap(options);
+
+    charmap->MapTopology(*refiner);
 
     // create vertex primvar data buffer
     std::vector<Vertex> supportsBuffer;

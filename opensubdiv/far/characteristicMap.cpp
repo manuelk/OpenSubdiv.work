@@ -24,7 +24,10 @@
 
 #include "../far/characteristicMap.h"
 #include "../far/characteristicTreeBuilder.h"
+#include "../far/error.h"
+#include "../far/patchFaceTag.h"
 #include "../far/neighborhoodBuilder.h"
+#include "../far/topologyRefiner.h"
 
 namespace OpenSubdiv {
 namespace OPENSUBDIV_VERSION {
@@ -108,8 +111,148 @@ CharacteristicMap::findCharacteristic(Neighborhood const & n,
     return charIndex;
 }
 
+Index
+CharacteristicMap::findOrAddCharacteristic(
+    TopologyRefiner const & refiner, NeighborhoodBuilder & neighborhoodBuilder,
+        CharacteristicTreeBuilder & treeBuilder, int faceIndex) {
+
+    TopologyLevel const & coarseLevel = refiner.GetLevel(0);
+
+    Neighborhood const * n = neighborhoodBuilder.Create(coarseLevel, faceIndex);
+
+    int rotation = 0;
+    Index charIndex = findCharacteristic(*n, &rotation);
+
+    if (charIndex==INDEX_INVALID) {
+
+        // topological configuration does not exist in the map : create a new
+        // characteristic & add to the map
+
+        charIndex = GetNumCharacteristics();
+        assert(charIndex!=INDEX_INVALID);
+
+        int valence = n->GetValence(),
+            regValence = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType());
+
+        if (valence!=regValence) {
+            ConstIndexArray childFaces = coarseLevel.GetFaceChildFaces(faceIndex);
+            for (int i=0; i<valence; ++i) {
+                Characteristic * ch = new Characteristic(this);
+                ch->writeCharacteristicTree(treeBuilder, 1, childFaces[i]);
+                _characteristics.push_back(ch);
+            }
+        } else {
+            Characteristic * ch = new Characteristic(this);
+            ch->writeCharacteristicTree(treeBuilder, 0, faceIndex);
+            _characteristics.push_back(ch);
+        }
+
+        addCharacteristicToHash(
+            coarseLevel, neighborhoodBuilder, faceIndex, charIndex, valence);
+    }
+    delete n;
+    return charIndex;
+}
+
+void
+CharacteristicMap::MapTopology(TopologyRefiner const & refiner) {
+
+    // XXXX we do not support those end-cap types yet
+    if (_options.GetEndCapType()==ENDCAP_BILINEAR_BASIS ||
+        _options.GetEndCapType()==ENDCAP_LEGACY_GREGORY) {
+        Error(FAR_CODING_ERROR, "Failure in CharacteristicMap::MapTopology() -- "
+            "unsupported EndCapType");
+        return;
+    }
+
+    // identify patch types
+    CharacteristicTreeBuilder treeBuilder(refiner, *this);
+
+    TopologyLevel const & coarseLevel = refiner.GetLevel(0);
+
+    int nfaces = coarseLevel.GetNumFaces(),
+        hashSize = _options.hashSize;
+
+    if (hashSize>0) {
+
+        // hash topology : faces with redundant topological configurations share
+        // the same characteristic
+
+        // XXXX manuelk TODO this can only work with localized stencils for
+        // support verts. Right now, characteristic trees only gather global
+        // stencil indices. This will have to be revisited...
+
+        _characteristicsHash.resize(hashSize, INDEX_INVALID);
+
+        NeighborhoodBuilder neighborhoodBuilder;
+
+        for (int face = 0; face < nfaces; ++face) {
+
+            if (coarseLevel.IsFaceHole(face)) {
+                continue;
+            }
+
+            findOrAddCharacteristic(refiner, neighborhoodBuilder, treeBuilder, face);
+        }
+
+    } else {
+
+        // hash map size set to 0 : each face gets its own characteristic
+
+        int regFaceSize = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType()),
+            nchars = 0;
+
+        // Count the number of characteristics (non-quads have more than 1)
+        for (int face = 0; face < nfaces; ++face) {
+            if (coarseLevel.IsFaceHole(face)) {
+                continue;
+            }
+            ConstIndexArray fverts = coarseLevel.GetFaceVertices(face);
+            nchars += fverts.size()==regFaceSize ? 1 : fverts.size();
+        }
+
+        // Allocate & write the characteristics
+        _characteristics.reserve(nchars);
+
+        for (int face = 0; face < coarseLevel.GetNumFaces(); ++face) {
+
+            if (coarseLevel.IsFaceHole(face)) {
+                continue;
+            }
+
+            ConstIndexArray verts = coarseLevel.GetFaceVertices(face);
+
+            if (verts.size()==regFaceSize) {
+
+                Characteristic * ch = new Characteristic(this);
+                ch->writeCharacteristicTree(treeBuilder, 0, face);
+
+                _characteristics.push_back(ch);
+            } else {
+                ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
+                for (int i=0; i<children.size(); ++i) {
+
+                    Characteristic * ch = new Characteristic(this);
+                    ch->writeCharacteristicTree(treeBuilder, 1, children[i]);
+
+                    _characteristics.push_back(ch);
+                }
+            }
+        }
+    }
+
+    if (_localPointStencils && _localPointVaryingStencils) {
+        // XXXX manuelk TODO : append end-cap stencils to existing ones !
+        assert(0);
+    } else {
+        _localPointStencils = treeBuilder.FinalizeStencils();
+        _localPointVaryingStencils = treeBuilder.FinalizeVaryingStencils();
+    }
+}
+
+
 int
-CharacteristicMap::GetCharacteristicTreesSize() const {
+CharacteristicMap::GetCharacteristicTreeSizeTotal() const {
 
     int size = 0;
     for (int i=0; i<GetNumCharacteristics(); ++i) {

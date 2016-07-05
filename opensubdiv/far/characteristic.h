@@ -302,7 +302,7 @@ public:
         /// \brief Returns a pointer to the characteric that owns this node
         Characteristic const * GetCharacteristic() const { return _characteristic; }
 
-        /// \brief Returns the node's offset
+        /// \brief Returns the node's relative offset in the tree (integer stride)
         int GetTreeOffset() const { return _treeOffset; }
 
         /// \brief Returns the next node in the tree (serial traversal)
