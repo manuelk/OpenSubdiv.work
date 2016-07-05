@@ -284,7 +284,7 @@ CharacteristicTreeBuilder::writeRegularNode(
             permutation = permuteRegular;
             level.gatherQuadRegularInteriorPatchPoints(faceIndex, patchVerts, 0);
             if (patchTag.isSingleCrease) {
-                int maxIsolation = _charmap.GetOptions().maxIsolationLevel;
+                int maxIsolation = _refiner.GetAdaptiveOptions().isolationLevel;
                 singleCrease = true;
                 boundaryMask = (1<<bIndex);
                 sharpness = level.getEdgeSharpness((level.getFaceEdges(faceIndex)[bIndex]));
@@ -631,7 +631,7 @@ CharacteristicTreeBuilder::CharacteristicTreeBuilder(
     _treeOffset = _charmap.GetCharacteristicTreeSizeTotal();
 
     // identify patch types
-    bool useSingleCrease = _charmap.GetOptions().useSingleCreasePatch;
+    bool useSingleCrease = refiner.GetAdaptiveOptions().useSingleCreasePatch;
     Far::PatchFaceTag::IdentifyAdaptivePatches(
         _refiner, _patchTags, _refiner.GetNumLevels(), useSingleCrease);
 

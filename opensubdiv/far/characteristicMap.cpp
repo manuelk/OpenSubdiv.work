@@ -154,8 +154,25 @@ CharacteristicMap::findOrAddCharacteristic(
     return charIndex;
 }
 
+static inline int
+countPlans(TopologyLevel const & coarseLevel, int regFaceSize) {
+
+    int nfaces = coarseLevel.GetNumFaces(),
+        nplans = 0;
+
+    // non-quads require 1 plan for each face-vert
+    for (int face = 0; face < nfaces; ++face) {
+        if (coarseLevel.IsFaceHole(face)) {
+            continue;
+        }
+        ConstIndexArray fverts = coarseLevel.GetFaceVertices(face);
+        nplans += fverts.size()==regFaceSize ? 1 : fverts.size();
+    }
+    return nplans;
+}
+
 void
-CharacteristicMap::MapTopology(TopologyRefiner const & refiner) {
+CharacteristicMap::MapTopology(TopologyRefiner const & refiner, PlansVector & plans) {
 
     // XXXX we do not support those end-cap types yet
     if (_options.GetEndCapType()==ENDCAP_BILINEAR_BASIS ||
@@ -170,8 +187,13 @@ CharacteristicMap::MapTopology(TopologyRefiner const & refiner) {
 
     TopologyLevel const & coarseLevel = refiner.GetLevel(0);
 
+    int regFaceSize = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType());
+
     int nfaces = coarseLevel.GetNumFaces(),
+        nplans = countPlans(coarseLevel, regFaceSize),
         hashSize = _options.hashSize;
+
+    plans.reserve(nplans);
 
     if (hashSize>0) {
 
@@ -192,27 +214,26 @@ CharacteristicMap::MapTopology(TopologyRefiner const & refiner) {
                 continue;
             }
 
-            findOrAddCharacteristic(refiner, neighborhoodBuilder, treeBuilder, face);
+            Index charIndex = findOrAddCharacteristic(
+                refiner, neighborhoodBuilder, treeBuilder, face);
+
+            ConstIndexArray fverts = coarseLevel.GetFaceVertices(face);
+            if (fverts.size()==regFaceSize) {
+                // XXXX manuel TODO - index = charIndex +  i
+                plans.push_back(Plan(charIndex, INDEX_INVALID));
+            } else {
+                for (int i=0; i<fverts.size(); ++i) {
+                    plans.push_back(Plan(charIndex+i, INDEX_INVALID));
+                }
+            }
         }
 
     } else {
 
         // hash map size set to 0 : each face gets its own characteristic
 
-        int regFaceSize = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType()),
-            nchars = 0;
-
-        // Count the number of characteristics (non-quads have more than 1)
-        for (int face = 0; face < nfaces; ++face) {
-            if (coarseLevel.IsFaceHole(face)) {
-                continue;
-            }
-            ConstIndexArray fverts = coarseLevel.GetFaceVertices(face);
-            nchars += fverts.size()==regFaceSize ? 1 : fverts.size();
-        }
-
         // Allocate & write the characteristics
-        _characteristics.reserve(nchars);
+        _characteristics.reserve(nplans);
 
         for (int face = 0; face < coarseLevel.GetNumFaces(); ++face) {
 
@@ -226,16 +247,18 @@ CharacteristicMap::MapTopology(TopologyRefiner const & refiner) {
 
                 Characteristic * ch = new Characteristic(this);
                 ch->writeCharacteristicTree(treeBuilder, 0, face);
-
                 _characteristics.push_back(ch);
+
+                plans.push_back(Plan((int)_characteristics.size()-1, ch->GetTreeOffset()));
             } else {
                 ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
                 for (int i=0; i<children.size(); ++i) {
 
                     Characteristic * ch = new Characteristic(this);
                     ch->writeCharacteristicTree(treeBuilder, 1, children[i]);
-
                     _characteristics.push_back(ch);
+
+                    plans.push_back(Plan((int)_characteristics.size()-1, ch->GetTreeOffset()));
                 }
             }
         }
@@ -256,7 +279,7 @@ CharacteristicMap::GetCharacteristicTreeSizeTotal() const {
 
     int size = 0;
     for (int i=0; i<GetNumCharacteristics(); ++i) {
-        Characteristic const * ch = GetCharacteristic(i);        
+        Characteristic const * ch = GetCharacteristic(i);
         size += ch->GetTreeSize();
     }
     return size;

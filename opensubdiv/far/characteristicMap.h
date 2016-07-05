@@ -54,11 +54,9 @@ public:
 
     struct Options {
 
-        Options(unsigned int maxIsolation=10) :
+        Options() :
              hashSize(0),
-             maxIsolationLevel(maxIsolation),
              endCapType(ENDCAP_BSPLINE_BASIS),
-             useSingleCreasePatch(false),
              useTerminalNode(false) { }
 
         /// \brief Get endcap patch type
@@ -69,9 +67,7 @@ public:
 
         int hashSize;
 
-        unsigned int maxIsolationLevel    : 4, ///< Cap adaptive feature isolation to the given level (max. 10)
-                     endCapType           : 3, ///< Type of end-cap patches
-                     useSingleCreasePatch : 1, ///< Use single crease patch
+        unsigned int endCapType           : 3, ///< Type of end-cap patches
                      useTerminalNode      : 1; ///< Use "terminal" nodes on patches with single EV
     };
 
@@ -79,7 +75,27 @@ public:
     CharacteristicMap(Options options=Options()) :
         _options(options), _localPointStencils(0), _localPointVaryingStencils(0) { }
 
-    void MapTopology(TopologyRefiner const & refiner);
+    //@{
+    ///  @name Plans
+    ///
+    /// \anchor arrays_of_plans
+    ///
+
+    struct Plan {
+
+        Plan(int chIndex, int rtNode) : charIndex(chIndex), rootNode(rtNode) { }
+
+        int charIndex,
+            rootNode;
+    };
+
+    typedef std::vector<Plan> PlansVector;
+
+    /// \brief Hashes the topology from the refiner mesh into the map
+    /// Note : the refiner must be adaptively refined !
+    void MapTopology(TopologyRefiner const & refiner, PlansVector & plans);
+
+    //@}
 
     //@{
     ///  @name Characteristics
@@ -98,7 +114,7 @@ public:
     //@}
 
     //@{
-    ///  @name Change of basis patches
+    ///  @name Change of basis end-cap patches
     ///
     /// \brief Accessors for change of basis patch points
     ///

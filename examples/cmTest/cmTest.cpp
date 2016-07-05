@@ -672,6 +672,8 @@ Osd::GLVertexBuffer * g_controlMeshVerts = 0;
 
 Far::CharacteristicMap const * g_charmap = 0;
 
+Far::CharacteristicMap::PlansVector g_plans;
+
 int g_treeSizeTotal = 0;
 
 static void
@@ -695,26 +697,23 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     g_controlMeshVerts->UpdateData(&shape->verts[0], 0, nverts);
     g_controlMeshDisplay.SetTopology(refiner->GetLevel(0));
 
-    bool useSingleCreasePatches = true;
-
     // refine adaptively
     {
         Far::TopologyRefiner::AdaptiveOptions options(maxlevel);
-        options.useSingleCreasePatch = useSingleCreasePatches;
+        options.useSingleCreasePatch = true;
         refiner->RefineAdaptive(options);
     }
 
     // build characteristics map
     delete g_charmap;
-    Far::CharacteristicMap::Options options(g_level);
+    Far::CharacteristicMap::Options options;
     options.hashSize = g_useTopologyHashing ? 5000 : 0;
     options.endCapType = g_endCap;
-    options.useSingleCreasePatch = useSingleCreasePatches;
     options.useTerminalNode = g_useTerminalNodes;
-
     Far::CharacteristicMap * charmap = new Far::CharacteristicMap(options);
 
-    charmap->MapTopology(*refiner);
+    g_plans.clear();
+    charmap->MapTopology(*refiner, g_plans);
 
     // create vertex primvar data buffer
     std::vector<Vertex> supportsBuffer;
@@ -784,14 +783,14 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         createNodeIDs(*charmap, supportsBuffer);
     }
 
-    int nchars = charmap->GetNumCharacteristics();
+    int nplans = (int)g_plans.size();
 
 
     // interpolate limits
 
 #define TESS_DOMAIN
 #ifdef TESS_DOMAIN
-    nverts = tessFactor * tessFactor * nchars;
+    nverts = tessFactor * tessFactor * nplans;
 
     std::vector<float> positions(3 * nverts),
                        normals(3 * nverts),
@@ -802,9 +801,11 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
           * col = &colors[0];
 
     g_treeSizeTotal = 0;
-    for (int i=0; i<nchars; ++i) {
+    for (int i=0; i<nplans; ++i) {
 
-        Far::Characteristic const * ch = charmap->GetCharacteristic(i);
+        int charIndex = g_plans[i].charIndex;
+
+        Far::Characteristic const * ch = charmap->GetCharacteristic(charIndex);
 
         if (ch->GetTreeSize()==0) {
             continue; // skip holes
@@ -927,7 +928,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
     int ntriangles = 0;
 
-    for (int i=0; i<nchars; ++i) {
+    for (int i=0; i<nplans; ++i) {
 
         Char const & ch = charmap->GetCharacteristic(i);
 
@@ -1170,7 +1171,8 @@ display() {
         g_hud.DrawString(10, -20,  "FPS        : %3.1f", fps);
 
         g_hud.DrawString(-280, -120, "Chars : %d", g_charmap ? g_charmap->GetNumCharacteristics() : -1);
-        g_hud.DrawString(-280, -100, "Trees : %.1f (kb)", g_charmap ? g_treeSizeTotal * sizeof(int) / 1024.0f : 0.0f);
+        g_hud.DrawString(-280, -100, "Plans : %d", (int)g_plans.size());
+        g_hud.DrawString(-280, -80, "Trees : %.1f (kb)", g_charmap ? g_treeSizeTotal * sizeof(int) / 1024.0f : 0.0f);
 
         g_hud.Flush();
     }
