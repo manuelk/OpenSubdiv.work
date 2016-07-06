@@ -23,7 +23,7 @@
 //
 
 
-#include "../osd/glCharacteristicTable.h"
+#include "../osd/glSubdivisionPlanTable.h"
 
 #include "../far/characteristicMap.h"
 
@@ -32,11 +32,11 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Osd {
 
-GLCharacteristicTable::GLCharacteristicTable() :
+GLSubdivisionPlanTable::GLSubdivisionPlanTable() :
     _characteristicTreesBuffer(0), _plansBuffer(0) {
 }
 
-GLCharacteristicTable::~GLCharacteristicTable() {
+GLSubdivisionPlanTable::~GLSubdivisionPlanTable() {
     if (_characteristicTreesBuffer) {
         glDeleteBuffers(1, &_characteristicTreesBuffer);
     }
@@ -45,13 +45,12 @@ GLCharacteristicTable::~GLCharacteristicTable() {
     }
 }
 
-GLCharacteristicTable *
-GLCharacteristicTable::Create(
-    Far::CharacteristicMap const & charmap,
-       Far::PlanVector const & plans,void * /*deviceContext*/) {
+GLSubdivisionPlanTable *
+GLSubdivisionPlanTable::Create(
+    Far::SubdivisionPlanTable const & plansTable, void * /*deviceContext*/) {
 
-    GLCharacteristicTable * instance = new GLCharacteristicTable;
-    if (instance->allocate(charmap, plans)) {
+    GLSubdivisionPlanTable * instance = new GLSubdivisionPlanTable;
+    if (instance->allocate(plansTable)) {
         return instance;
     }
     delete instance;
@@ -59,25 +58,27 @@ GLCharacteristicTable::Create(
 }
 
 bool
-GLCharacteristicTable::allocate(
-    Far::CharacteristicMap const & charmap, Far::PlanVector const & plans) {
+GLSubdivisionPlanTable::allocate(Far::SubdivisionPlanTable const & plansTable) {
 
     // characteristic trees
+    Far::CharacteristicMap const * charmap = plansTable.GetCharacteristicMap();
+
     glGenBuffers(1, &_characteristicTreesBuffer);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, _characteristicTreesBuffer );
-    int size = charmap.GetCharacteristicTreeSizeTotal();
+    int size = charmap->GetCharacteristicTreeSizeTotal();
     glBufferData(GL_SHADER_STORAGE_BUFFER, size, NULL, GL_STATIC_DRAW );
-    for (int i=0; i<charmap.GetNumCharacteristics(); ++i) {
-        Far::Characteristic const * ch = charmap.GetCharacteristic(i);
+    for (int i=0; i<charmap->GetNumCharacteristics(); ++i) {
+        Far::Characteristic const * ch = charmap->GetCharacteristic(i);
         glBufferSubData(GL_SHADER_STORAGE_BUFFER,
             ch->GetTreeOffset(), ch->GetTreeSize(), ch->GetTreeData());
     }
 
     // subdivision plans
+    Far::SubdivisionPlanVector const & plans = plansTable.GetSubdivisionPlans();
     glGenBuffers(1, &_plansBuffer);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, _plansBuffer);
     glBufferData(GL_SHADER_STORAGE_BUFFER,
-        plans.size() * sizeof(Far::Plan), &plans[0], GL_STATIC_DRAW);
+        plans.size() * sizeof(Far::SubdivisionPlan), &plans[0], GL_STATIC_DRAW);
     return true;
 }
 

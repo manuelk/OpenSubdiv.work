@@ -22,44 +22,48 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
-#ifndef OPENSUBDIV3_OSD_GL_CHARACTERISTIC_TABLE_H
-#define OPENSUBDIV3_OSD_GL_CHARACTERISTIC_TABLE_H
+#ifndef OPENSUBDIV3_OSD_D3D11_SUBDIVISION_PLAN_TABLE_H
+#define OPENSUBDIV3_OSD_D3D11_SUBDIVISION_PLAN_TABLE_H
 
 #include "../version.h"
 
 #include "../osd/nonCopyable.h"
-#include "../osd/opengl.h"
-#include "../osd/types.h"
-#include "../far/characteristicMap.h"
+
+#include "../far/subdivisionPlanTable.h"
+
+struct ID3D11Buffer;
+struct ID3D11ShaderResourceView;
+struct ID3D11Device;
+struct ID3D11DeviceContext;
 
 namespace OpenSubdiv {
 namespace OPENSUBDIV_VERSION {
 
 namespace Osd {
 
-class GLCharacteristicTable : private NonCopyable<GLCharacteristicTable> {
+class D3D11SubdivisionPlanTable : private NonCopyable<D3D11SubdivisionPlanTable> {
 
 public:
 
-    ~GLCharacteristicTable();
+    template<typename DEVICE_CONTEXT>
 
-    static GLCharacteristicTable * Create(Far::CharacteristicMap const & charmap,
-        Far::PlanVector const & plans, void *deviceContext = NULL);
+    static D3D11SubdivisionPlanTable * Create(
+        Far::SubdivisionPlanTable const & plansTable, DEVICE_CONTEXT contex);
 
+    static D3D11SubdivisionPlanTable *Create(
+        Far::SubdivisionPlanTable const & plansTable, ID3D11DeviceContext *deviceContext);
 
-    GLuint GetCharacteristicTreesBuffer() const {
-        return _characteristicTreesBuffer;
-    }
+    ~D3D11SubdivisionPlanTable();
 
 protected:
 
-    GLCharacteristicTable();
+    D3D11SubdivisionPlanTable();
 
     bool allocate(
-        Far::CharacteristicMap const & charmap, Far::PlanVector const & plans);
+        Far::SubdivisionPlanTable const & plansTable, ID3D11DeviceContext *pd3d11DeviceContext);
 
-    GLuint _characteristicTreesBuffer,
-           _plansBuffer;
+    ID3D11Buffer * _characteristicTreesBuffer,
+                 * _plansBuffer;
 };
 
 }  // end namespace Osd
@@ -69,4 +73,4 @@ using namespace OPENSUBDIV_VERSION;
 
 }  // end namespace OpenSubdiv
 
-#endif  // OPENSUBDIV3_OSD_GL_CHARACTERISTIC_TABLE_H
+#endif  // OPENSUBDIV3_OSD_D3D11_SUBDIVISION_PLAN_TABLE_H

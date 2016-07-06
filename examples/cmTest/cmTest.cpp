@@ -44,10 +44,10 @@ GLFWmonitor* g_primary=0;
 
 #include <osd/glVertexBuffer.h>
 
-#include <far/characteristicMap.h>
 #include <far/patchFaceTag.h>
 #include <far/patchTableFactory.h>
 #include <far/stencilTable.h>
+#include <far/subdivisionPlanTable.h>
 #include <far/topologyRefinerFactory.h>
 
 #include "../common/stopwatch.h"
@@ -670,9 +670,7 @@ GLControlMeshDisplay g_controlMeshDisplay;
 
 Osd::GLVertexBuffer * g_controlMeshVerts = 0;
 
-Far::CharacteristicMap const * g_charmap = 0;
-
-Far::PlanVector g_plans;
+Far::SubdivisionPlanTable const * g_plansTable;
 
 int g_treeSizeTotal = 0;
 
@@ -705,15 +703,19 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     }
 
     // build characteristics map
-    delete g_charmap;
+    delete g_plansTable;
     Far::CharacteristicMap::Options options;
-    options.hashSize = g_useTopologyHashing ? 5000 : 0;
     options.endCapType = g_endCap;
     options.useTerminalNode = g_useTerminalNodes;
-    Far::CharacteristicMap * charmap = new Far::CharacteristicMap(options);
+    if (g_useTopologyHashing) {
+        options.hashSize = 5000;
+        Far::CharacteristicMap * charmap = new Far::CharacteristicMap(options);
+        g_plansTable = charmap->HashTopology(*refiner);
+    } else {
+        g_plansTable = Far::SubdivisionPlanTable::Create(*refiner, options);
+    }
 
-    g_plans.clear();
-    charmap->MapTopology(*refiner, g_plans);
+    Far::CharacteristicMap const * charmap = g_plansTable->GetCharacteristicMap();
 
     // create vertex primvar data buffer
     std::vector<Vertex> supportsBuffer;
@@ -754,8 +756,6 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
     delete shape;
 
-    g_charmap = charmap;
-
     if (g_DrawVertIDs) {
         createVertNumbers(*refiner, supportsBuffer);
     }
@@ -764,7 +764,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     }
 
     // draw selected node data
-    createNodeNumbers(g_charmap, supportsBuffer);
+    createNodeNumbers(charmap, supportsBuffer);
 
 
     //
@@ -783,7 +783,8 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         createNodeIDs(*charmap, supportsBuffer);
     }
 
-    int nplans = (int)g_plans.size();
+    Far::SubdivisionPlanVector const & plans = g_plansTable->GetSubdivisionPlans();
+    int nplans = (int)plans.size();
 
 
     // interpolate limits
@@ -803,7 +804,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     g_treeSizeTotal = 0;
     for (int i=0; i<nplans; ++i) {
 
-        int charIndex = g_plans[i].charIndex;
+        int charIndex = plans[i].charIndex;
 
         Far::Characteristic const * ch = charmap->GetCharacteristic(charIndex);
 
@@ -886,8 +887,9 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 }
 
                 bool nodeSelected = false;
-                if (g_charmap && g_currentCharIndex>=0 &&
-                    g_currentNodeIndex>=0 && g_currentNode==node) {
+                if (g_currentCharIndex>=0 &&
+                    g_currentNodeIndex>=0 &&
+                    g_currentNode==node) {
                     nodeSelected = true;
                 }
 
@@ -1122,7 +1124,7 @@ display() {
         g_fpsTimer.Start();
 
         // display node data
-        if (g_charmap && g_currentCharIndex>=0 && g_currentNodeIndex>=0) {
+        if (g_plansTable && g_currentCharIndex>=0 && g_currentNodeIndex>=0) {
 
             static char * nodeTypes[4] =
                 { "NODE_REGULAR", "NODE_RECURSIVE", "NODE_TERMINAL", "NODE_END" };
@@ -1131,7 +1133,6 @@ display() {
                 g_currentNode.GetDescriptor();
 
             char const * typeName = nodeTypes[desc.GetType()];
-
 
             int x = g_width/2-300, y = 200;
             switch (desc.GetType()) {
@@ -1170,9 +1171,10 @@ display() {
         g_hud.DrawString(10, -40,  "Triangles  : %d", g_tessMesh ? g_tessMesh->GetNumTriangles() : -1);
         g_hud.DrawString(10, -20,  "FPS        : %3.1f", fps);
 
-        g_hud.DrawString(-280, -120, "Chars : %d", g_charmap ? g_charmap->GetNumCharacteristics() : -1);
-        g_hud.DrawString(-280, -100, "Plans : %d", (int)g_plans.size());
-        g_hud.DrawString(-280, -80, "Trees : %.1f (kb)", g_charmap ? g_treeSizeTotal * sizeof(int) / 1024.0f : 0.0f);
+        Far::CharacteristicMap const * charmap = g_plansTable ? g_plansTable->GetCharacteristicMap() : 0 ;
+        g_hud.DrawString(-280, -120, "Chars : %d", charmap ? charmap->GetNumCharacteristics() : 0);
+        g_hud.DrawString(-280, -100, "Plans : %d", g_plansTable ? (int)g_plansTable->GetSubdivisionPlans().size() : 0);
+        g_hud.DrawString(-280, -80, "Trees : %.1f (kb)", charmap ? g_treeSizeTotal * sizeof(int) / 1024.0f : 0.0f);
 
         g_hud.Flush();
     }
@@ -1339,8 +1341,9 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int mods) {
         case 'Q': g_running = 0; break;
         case 'F': fitFrame(); break;
 
-        case 'D': writeDiagraph(g_charmap, mods==GLFW_MOD_SHIFT ?
-            -1 : g_currentCharIndex); break;
+        case 'D': writeDiagraph(g_plansTable->GetCharacteristicMap(),
+            mods==GLFW_MOD_SHIFT ? -1 : g_currentCharIndex);
+            break;
 
         case '=':  {
             g_tessLevel+=5;

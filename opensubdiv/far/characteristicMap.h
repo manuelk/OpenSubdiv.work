@@ -42,19 +42,9 @@ class CharacteristicTreeBuilder;
 class Neighborhood;
 class NeighborhoodBuilder;
 class StencilTable;
+class SubdivisionPlanTable;
 class TopologyLevel;
 class TopologyRefiner;
-
-struct Plan {
-
-    Plan(int chIndex, int rtNode) : charIndex(chIndex), rootNode(rtNode) { }
-
-    int charIndex,
-        rootNode;
-};
-
-typedef std::vector<Plan> PlanVector;
-
 
 ///
 ///  \brief Stores topology characteristic plans
@@ -91,9 +81,10 @@ public:
     ///
     /// \anchor arrays_of_plans
     ///
+
     /// \brief Hashes the topology from the refiner mesh into the map
     /// Note : the refiner must be adaptively refined !
-    void MapTopology(TopologyRefiner const & refiner, PlanVector & plans);
+    SubdivisionPlanTable const * HashTopology(TopologyRefiner const & refiner);
 
     //@}
 
@@ -131,6 +122,7 @@ public:
     }
     //@}
 
+
     /// \brief Returns the capacity of the hash map
     int GetHashMapCapacity() const {
         return (int)_characteristicsHash.capacity();
@@ -150,7 +142,9 @@ public:
 
 private:
 
-    friend class CharacteristicMapFactory;
+    friend class SubdivisionPlanTable;
+
+    static bool supportsEndCaps(EndCapType type);
 
     // flags
     Options _options;

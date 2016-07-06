@@ -420,8 +420,8 @@ private:
     std::vector<int> _startEdges;
 
 private:
-    friend class CharacteristicMapFactory;
     friend class CharacteristicMap;
+    friend class SubdivisionPlanTable;
 
     Characteristic(CharacteristicMap const * charmap) :
         _tree(0), _treeOffset(0), _treeSize(0), _characteristicMap(charmap) { }

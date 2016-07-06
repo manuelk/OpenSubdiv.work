@@ -23,7 +23,7 @@
 //
 
 
-#include "../osd/d3d11CharacteristicTable.h"
+#include "../osd/d3d11SubdivisionPlanTable.h"
 
 #include <D3D11.h>
 #include "../far/characteristicMap.h"
@@ -34,36 +34,39 @@ namespace OPENSUBDIV_VERSION {
 namespace Osd {
 
 
-D3D11CharacteristicTable::D3D11CharacteristicTable() {
+D3D11SubdivisionPlanTable::D3D11SubdivisionPlanTable() {
 }
 
-D3D11CharacteristicTable::~D3D11CharacteristicTable() {
+D3D11SubdivisionPlanTable::~D3D11SubdivisionPlanTable() {
     if (_characteristicTreesBuffer) _characteristicTreesBuffer->Release();
     if (_plansBuffer) _plansBuffer->Release();
 }
 
-D3D11CharacteristicTable *
-D3D11CharacteristicTable::Create(Far::CharacteristicMap const & charmap,
-    Far::PlanVector const & plans, ID3D11DeviceContext *pd3d11DeviceContext) {
+D3D11SubdivisionPlanTable *
+D3D11SubdivisionPlanTable::Create(Far::SubdivisionPlanTable const & plansTable,
+    ID3D11DeviceContext *pd3d11DeviceContext) {
 
-    D3D11CharacteristicTable *instance = new D3D11CharacteristicTable();
-    if (instance->allocate(charmap, plans, pd3d11DeviceContext))
+    D3D11SubdivisionPlanTable *instance = new D3D11SubdivisionPlanTable();
+    if (instance->allocate(plansTable, pd3d11DeviceContext))
         return instance;
     delete instance;
     return 0;
 }
 
 bool
-D3D11CharacteristicTable::allocate(
-    Far::CharacteristicMap const & charmap, Far::PlanVector const & plans,
+D3D11SubdivisionPlanTable::allocate(
+    Far::SubdivisionPlanTable const & plansTable,
         ID3D11DeviceContext *pd3d11DeviceContext) {
 
     ID3D11Device *pd3d11Device = NULL;
     pd3d11DeviceContext->GetDevice(&pd3d11Device);
     assert(pd3d11Device);
 
+    Far::CharacteristicMap const * charmap = plansTable.GetCharacteristicMap();
+    Far::SubdivisionPlanVector const & plans = plansTable.GetSubdivisionPlans();
+
     {   // trees
-        int size = charmap.GetCharacteristicTreeSizeTotal();
+        int size = charmap->GetCharacteristicTreeSizeTotal();
 
         // index buffer
         D3D11_BUFFER_DESC bd;
@@ -86,8 +89,8 @@ D3D11CharacteristicTable::allocate(
             return false;
         }
         int * data = (int *) mappedResource.pData;
-        for (int i=0; i<charmap.GetNumCharacteristics(); ++i) {
-            Far::Characteristic const * ch = charmap.GetCharacteristic(i);
+        for (int i=0; i<charmap->GetNumCharacteristics(); ++i) {
+            Far::Characteristic const * ch = charmap->GetCharacteristic(i);
             memcpy(data + ch->GetTreeOffset(), ch->GetTreeData(),ch->GetTreeSize() * sizeof(int));
         }
         pd3d11DeviceContext->Unmap(_characteristicTreesBuffer, 0);

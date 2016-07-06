@@ -25,8 +25,9 @@
 #include "../far/characteristicMap.h"
 #include "../far/characteristicTreeBuilder.h"
 #include "../far/error.h"
-#include "../far/patchFaceTag.h"
 #include "../far/neighborhoodBuilder.h"
+#include "../far/patchFaceTag.h"
+#include "../far/subdivisionPlanTable.h"
 #include "../far/topologyRefiner.h"
 
 namespace OpenSubdiv {
@@ -154,35 +155,25 @@ CharacteristicMap::findOrAddCharacteristic(
     return charIndex;
 }
 
-static inline int
-countPlans(TopologyLevel const & coarseLevel, int regFaceSize) {
-
-    int nfaces = coarseLevel.GetNumFaces(),
-        nplans = 0;
-
-    // non-quads require 1 plan for each face-vert
-    for (int face = 0; face < nfaces; ++face) {
-        if (coarseLevel.IsFaceHole(face)) {
-            continue;
-        }
-        ConstIndexArray fverts = coarseLevel.GetFaceVertices(face);
-        nplans += fverts.size()==regFaceSize ? 1 : fverts.size();
-    }
-    return nplans;
-}
-
-void
-CharacteristicMap::MapTopology(TopologyRefiner const & refiner, PlanVector & plans) {
+bool
+CharacteristicMap::supportsEndCaps(EndCapType type) {
 
     // XXXX we do not support those end-cap types yet
-    if (_options.GetEndCapType()==ENDCAP_BILINEAR_BASIS ||
-        _options.GetEndCapType()==ENDCAP_LEGACY_GREGORY) {
+    if (type==ENDCAP_BILINEAR_BASIS || type==ENDCAP_LEGACY_GREGORY) {
         Error(FAR_CODING_ERROR, "Failure in CharacteristicMap::MapTopology() -- "
             "unsupported EndCapType");
-        return;
+        return false;
+    }
+    return true;
+}
+
+SubdivisionPlanTable const *
+CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
+
+    if (!supportsEndCaps(_options.GetEndCapType())) {
+        return 0;
     }
 
-    // identify patch types
     CharacteristicTreeBuilder treeBuilder(refiner, *this);
 
     TopologyLevel const & coarseLevel = refiner.GetLevel(0);
@@ -190,8 +181,12 @@ CharacteristicMap::MapTopology(TopologyRefiner const & refiner, PlanVector & pla
     int regFaceSize = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType());
 
     int nfaces = coarseLevel.GetNumFaces(),
-        nplans = countPlans(coarseLevel, regFaceSize),
+        nplans = SubdivisionPlanTable::countPlans(coarseLevel, regFaceSize),
         hashSize = _options.hashSize;
+
+    SubdivisionPlanTable * plansTable = new SubdivisionPlanTable(this);
+
+    SubdivisionPlanVector & plans = plansTable->_plans;
 
     plans.reserve(nplans);
 
@@ -219,49 +214,21 @@ CharacteristicMap::MapTopology(TopologyRefiner const & refiner, PlanVector & pla
 
             ConstIndexArray fverts = coarseLevel.GetFaceVertices(face);
             if (fverts.size()==regFaceSize) {
-                // XXXX manuel TODO - index = charIndex +  i
-                plans.push_back(Plan(charIndex, INDEX_INVALID));
+                SubdivisionPlan plan;
+                plan.charIndex = charIndex;
+                plan.rootNodeOffset = INDEX_INVALID;
+                plans.push_back(plan);
             } else {
                 for (int i=0; i<fverts.size(); ++i) {
-                    plans.push_back(Plan(charIndex+i, INDEX_INVALID));
-                }
-            }
-        }
-    } else {
-
-        // hash map size set to 0 : each face gets its own characteristic
-
-        // Allocate & write the characteristics
-        _characteristics.reserve(nplans);
-
-        for (int face = 0; face < nfaces; ++face) {
-
-            if (coarseLevel.IsFaceHole(face)) {
-                continue;
-            }
-
-            ConstIndexArray verts = coarseLevel.GetFaceVertices(face);
-            if (verts.size()==regFaceSize) {
-
-                Characteristic * ch = new Characteristic(this);
-                ch->writeCharacteristicTree(treeBuilder, 0, face);
-                _characteristics.push_back(ch);
-
-                plans.push_back(Plan((int)_characteristics.size()-1, ch->GetTreeOffset()));
-            } else {
-                ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
-                for (int i=0; i<children.size(); ++i) {
-
-                    Characteristic * ch = new Characteristic(this);
-                    ch->writeCharacteristicTree(treeBuilder, 1, children[i]);
-                    _characteristics.push_back(ch);
-
-                    plans.push_back(Plan((int)_characteristics.size()-1, ch->GetTreeOffset()));
+                    SubdivisionPlan plan;
+                    plan.charIndex = charIndex+i;
+                    plan.rootNodeOffset = INDEX_INVALID;
+                    plans.push_back(plan);
                 }
             }
         }
     }
-
+    
     if (_localPointStencils && _localPointVaryingStencils) {
         // XXXX manuelk TODO : append end-cap stencils to existing ones !
         assert(0);
@@ -269,8 +236,9 @@ CharacteristicMap::MapTopology(TopologyRefiner const & refiner, PlanVector & pla
         _localPointStencils = treeBuilder.FinalizeStencils();
         _localPointVaryingStencils = treeBuilder.FinalizeVaryingStencils();
     }
-}
 
+    return plansTable;
+}
 
 int
 CharacteristicMap::GetCharacteristicTreeSizeTotal() const {
