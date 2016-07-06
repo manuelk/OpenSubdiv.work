@@ -672,7 +672,7 @@ Osd::GLVertexBuffer * g_controlMeshVerts = 0;
 
 Far::CharacteristicMap const * g_charmap = 0;
 
-Far::CharacteristicMap::PlansVector g_plans;
+Far::PlanVector g_plans;
 
 int g_treeSizeTotal = 0;
 

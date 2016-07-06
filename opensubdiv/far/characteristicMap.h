@@ -45,6 +45,17 @@ class StencilTable;
 class TopologyLevel;
 class TopologyRefiner;
 
+struct Plan {
+
+    Plan(int chIndex, int rtNode) : charIndex(chIndex), rootNode(rtNode) { }
+
+    int charIndex,
+        rootNode;
+};
+
+typedef std::vector<Plan> PlanVector;
+
+
 ///
 ///  \brief Stores topology characteristic plans
 ///
@@ -80,20 +91,9 @@ public:
     ///
     /// \anchor arrays_of_plans
     ///
-
-    struct Plan {
-
-        Plan(int chIndex, int rtNode) : charIndex(chIndex), rootNode(rtNode) { }
-
-        int charIndex,
-            rootNode;
-    };
-
-    typedef std::vector<Plan> PlansVector;
-
     /// \brief Hashes the topology from the refiner mesh into the map
     /// Note : the refiner must be adaptively refined !
-    void MapTopology(TopologyRefiner const & refiner, PlansVector & plans);
+    void MapTopology(TopologyRefiner const & refiner, PlanVector & plans);
 
     //@}
 

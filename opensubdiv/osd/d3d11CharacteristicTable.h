@@ -22,44 +22,48 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
-#ifndef OPENSUBDIV3_OSD_GL_CHARACTERISTIC_MAP_H
-#define OPENSUBDIV3_OSD_GL_CHARACTERISTIC_MAP_H
+#ifndef OPENSUBDIV3_OSD_D3D11_CHARACTERISTIC_TABLE_H
+#define OPENSUBDIV3_OSD_D3D11_CHARACTERISTIC_TABLE_H
 
 #include "../version.h"
 
 #include "../osd/nonCopyable.h"
-#include "../osd/opengl.h"
-#include "../osd/types.h"
+
+#include "../far/characteristicMap.h"
+
+struct ID3D11Buffer;
+struct ID3D11ShaderResourceView;
+struct ID3D11Device;
+struct ID3D11DeviceContext;
 
 namespace OpenSubdiv {
 namespace OPENSUBDIV_VERSION {
 
-namespace Far{
-    class CharacteristicMap;
-};
-
 namespace Osd {
 
-class GLCharacteristicMap : private NonCopyable<GLCharacteristicMap> {
+class D3D11CharacteristicTable : private NonCopyable<D3D11CharacteristicTable> {
+
 public:
 
-    ~GLCharacteristicMap();
+    template<typename DEVICE_CONTEXT>
 
-    static GLCharacteristicMap * Create(
-        Far::CharacteristicMap const & charmap, void *deviceContext = NULL);
+    static D3D11CharacteristicTable * Create(Far::CharacteristicMap const & charmap,
+        Far::PlanVector const & plans, DEVICE_CONTEXT contex);
 
+    static D3D11CharacteristicTable *Create(Far::CharacteristicMap const & charmap,
+        Far::PlanVector const & plans, ID3D11DeviceContext *deviceContext);
 
-    GLuint GetCharacteristicTreesBuffer() const {
-        return _characteristicTreesBuffer;
-    }
+    ~D3D11CharacteristicTable();
 
 protected:
 
-    GLCharacteristicMap();
+    D3D11CharacteristicTable();
 
-    bool allocate(Far::CharacteristicMap const & charmap);
+    bool allocate( Far::CharacteristicMap const & charmap,
+        Far::PlanVector const & plans, ID3D11DeviceContext *pd3d11DeviceContext);
 
-    GLuint _characteristicTreesBuffer;
+    ID3D11Buffer * _characteristicTreesBuffer,
+                 * _plansBuffer;
 };
 
 }  // end namespace Osd
@@ -69,4 +73,4 @@ using namespace OPENSUBDIV_VERSION;
 
 }  // end namespace OpenSubdiv
 
-#endif  // OPENSUBDIV3_OSD_GL_PATCH_TABLE_H
+#endif  // OPENSUBDIV3_OSD_D3D11_CHARACTERISTIC_TABLE_H

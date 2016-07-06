@@ -22,9 +22,14 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
+#ifndef OPENSUBDIV3_OSD_GL_CHARACTERISTIC_TABLE_H
+#define OPENSUBDIV3_OSD_GL_CHARACTERISTIC_TABLE_H
 
-#include "../osd/glCharacteristicMap.h"
+#include "../version.h"
 
+#include "../osd/nonCopyable.h"
+#include "../osd/opengl.h"
+#include "../osd/types.h"
 #include "../far/characteristicMap.h"
 
 namespace OpenSubdiv {
@@ -32,45 +37,36 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Osd {
 
-GLCharacteristicMap::GLCharacteristicMap() :
-    _characteristicTreesBuffer(0) {
-}
+class GLCharacteristicTable : private NonCopyable<GLCharacteristicTable> {
 
-GLCharacteristicMap::~GLCharacteristicMap() {
-    if (_characteristicTreesBuffer) {
-        glDeleteBuffers(1, &_characteristicTreesBuffer);
+public:
+
+    ~GLCharacteristicTable();
+
+    static GLCharacteristicTable * Create(Far::CharacteristicMap const & charmap,
+        Far::PlanVector const & plans, void *deviceContext = NULL);
+
+
+    GLuint GetCharacteristicTreesBuffer() const {
+        return _characteristicTreesBuffer;
     }
-}
 
-GLCharacteristicMap *
-GLCharacteristicMap::Create(
-    Far::CharacteristicMap const & charmap, void * /*deviceContext*/) {
+protected:
 
-    GLCharacteristicMap * instance = new GLCharacteristicMap;
-    if (instance->allocate(charmap)) {
-        return instance;
-    }
-    delete instance;
-    return 0;
-}
+    GLCharacteristicTable();
 
-bool
-GLCharacteristicMap::allocate(Far::CharacteristicMap const & charmap) {
+    bool allocate(
+        Far::CharacteristicMap const & charmap, Far::PlanVector const & plans);
 
-    // characteristic trees
-    glGenBuffers(1, &_characteristicTreesBuffer);
-	glBindBuffer( GL_SHADER_STORAGE_BUFFER, _characteristicTreesBuffer );
-    int size = charmap.GetCharacteristicTreeSizeTotal();
-	glBufferData( GL_SHADER_STORAGE_BUFFER, size, NULL, GL_STATIC_DRAW );
-    for (int i=0; i<charmap.GetNumCharacteristics(); ++i) {
-        Far::Characteristic const * ch = charmap.GetCharacteristic(i);
-		glBufferSubData(GL_SHADER_STORAGE_BUFFER,
-            ch->GetTreeOffset(), ch->GetTreeSize(), ch->GetTreeData());        
-    }
-    return true;
-}
+    GLuint _characteristicTreesBuffer,
+           _plansBuffer;
+};
 
 }  // end namespace Osd
 
 }  // end namespace OPENSUBDIV_VERSION
+using namespace OPENSUBDIV_VERSION;
+
 }  // end namespace OpenSubdiv
+
+#endif  // OPENSUBDIV3_OSD_GL_CHARACTERISTIC_TABLE_H

@@ -172,7 +172,7 @@ countPlans(TopologyLevel const & coarseLevel, int regFaceSize) {
 }
 
 void
-CharacteristicMap::MapTopology(TopologyRefiner const & refiner, PlansVector & plans) {
+CharacteristicMap::MapTopology(TopologyRefiner const & refiner, PlanVector & plans) {
 
     // XXXX we do not support those end-cap types yet
     if (_options.GetEndCapType()==ENDCAP_BILINEAR_BASIS ||
@@ -227,7 +227,6 @@ CharacteristicMap::MapTopology(TopologyRefiner const & refiner, PlansVector & pl
                 }
             }
         }
-
     } else {
 
         // hash map size set to 0 : each face gets its own characteristic
@@ -235,14 +234,13 @@ CharacteristicMap::MapTopology(TopologyRefiner const & refiner, PlansVector & pl
         // Allocate & write the characteristics
         _characteristics.reserve(nplans);
 
-        for (int face = 0; face < coarseLevel.GetNumFaces(); ++face) {
+        for (int face = 0; face < nfaces; ++face) {
 
             if (coarseLevel.IsFaceHole(face)) {
                 continue;
             }
 
             ConstIndexArray verts = coarseLevel.GetFaceVertices(face);
-
             if (verts.size()==regFaceSize) {
 
                 Characteristic * ch = new Characteristic(this);
