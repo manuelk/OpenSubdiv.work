@@ -58,7 +58,7 @@ protected:
     bool allocate(Far::SubdivisionPlanTable const & plansTable);
 
     GLuint _characteristicTreesBuffer,
-           _plansBuffer;
+           _subdivisionPlansBuffer;
 };
 
 }  // end namespace Osd

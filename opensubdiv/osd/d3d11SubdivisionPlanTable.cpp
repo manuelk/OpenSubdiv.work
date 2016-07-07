@@ -22,11 +22,11 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
+#include <D3D11.h>
 
 #include "../osd/d3d11SubdivisionPlanTable.h"
-
-#include <D3D11.h>
 #include "../far/characteristicMap.h"
+#include "../far/error.h"
 
 namespace OpenSubdiv {
 namespace OPENSUBDIV_VERSION {
@@ -34,12 +34,13 @@ namespace OPENSUBDIV_VERSION {
 namespace Osd {
 
 
-D3D11SubdivisionPlanTable::D3D11SubdivisionPlanTable() {
+D3D11SubdivisionPlanTable::D3D11SubdivisionPlanTable() :
+    _characteristicTreesBuffer(0), _subdivisionPlansBuffer(0) {
 }
 
 D3D11SubdivisionPlanTable::~D3D11SubdivisionPlanTable() {
     if (_characteristicTreesBuffer) _characteristicTreesBuffer->Release();
-    if (_plansBuffer) _plansBuffer->Release();
+    if (_subdivisionPlansBuffer) _subdivisionPlansBuffer->Release();
 }
 
 D3D11SubdivisionPlanTable *
@@ -51,6 +52,40 @@ D3D11SubdivisionPlanTable::Create(Far::SubdivisionPlanTable const & plansTable,
         return instance;
     delete instance;
     return 0;
+}
+
+static ID3D11Buffer *
+createBuffer(ID3D11Device * pd3d11Device, int numElements, int elementSize) {
+
+    ID3D11Buffer *buffer = NULL;
+    D3D11_BUFFER_DESC bd;
+    bd.ByteWidth = numElements * elementSize;
+    bd.Usage = D3D11_USAGE_IMMUTABLE;
+    bd.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    bd.CPUAccessFlags = 0;
+    bd.MiscFlags = 0;
+    bd.StructureByteStride = elementSize;
+
+    HRESULT hr = pd3d11Device->CreateBuffer(&bd, nullptr, &buffer);
+    if (FAILED(hr)) {
+        Far::Error(Far::FAR_RUNTIME_ERROR,
+            "Error creating ID3D11Buffer (Osd::D3D11SubdivisionPlanTable)\n");
+        return NULL;
+    }
+    return buffer;
+}
+
+void *
+mapResource(ID3D11DeviceContext * pd3d11DeviceContext, ID3D11Buffer * buffer) {
+
+    D3D11_MAPPED_SUBRESOURCE mappedResource;
+    HRESULT hr = pd3d11DeviceContext->Map(buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+    if (FAILED(hr)) {
+        Far::Error(Far::FAR_RUNTIME_ERROR,
+            "Error mapping resource for ID3D11Buffer (Osd::D3D11SubdivisionPlanTable)\n");
+        return false;
+    }
+    return mappedResource.pData;
 }
 
 bool
@@ -65,37 +100,43 @@ D3D11SubdivisionPlanTable::allocate(
     Far::CharacteristicMap const * charmap = plansTable.GetCharacteristicMap();
     Far::SubdivisionPlanVector const & plans = plansTable.GetSubdivisionPlans();
 
-    {   // trees
+    {   // characteristic trees
         int size = charmap->GetCharacteristicTreeSizeTotal();
 
-        // index buffer
-        D3D11_BUFFER_DESC bd;
-        ZeroMemory(&bd, sizeof(bd));
-        bd.ByteWidth = size * sizeof(int);
-        bd.Usage = D3D11_USAGE_DYNAMIC;
-        bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
-        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-        bd.MiscFlags = 0;
-        bd.StructureByteStride = sizeof(int);
-        HRESULT hr = pd3d11Device->CreateBuffer(&bd, NULL, &_characteristicTreesBuffer);
-        if (FAILED(hr)) {
+        ID3D11Buffer * buffer = createBuffer(pd3d11Device, size, sizeof(int));
+        if (!buffer)
             return false;
-        }
 
-        D3D11_MAPPED_SUBRESOURCE mappedResource;
-        hr = pd3d11DeviceContext->Map(
-            _characteristicTreesBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
-        if (FAILED(hr)) {
+        // concatenate the characteristic trees into a single array of ints
+        int * data = (int *)mapResource(pd3d11DeviceContext, buffer);
+        if (!data)
             return false;
-        }
-        int * data = (int *) mappedResource.pData;
+
         for (int i=0; i<charmap->GetNumCharacteristics(); ++i) {
             Far::Characteristic const * ch = charmap->GetCharacteristic(i);
             memcpy(data + ch->GetTreeOffset(), ch->GetTreeData(),ch->GetTreeSize() * sizeof(int));
         }
-        pd3d11DeviceContext->Unmap(_characteristicTreesBuffer, 0);
+        pd3d11DeviceContext->Unmap(buffer, 0);
+
+        _characteristicTreesBuffer = buffer;
     }
 
+    {   // subdivision plans
+
+        Far::SubdivisionPlanVector const & plans = plansTable.GetSubdivisionPlans();
+
+        ID3D11Buffer * buffer = createBuffer(
+            pd3d11Device, (int)plans.size(), sizeof(Far::SubdivisionPlan));
+
+        Far::SubdivisionPlan * data = (Far::SubdivisionPlan *)mapResource(pd3d11DeviceContext, buffer);
+        if (!data)
+            return false;
+
+        memcpy(data, &plans[0], plans.size() * sizeof(Far::SubdivisionPlan));
+        pd3d11DeviceContext->Unmap(buffer, 0);
+
+        _subdivisionPlansBuffer = buffer;
+    }
 
     return true;
 }

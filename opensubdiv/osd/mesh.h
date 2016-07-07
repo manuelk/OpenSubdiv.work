@@ -34,6 +34,7 @@
 
 #include "../far/topologyRefiner.h"
 #include "../far/patchTableFactory.h"
+#include "../far/subdivisionPlanTable.h"
 #include "../far/stencilTable.h"
 #include "../far/stencilTableFactory.h"
 
@@ -47,14 +48,15 @@ namespace OPENSUBDIV_VERSION {
 namespace Osd {
 
 enum MeshBits {
-    MeshAdaptive             = 0,
-    MeshInterleaveVarying    = 1,
-    MeshFVarData             = 2,
-    MeshUseSingleCreasePatch = 3,
-    MeshEndCapBSplineBasis   = 4,  // exclusive
-    MeshEndCapGregoryBasis   = 5,  // exclusive
-    MeshEndCapLegacyGregory  = 6,  // exclusive
-    NUM_MESH_BITS            = 7,
+    MeshAdaptive                = 0,
+    MeshInterleaveVarying       = 1,
+    MeshFVarData                = 2,
+    MeshUseSingleCreasePatch    = 3,
+    MeshEndCapBSplineBasis      = 4,  // exclusive
+    MeshEndCapGregoryBasis      = 5,  // exclusive
+    MeshEndCapLegacyGregory     = 6,  // exclusive
+    MeshUsesCharacteristicPlans = 7,
+    NUM_MESH_BITS               = 8,
 };
 typedef std::bitset<NUM_MESH_BITS> MeshBitset;
 
@@ -481,6 +483,62 @@ public:
     }
 
 private:
+
+    void initializePatchTable(int level, MeshBitset bits) {
+
+        assert(_refiner);
+        Far::PatchTableFactory::Options poptions(level);
+        poptions.generateFVarTables = bits.test(MeshFVarData);
+        poptions.useSingleCreasePatch = bits.test(MeshUseSingleCreasePatch);
+
+        if (bits.test(MeshEndCapBSplineBasis)) {
+            poptions.SetEndCapType(Far::ENDCAP_BSPLINE_BASIS);
+        } else if (bits.test(MeshEndCapGregoryBasis)) {
+            poptions.SetEndCapType(Far::ENDCAP_GREGORY_BASIS);
+            // points on gregory basis endcap boundary can be shared among
+            // adjacent patches to save some stencils.
+            poptions.shareEndCapPatchPoints = true;
+        } else if (bits.test(MeshEndCapLegacyGregory)) {
+            poptions.SetEndCapType(Far::ENDCAP_LEGACY_GREGORY);
+        }
+
+        _farPatchTable = Far::PatchTableFactory::Create(*_refiner, poptions);
+        _maxValence = _farPatchTable->GetMaxValence();
+        _patchTable = PatchTable::Create(_farPatchTable, _deviceContext);
+    }
+
+    void initializeSubdivisionPlanTable(MeshBitset bits) {
+
+        assert(_refiner);
+        Far::CharacteristicMap::Options options;
+        if (bits.test(MeshEndCapBSplineBasis)) {
+            options.SetEndCapType(Far::ENDCAP_BSPLINE_BASIS);
+        } else if (bits.test(MeshEndCapGregoryBasis)) {
+            options.SetEndCapType(Far::ENDCAP_GREGORY_BASIS);
+        } else {
+            assert(0); // unsupported !!!
+            return;
+        }
+        _farSubdivisionPlanTable =
+            Far::SubdivisionPlanTable::Create(*_refiner, options);
+        _maxValence = 0;
+        _patchTable = PlanTable::Create(_farSubdivisionPlanTable, _deviceContext);
+    }
+
+    Far::StencilTable const *
+    appendLocalPointsStencils(Far::StencilTable const * stencils,
+                              Far::StencilTable const * localPointStencils) {
+        assert(_refiner);
+        if (stencils && localPointStencils) {
+            Far::StencilTable const * result =
+                Far::StencilTableFactory::AppendLocalPointStencilTable(
+                    *_refiner, stencils, localPointStencils);
+            delete stencils;
+            return result;
+        }
+        return stencils;
+    }
+
     void initializeContext(int numVertexElements,
                            int numVaryingElements,
                            int level, MeshBitset bits) {
@@ -495,65 +553,39 @@ private:
         Far::StencilTable const * varyingStencils = NULL;
 
         if (numVertexElements>0) {
-
-            vertexStencils = Far::StencilTableFactory::Create(*_refiner,
-                                                              options);
+            vertexStencils =
+                Far::StencilTableFactory::Create(*_refiner, options);
         }
 
         if (numVaryingElements>0) {
-
             options.interpolationMode =
                 Far::StencilTableFactory::INTERPOLATE_VARYING;
-
-            varyingStencils = Far::StencilTableFactory::Create(*_refiner,
-                                                               options);
+            varyingStencils =
+                Far::StencilTableFactory::Create(*_refiner,options);
         }
 
-        Far::PatchTableFactory::Options poptions(level);
-        poptions.generateFVarTables = bits.test(MeshFVarData);
-        poptions.useSingleCreasePatch = bits.test(MeshUseSingleCreasePatch);
+        if (bits.test(MeshUsesCharacteristicPlans)) {
 
-        if (bits.test(MeshEndCapBSplineBasis)) {
-            poptions.SetEndCapType(
-                Far::ENDCAP_BSPLINE_BASIS);
-        } else if (bits.test(MeshEndCapGregoryBasis)) {
-            poptions.SetEndCapType(
-                Far::ENDCAP_GREGORY_BASIS);
-            // points on gregory basis endcap boundary can be shared among
-            // adjacent patches to save some stencils.
-            poptions.shareEndCapPatchPoints = true;
-        } else if (bits.test(MeshEndCapLegacyGregory)) {
-            poptions.SetEndCapType(
-                Far::ENDCAP_LEGACY_GREGORY);
+            initializeSubdivisionPlanTable(bits);
+
+            Far::CharacteristicMap const * charmap =
+                _farSubdivisionPlanTable->GetCharacteristicMap();
+
+            vertexStencils = appendLocalPointsStencils(vertexStencils,
+                charmap->GetLocalPointStencilTable());
+
+            varyingStencils = appendLocalPointsStencils(varyingStencils,
+                charmap->GetLocalPointVaryingStencilTable());
+        } else {
+
+            initializePatchTable(level, bits);
+
+            vertexStencils = appendLocalPointsStencils(vertexStencils,
+                _farPatchTable->GetLocalPointStencilTable());
+
+            varyingStencils = appendLocalPointsStencils(varyingStencils,
+                _farPatchTable->GetLocalPointVaryingStencilTable());
         }
-
-        _farPatchTable = Far::PatchTableFactory::Create(*_refiner, poptions);
-
-        // if there's endcap stencils, merge it into regular stencils.
-        if (_farPatchTable->GetLocalPointStencilTable()) {
-            // append stencils
-            if (Far::StencilTable const *vertexStencilsWithLocalPoints =
-                Far::StencilTableFactory::AppendLocalPointStencilTable(
-                    *_refiner,
-                    vertexStencils,
-                    _farPatchTable->GetLocalPointStencilTable())) {
-                delete vertexStencils;
-                vertexStencils = vertexStencilsWithLocalPoints;
-            }
-            if (varyingStencils) {
-                if (Far::StencilTable const *varyingStencilsWithLocalPoints =
-                    Far::StencilTableFactory::AppendLocalPointStencilTable(
-                        *_refiner,
-                        varyingStencils,
-                        _farPatchTable->GetLocalPointVaryingStencilTable())) {
-                    delete varyingStencils;
-                    varyingStencils = varyingStencilsWithLocalPoints;
-                }
-            }
-        }
-
-        _maxValence = _farPatchTable->GetMaxValence();
-        _patchTable = PatchTable::Create(_farPatchTable, _deviceContext);
 
         // numvertices = coarse verts + refined verts + gregory basis verts
         _numVertices = vertexStencils->GetNumControlVertices()
@@ -588,7 +620,8 @@ private:
     }
 
     Far::TopologyRefiner * _refiner;
-    Far::PatchTable * _farPatchTable;
+    Far::PatchTable const * _farPatchTable;
+    Far::SubdivisionPlanTable const * _farSubdivisionPlanTable;
 
     int _numVertices;
     int _maxValence;
@@ -603,7 +636,8 @@ private:
     StencilTable const * _varyingStencilTable;
     EvaluatorCache * _evaluatorCache;
 
-    PatchTable *_patchTable;
+    PatchTable * _patchTable;
+
     DeviceContext *_deviceContext;
 };
 

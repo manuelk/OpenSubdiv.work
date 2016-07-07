@@ -33,15 +33,15 @@ namespace OPENSUBDIV_VERSION {
 namespace Osd {
 
 GLSubdivisionPlanTable::GLSubdivisionPlanTable() :
-    _characteristicTreesBuffer(0), _plansBuffer(0) {
+    _characteristicTreesBuffer(0), _subdivisionPlansBuffer(0) {
 }
 
 GLSubdivisionPlanTable::~GLSubdivisionPlanTable() {
     if (_characteristicTreesBuffer) {
         glDeleteBuffers(1, &_characteristicTreesBuffer);
     }
-    if (_plansBuffer) {
-        glDeleteBuffers(1, &_plansBuffer);
+    if (_subdivisionPlansBuffer) {
+        glDeleteBuffers(1, &_subdivisionPlansBuffer);
     }
 }
 
@@ -75,8 +75,8 @@ GLSubdivisionPlanTable::allocate(Far::SubdivisionPlanTable const & plansTable) {
 
     // subdivision plans
     Far::SubdivisionPlanVector const & plans = plansTable.GetSubdivisionPlans();
-    glGenBuffers(1, &_plansBuffer);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, _plansBuffer);
+    glGenBuffers(1, &_subdivisionPlansBuffer);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, _subdivisionPlansBuffer);
     glBufferData(GL_SHADER_STORAGE_BUFFER,
         plans.size() * sizeof(Far::SubdivisionPlan), &plans[0], GL_STATIC_DRAW);
     return true;

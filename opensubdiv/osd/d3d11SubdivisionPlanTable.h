@@ -63,7 +63,7 @@ protected:
         Far::SubdivisionPlanTable const & plansTable, ID3D11DeviceContext *pd3d11DeviceContext);
 
     ID3D11Buffer * _characteristicTreesBuffer,
-                 * _plansBuffer;
+                 * _subdivisionPlansBuffer;
 };
 
 }  // end namespace Osd

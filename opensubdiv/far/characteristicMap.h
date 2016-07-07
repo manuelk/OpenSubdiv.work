@@ -76,6 +76,10 @@ public:
     CharacteristicMap(Options options=Options()) :
         _options(options), _localPointStencils(0), _localPointVaryingStencils(0) { }
 
+
+    //// \brief Returns the map's configuration options
+    Options GetOptions() const { return _options; }
+
     //@{
     ///  @name Plans
     ///
@@ -93,6 +97,8 @@ public:
     ///
     /// \anchor arrays_of_characteristics
     ///
+
+    /// \brief Reurns the number of characteristics in the map
     int GetNumCharacteristics() const {
         return (int)_characteristics.size();
     }
@@ -136,9 +142,6 @@ public:
 
     /// \brief Writes a GraphViz 'dot' diagraph of all the characteristic trees
     void WriteCharacteristicsDiagraphs(FILE * fout, bool showIndices=true) const;
-
-    //// \breif Returns the map's configuration options
-    Options GetOptions() const { return _options; }
 
 private:
 

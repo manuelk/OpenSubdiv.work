@@ -37,9 +37,12 @@ SubdivisionPlanTable::SubdivisionPlanTable(
 }
 
 SubdivisionPlanTable::~SubdivisionPlanTable() {
-    // XXXX manuelk we may not be owning the charmp - delete needs
-    // to be conditional !!! (sigh ref pointers...)
-    delete _charmap;
+    // If the characteristics map is set to hashing, then client code owns it.
+    // Otherwise, the SubdivisionPlanTable allocated it and is responsible for
+    // destroying it.
+    if (_charmap->GetOptions().hashSize==0) {
+        delete _charmap;
+    }
 }
 
 int
@@ -74,6 +77,9 @@ SubdivisionPlanTable::Create(TopologyRefiner const & refiner, Options options) {
     int nfaces = coarseLevel.GetNumFaces(),
         nplans = countPlans(coarseLevel, regFaceSize);
 
+    // note : this map is not set to hash topology and we own it (destructor
+    //        will delete it)
+    options.hashSize = 0;
     CharacteristicMap * charmap = new CharacteristicMap(options);
     charmap->_characteristics.reserve(nplans);
 
