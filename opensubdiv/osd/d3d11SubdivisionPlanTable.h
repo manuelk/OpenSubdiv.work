@@ -55,6 +55,14 @@ public:
 
     ~D3D11SubdivisionPlanTable();
 
+    ID3D11Buffer * GetCharacteristicTreesBuffer() const {
+        return _characteristicTreesBuffer;
+    }
+
+    ID3D11Buffer * GetSubdivisionPlansBuffer() const {
+        return _subdivisionPlansBuffer;
+    }
+
 protected:
 
     D3D11SubdivisionPlanTable();

@@ -51,6 +51,10 @@ public:
         return _characteristicTreesBuffer;
     }
 
+    GLuint GetSubdivisionPlansBuffer() const {
+        return _subdivisionPlansBuffer;
+    }
+
 protected:
 
     GLSubdivisionPlanTable();

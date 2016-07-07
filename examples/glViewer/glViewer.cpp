@@ -89,7 +89,7 @@ OpenSubdiv::Osd::GLLegacyGregoryPatchTable *g_legacyGregoryPatchTable = NULL;
   is available the capabilities are queried during execution and the correct
   source is returned. If glew in not available during compile time the version
   is determined*/
-static const char *shaderSource(){
+static const char *shaderSource() {
 #if not defined(OSD_USES_GLEW)
 
 static const char *res =
@@ -109,8 +109,8 @@ static const char *res =
 #include "shader_gl3.gen.h"
                 ;
             //Determine the shader file to use. Since some opengl implementations
-            //define that an extension is available but not an implementation 
-            //for it you cannnot trust in the glew header definitions to know that is 
+            //define that an extension is available but not an implementation
+            //for it you cannnot trust in the glew header definitions to know that is
             //available, but you need to query it during runtime.
             if (GLUtils::SupportsAdaptiveTessellation())
                 res = gen;
@@ -119,6 +119,21 @@ static const char *res =
         }
 #endif
         return res;
+}
+
+static const char *shaderPlansSource() {
+    static const char *res = NULL;
+    if (!res){
+        static const char *gen =
+#include "shader_plans.gen.h"
+        ;
+        if (!GLUtils::SupportsAdaptiveTessellation()) {
+            fprintf(stderr, "Adaptive subdivision not supported\n");
+            exit(0);
+        }
+        res = gen;
+    }
+    return res;
 }
 
 #include <cfloat>
@@ -162,7 +177,8 @@ enum HudCheckBox { kHUD_CB_DISPLAY_CONTROL_MESH_EDGES,
                    kHUD_CB_FREEZE,
                    kHUD_CB_DISPLAY_PATCH_COUNTS,
                    kHUD_CB_ADAPTIVE,
-                   kHUD_CB_SINGLE_CREASE_PATCH };
+                   kHUD_CB_SINGLE_CREASE_PATCH,
+                   kHUD_CB_SUBDIVISION_PLANS };
 
 int g_currentShape = 0;
 
@@ -182,6 +198,7 @@ int   g_fullscreen = 0,
       g_adaptive = 1,
       g_endCap = kEndCapBSplineBasis,
       g_singleCreasePatch = 1,
+      g_subdivisionPlans = 0,
       g_mbutton[3] = {0, 0, 0},
       g_running = 1;
 
@@ -443,9 +460,10 @@ rebuildMesh() {
     g_mesh = NULL;
 
     // Adaptive refinement currently supported only for catmull-clark scheme
-    bool doAdaptive = (g_adaptive!=0 and scheme==kCatmark);
-    bool interleaveVarying = g_shadingMode == kShadingInterleavedVaryingColor;
-    bool doSingleCreasePatch = (g_singleCreasePatch!=0 and scheme==kCatmark);
+    bool doAdaptive = (g_adaptive!=0 && scheme==kCatmark),
+         interleaveVarying = g_shadingMode == kShadingInterleavedVaryingColor,
+         doSingleCreasePatch = (g_singleCreasePatch!=0 && scheme==kCatmark),
+         doSubdivisionPlans = (g_adaptive!=0 && g_subdivisionPlans!=0);
 
     Osd::MeshBitset bits;
     bits.set(Osd::MeshAdaptive, doAdaptive);
@@ -455,6 +473,7 @@ rebuildMesh() {
     bits.set(Osd::MeshEndCapBSplineBasis, g_endCap == kEndCapBSplineBasis);
     bits.set(Osd::MeshEndCapGregoryBasis, g_endCap == kEndCapGregoryBasis);
     bits.set(Osd::MeshEndCapLegacyGregory, g_endCap == kEndCapLegacyGregory);
+    bits.set(Osd::MeshUsesCharacteristicPlans, doSubdivisionPlans);
 
     int numVertexElements = 3;
     int numVaryingElements =
@@ -465,7 +484,8 @@ rebuildMesh() {
         g_mesh = new Osd::Mesh<Osd::CpuGLVertexBuffer,
                                Far::StencilTable,
                                Osd::CpuEvaluator,
-                               Osd::GLPatchTable>(
+                               Osd::GLPatchTable,
+                               Osd::GLSubdivisionPlanTable>(
                                    refiner,
                                    numVertexElements,
                                    numVaryingElements,
@@ -475,7 +495,8 @@ rebuildMesh() {
         g_mesh = new Osd::Mesh<Osd::CpuGLVertexBuffer,
                                Far::StencilTable,
                                Osd::OmpEvaluator,
-                               Osd::GLPatchTable>(
+                               Osd::GLPatchTable,
+                               Osd::GLSubdivisionPlanTable>(
                                    refiner,
                                    numVertexElements,
                                    numVaryingElements,
@@ -486,7 +507,8 @@ rebuildMesh() {
         g_mesh = new Osd::Mesh<Osd::CpuGLVertexBuffer,
                                Far::StencilTable,
                                Osd::TbbEvaluator,
-                               Osd::GLPatchTable>(
+                               Osd::GLPatchTable,
+                               Osd::GLSubdivisionPlanTable>(
                                    refiner,
                                    numVertexElements,
                                    numVaryingElements,
@@ -499,7 +521,8 @@ rebuildMesh() {
         g_mesh = new Osd::Mesh<Osd::CLGLVertexBuffer,
                                Osd::CLStencilTable,
                                Osd::CLEvaluator,
-                               Osd::GLPatchTable,
+                               Osd::GLPatchTable,,
+                               Osd::GLSubdivisionPlanTable,
                                CLDeviceContext>(
                                    refiner,
                                    numVertexElements,
@@ -513,7 +536,8 @@ rebuildMesh() {
         g_mesh = new Osd::Mesh<Osd::CudaGLVertexBuffer,
                                Osd::CudaStencilTable,
                                Osd::CudaEvaluator,
-                               Osd::GLPatchTable>(
+                               Osd::GLPatchTable,
+                               Osd::GLSubdivisionPlanTable>(
                                    refiner,
                                    numVertexElements,
                                    numVaryingElements,
@@ -525,7 +549,8 @@ rebuildMesh() {
         g_mesh = new Osd::Mesh<Osd::GLVertexBuffer,
                                Osd::GLStencilTableTBO,
                                Osd::GLXFBEvaluator,
-                               Osd::GLPatchTable>(
+                               Osd::GLPatchTable,
+                               Osd::GLSubdivisionPlanTable>(
                                    refiner,
                                    numVertexElements,
                                    numVaryingElements,
@@ -538,7 +563,8 @@ rebuildMesh() {
         g_mesh = new Osd::Mesh<Osd::GLVertexBuffer,
                                Osd::GLStencilTableSSBO,
                                Osd::GLComputeEvaluator,
-                               Osd::GLPatchTable>(
+                               Osd::GLPatchTable,
+                               Osd::GLSubdivisionPlanTable>(
                                    refiner,
                                    numVertexElements,
                                    numVaryingElements,
@@ -599,7 +625,10 @@ rebuildMesh() {
     // -------- VAO
     glBindVertexArray(g_vao);
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_mesh->GetPatchTable()->GetPatchIndexBuffer());
+    if (g_mesh->GetPatchTable()) {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_mesh->GetPatchTable()->GetPatchIndexBuffer());
+    }
+
     glBindBuffer(GL_ARRAY_BUFFER, g_mesh->BindVertexBuffer());
 
     glEnableVertexAttribArray(0);
@@ -633,8 +662,10 @@ fitFrame() {
 //------------------------------------------------------------------------------
 
 union Effect {
+
     Effect(int displayStyle_, int shadingMode_, int screenSpaceTess_,
-           int fractionalSpacing_, int patchCull_, int singleCreasePatch_)
+           int fractionalSpacing_, int patchCull_, int singleCreasePatch_,
+           int subdivisionPlans_)
         : value(0) {
         displayStyle = displayStyle_;
         shadingMode = shadingMode_;
@@ -642,16 +673,18 @@ union Effect {
         fractionalSpacing = fractionalSpacing_;
         patchCull = patchCull_;
         singleCreasePatch = singleCreasePatch_;
+        subdivisionPlans = subdivisionPlans_;
     }
 
     struct {
-        unsigned int displayStyle:2;
-        unsigned int shadingMode:4;
-        unsigned int screenSpaceTess:1;
-        unsigned int fractionalSpacing:1;
-        unsigned int patchCull:1;
-        unsigned int singleCreasePatch:1;
-    };
+        unsigned int displayStyle:2,
+                     shadingMode:4,
+                     screenSpaceTess:1,
+                     fractionalSpacing:1,
+                     patchCull:1,
+                     singleCreasePatch:1,
+                     subdivisionPlans:1;
+                };
     int value;
 
     bool operator < (const Effect &e) const {
@@ -660,14 +693,14 @@ union Effect {
 };
 
 static Effect
-GetEffect()
-{
+GetEffect() {
     return Effect(g_displayStyle,
                   g_shadingMode,
                   g_screenSpaceTess,
                   g_fractionalSpacing,
                   g_patchCull,
-                  g_singleCreasePatch);
+                  g_singleCreasePatch,
+                  g_subdivisionPlans);
 }
 
 // ---------------------------------------------------------------------------
@@ -693,6 +726,78 @@ struct EffectDesc {
 
 // ---------------------------------------------------------------------------
 
+std::stringstream
+composeCommonDefines(EffectDesc const &effectDesc) {
+
+    using namespace OpenSubdiv;
+
+    // common defines
+    std::stringstream ss;
+
+    Far::PatchDescriptor::Type type = effectDesc.desc.GetType();
+
+    ss << (type == Far::PatchDescriptor::QUADS ?
+        "#define PRIM_QUAD\n" : "#define PRIM_TRI\n");
+
+    // OSD tessellation controls
+    if (effectDesc.effect.screenSpaceTess) {
+        ss << "#define OSD_ENABLE_SCREENSPACE_TESSELLATION\n";
+    }
+    if (effectDesc.effect.fractionalSpacing) {
+        ss << "#define OSD_FRACTIONAL_ODD_SPACING\n";
+    }
+    if (effectDesc.effect.patchCull) {
+        ss << "#define OSD_ENABLE_PATCH_CULL\n";
+    }
+    if (effectDesc.effect.singleCreasePatch) {
+        ss << "#define OSD_PATCH_ENABLE_SINGLE_CREASE\n";
+    }
+    // for legacy gregory
+    ss << "#define OSD_MAX_VALENCE " << effectDesc.maxValence << "\n";
+    ss << "#define OSD_NUM_ELEMENTS " << effectDesc.numElements << "\n";
+
+    // display styles
+    switch (effectDesc.effect.displayStyle) {
+        case kDisplayStyleWire:         ss << "#define GEOMETRY_OUT_WIRE\n"; break;
+        case kDisplayStyleWireOnShaded: ss << "#define GEOMETRY_OUT_LINE\n";  break;
+        case kDisplayStyleShaded:       ss << "#define GEOMETRY_OUT_FILL\n";  break;
+    }
+
+    // shading mode
+    switch(effectDesc.effect.shadingMode) {
+        case kShadingMaterial:                ss << "#define SHADING_MATERIAL\n"; break;
+        case kShadingVaryingColor:            ss << "#define SHADING_VARYING_COLOR\n"; break;
+        case kShadingInterleavedVaryingColor: ss << "#define SHADING_VARYING_COLOR\n"; break;
+        case kShadingFaceVaryingColor:
+            ss << "#define OSD_FVAR_WIDTH 2\n";
+            ss << "#define SHADING_FACEVARYING_COLOR\n";
+            if (not effectDesc.desc.IsAdaptive()) {
+                ss << "#define SHADING_FACEVARYING_UNIFORM_SUBDIVISION\n";
+            }
+            break;
+        case kShadingPatchType:               ss << "#define SHADING_PATCH_TYPE\n"; break;
+        case kShadingPatchCoord:              ss << "#define SHADING_PATCH_COORD\n"; break;
+        case kShadingNormal:                  ss << "#define SHADING_NORMAL\n"; break;
+    }
+
+    if (type == Far::PatchDescriptor::TRIANGLES) {
+        ss << "#define LOOP\n";
+    } else if (type == Far::PatchDescriptor::QUADS) {
+    } else {
+        ss << "#define SMOOTH_NORMALS\n";
+    }
+
+    // need for patch color-coding : we need these defines in the fragment shader
+    if (type == Far::PatchDescriptor::GREGORY) {
+        ss << "#define OSD_PATCH_GREGORY\n";
+    } else if (type == Far::PatchDescriptor::GREGORY_BOUNDARY) {
+        ss << "#define OSD_PATCH_GREGORY_BOUNDARY\n";
+    } else if (type == Far::PatchDescriptor::GREGORY_BASIS) {
+        ss << "#define OSD_PATCH_GREGORY_BASIS\n";
+    }
+    return ss;
+}
+
 class ShaderCache : public GLShaderCache<EffectDesc> {
 public:
     virtual GLDrawConfig *CreateDrawConfig(EffectDesc const &effectDesc) {
@@ -705,89 +810,10 @@ public:
 
         Far::PatchDescriptor::Type type = effectDesc.desc.GetType();
 
-        // common defines
-        std::stringstream ss;
+        std::stringstream ss = composeCommonDefines(effectDesc);
 
-        if (type == Far::PatchDescriptor::QUADS) {
-            ss << "#define PRIM_QUAD\n";
-        } else {
-            ss << "#define PRIM_TRI\n";
-        }
-
-        // OSD tessellation controls
-        if (effectDesc.effect.screenSpaceTess) {
-            ss << "#define OSD_ENABLE_SCREENSPACE_TESSELLATION\n";
-        }
-        if (effectDesc.effect.fractionalSpacing) {
-            ss << "#define OSD_FRACTIONAL_ODD_SPACING\n";
-        }
-        if (effectDesc.effect.patchCull) {
-            ss << "#define OSD_ENABLE_PATCH_CULL\n";
-        }
-        if (effectDesc.effect.singleCreasePatch) {
-            ss << "#define OSD_PATCH_ENABLE_SINGLE_CREASE\n";
-        }
-        // for legacy gregory
-        ss << "#define OSD_MAX_VALENCE " << effectDesc.maxValence << "\n";
-        ss << "#define OSD_NUM_ELEMENTS " << effectDesc.numElements << "\n";
-
-        // display styles
-        switch (effectDesc.effect.displayStyle) {
-        case kDisplayStyleWire:
-            ss << "#define GEOMETRY_OUT_WIRE\n";
-            break;
-        case kDisplayStyleWireOnShaded:
-            ss << "#define GEOMETRY_OUT_LINE\n";
-            break;
-        case kDisplayStyleShaded:
-            ss << "#define GEOMETRY_OUT_FILL\n";
-            break;
-        }
-
-        // shading mode
-        switch(effectDesc.effect.shadingMode) {
-        case kShadingMaterial:
-            ss << "#define SHADING_MATERIAL\n";
-            break;
-        case kShadingVaryingColor:
-            ss << "#define SHADING_VARYING_COLOR\n";
-            break;
-        case kShadingInterleavedVaryingColor:
-            ss << "#define SHADING_VARYING_COLOR\n";
-            break;
-        case kShadingFaceVaryingColor:
-            ss << "#define OSD_FVAR_WIDTH 2\n";
-            ss << "#define SHADING_FACEVARYING_COLOR\n";
-            if (not effectDesc.desc.IsAdaptive()) {
-                ss << "#define SHADING_FACEVARYING_UNIFORM_SUBDIVISION\n";
-            }
-            break;
-        case kShadingPatchType:
-            ss << "#define SHADING_PATCH_TYPE\n";
-            break;
-        case kShadingPatchCoord:
-            ss << "#define SHADING_PATCH_COORD\n";
-            break;
-        case kShadingNormal:
-            ss << "#define SHADING_NORMAL\n";
-            break;
-        }
-
-        if (type == Far::PatchDescriptor::TRIANGLES) {
-            ss << "#define LOOP\n";
-        } else if (type == Far::PatchDescriptor::QUADS) {
-        } else {
-            ss << "#define SMOOTH_NORMALS\n";
-        }
-
-        // need for patch color-coding : we need these defines in the fragment shader
-        if (type == Far::PatchDescriptor::GREGORY) {
-            ss << "#define OSD_PATCH_GREGORY\n";
-        } else if (type == Far::PatchDescriptor::GREGORY_BOUNDARY) {
-            ss << "#define OSD_PATCH_GREGORY_BOUNDARY\n";
-        } else if (type == Far::PatchDescriptor::GREGORY_BASIS) {
-            ss << "#define OSD_PATCH_GREGORY_BASIS\n";
-        }
+        char const * source = effectDesc.effect.subdivisionPlans ?
+            shaderPlansSource() : shaderSource();
 
         // include osd PatchCommon
         ss << Osd::GLSLPatchShaderSource::GetCommonShaderSource();
@@ -798,7 +824,7 @@ public:
         ss << common
             // enable local vertex shader
            << (effectDesc.desc.IsAdaptive() ? "" : "#define VERTEX_SHADER\n")
-           << shaderSource()
+           << source
            << Osd::GLSLPatchShaderSource::GetVertexShaderSource(type);
         config->CompileAndAttachShader(GL_VERTEX_SHADER, ss.str());
         ss.str("");
@@ -806,14 +832,14 @@ public:
         if (effectDesc.desc.IsAdaptive()) {
             // tess control shader
             ss << common
-                << shaderSource()
+               << source
                << Osd::GLSLPatchShaderSource::GetTessControlShaderSource(type);
             config->CompileAndAttachShader(GL_TESS_CONTROL_SHADER, ss.str());
             ss.str("");
 
             // tess eval shader
             ss << common
-                << shaderSource()
+               << source
                << Osd::GLSLPatchShaderSource::GetTessEvalShaderSource(type);
             config->CompileAndAttachShader(GL_TESS_EVALUATION_SHADER, ss.str());
             ss.str("");
@@ -822,14 +848,14 @@ public:
         // geometry shader
         ss << common
            << "#define GEOMETRY_SHADER\n"
-           << shaderSource();
+           << source;
         config->CompileAndAttachShader(GL_GEOMETRY_SHADER, ss.str());
         ss.str("");
 
         // fragment shader
         ss << common
            << "#define FRAGMENT_SHADER\n"
-           << shaderSource();
+           << source;
         config->CompileAndAttachShader(GL_FRAGMENT_SHADER, ss.str());
         ss.str("");
 
@@ -952,7 +978,8 @@ updateUniformBlocks() {
 static void
 bindTextures() {
     // bind patch textures
-    if (g_mesh->GetPatchTable()->GetPatchParamTextureBuffer()) {
+    if (g_mesh->GetPatchTable() &&
+        g_mesh->GetPatchTable()->GetPatchParamTextureBuffer()) {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_BUFFER,
             g_mesh->GetPatchTable()->GetPatchParamTextureBuffer());
@@ -960,8 +987,7 @@ bindTextures() {
 
     if (true) {
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_BUFFER,
-                      g_fvarData.textureBuffer);
+        glBindTexture(GL_TEXTURE_BUFFER,g_fvarData.textureBuffer);
     }
 
     // legacy gregory
@@ -1051,6 +1077,28 @@ bindProgram(Effect effect,
     return primType;
 }
 
+static void
+bindProgram(Effect effect) {
+
+    typedef OpenSubdiv::Far::PatchDescriptor Descriptor;
+
+    EffectDesc effectDesc(Descriptor(Descriptor::REGULAR), effect);
+    int numElements = (g_shadingMode == kShadingInterleavedVaryingColor ? 7 : 3);
+    effectDesc.numElements = numElements;
+    effectDesc.maxValence = 0;
+
+    // lookup shader cache (compile the shader if needed)
+    GLDrawConfig *config = g_shaderCache.GetDrawConfig(effectDesc);
+    if (!config) {
+        return;
+    }
+
+    GLuint program = config->GetProgram();
+
+    glUseProgram(program);
+}
+
+
 //------------------------------------------------------------------------------
 static void
 display() {
@@ -1103,9 +1151,6 @@ display() {
 
     glBindVertexArray(g_vao);
 
-    OpenSubdiv::Osd::PatchArrayVector const & patches =
-        g_mesh->GetPatchTable()->GetPatchArrays();
-
     // patch drawing
     int patchCount[13]; // [Type] (see far/patchTable.h)
     int numTotalPatches = 0;
@@ -1118,24 +1163,32 @@ display() {
     glBeginQuery(GL_TIME_ELAPSED, g_queries[1]);
 #endif
 
-    // core draw-calls
-    for (int i=0; i<(int)patches.size(); ++i) {
-        OpenSubdiv::Osd::PatchArray const & patch = patches[i];
+    if (g_mesh->GetPatchTable()) {
+        OpenSubdiv::Osd::PatchArrayVector const & patches =
+            g_mesh->GetPatchTable()->GetPatchArrays();
 
-        OpenSubdiv::Far::PatchDescriptor desc = patch.GetDescriptor();
-        OpenSubdiv::Far::PatchDescriptor::Type patchType = desc.GetType();
+        // core draw-calls
+        for (int i=0; i<(int)patches.size(); ++i) {
+            OpenSubdiv::Osd::PatchArray const & patch = patches[i];
 
-        patchCount[patchType] += patch.GetNumPatches();
-        numTotalPatches += patch.GetNumPatches();
+            OpenSubdiv::Far::PatchDescriptor desc = patch.GetDescriptor();
+            OpenSubdiv::Far::PatchDescriptor::Type patchType = desc.GetType();
 
-        GLenum primType = bindProgram(GetEffect(), patch);
+            patchCount[patchType] += patch.GetNumPatches();
+            numTotalPatches += patch.GetNumPatches();
+
+            GLenum primType = bindProgram(GetEffect(), patch);
 
 
-        glDrawElements(primType,
-                       patch.GetNumPatches() * desc.GetNumControlVertices(),
-                       GL_UNSIGNED_INT,
-                       (void *)(patch.GetIndexBase() * sizeof(unsigned int)));
-        ++numDrawCalls;
+            glDrawElements(primType,
+                           patch.GetNumPatches() * desc.GetNumControlVertices(),
+                           GL_UNSIGNED_INT,
+                           (void *)(patch.GetIndexBase() * sizeof(unsigned int)));
+            ++numDrawCalls;
+        }
+    } else if (g_mesh->GetPlanTable()) {
+
+        bindProgram(GetEffect());
     }
 
     s.Stop();
@@ -1400,6 +1453,10 @@ callbackCheckBox(bool checked, int button) {
             g_singleCreasePatch = checked;
             rebuildMesh();
             return;
+        case kHUD_CB_SUBDIVISION_PLANS:
+            g_subdivisionPlans = checked;
+            rebuildMesh();
+            return;
         default:
             break;
         }
@@ -1533,9 +1590,10 @@ initHUD() {
                           10, 190, callbackCheckBox, kHUD_CB_ADAPTIVE, '`');
         g_hud.AddCheckBox("Single Crease Patch (S)", g_singleCreasePatch!=0,
                           10, 210, callbackCheckBox, kHUD_CB_SINGLE_CREASE_PATCH, 's');
-
+        g_hud.AddCheckBox("Subdivision Plans (P)", g_subdivisionPlans!=0,
+                          10, 230, callbackCheckBox, kHUD_CB_SUBDIVISION_PLANS, 'p');
         int endcap_pulldown = g_hud.AddPullDown(
-            "End cap (E)", 10, 230, 200, callbackEndCap, 'e');
+            "End cap (E)", 10, 250, 200, callbackEndCap, 'e');
         g_hud.AddPullDownButton(endcap_pulldown,"None",
                                 kEndCapNone,
                                 g_endCap == kEndCapNone);

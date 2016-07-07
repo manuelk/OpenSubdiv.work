@@ -27,6 +27,7 @@
 set(SHADER_FILES
      shader.glsl
      shader_gl3.glsl
+     shader_plans.glsl
 )
 
 include_directories(

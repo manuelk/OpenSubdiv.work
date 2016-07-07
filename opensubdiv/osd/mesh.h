@@ -62,9 +62,10 @@ typedef std::bitset<NUM_MESH_BITS> MeshBitset;
 
 // ---------------------------------------------------------------------------
 
-template <class PATCH_TABLE>
+template <class PATCH_TABLE, class PLAN_TABLE>
 class MeshInterface {
 public:
+    typedef PLAN_TABLE PlanTable;
     typedef PATCH_TABLE PatchTable;
     typedef typename PatchTable::VertexBufferBinding VertexBufferBinding;
 
@@ -90,6 +91,10 @@ public:
     virtual PatchTable * GetPatchTable() const = 0;
 
     virtual Far::PatchTable const *GetFarPatchTable() const = 0;
+
+    virtual PlanTable * GetPlanTable() const = 0;
+
+    virtual Far::SubdivisionPlanTable const *GetFarPlanTable() const = 0;
 
     virtual VertexBufferBinding BindVertexBuffer() = 0;
 
@@ -315,13 +320,15 @@ template <typename VERTEX_BUFFER,
           typename STENCIL_TABLE,
           typename EVALUATOR,
           typename PATCH_TABLE,
+          typename PLAN_TABLE,
           typename DEVICE_CONTEXT = void>
-class Mesh : public MeshInterface<PATCH_TABLE> {
+class Mesh : public MeshInterface<PATCH_TABLE, PLAN_TABLE> {
 public:
     typedef VERTEX_BUFFER VertexBuffer;
     typedef EVALUATOR Evaluator;
     typedef STENCIL_TABLE StencilTable;
     typedef PATCH_TABLE PatchTable;
+    typedef PLAN_TABLE PlanTable;
     typedef DEVICE_CONTEXT DeviceContext;
     typedef EvaluatorCacheT<Evaluator> EvaluatorCache;
     typedef typename PatchTable::VertexBufferBinding VertexBufferBinding;
@@ -336,6 +343,7 @@ public:
 
             _refiner(refiner),
             _farPatchTable(NULL),
+            _farSubdivisionPlanTable(NULL),
             _numVertices(0),
             _maxValence(0),
             _vertexBuffer(NULL),
@@ -344,11 +352,12 @@ public:
             _varyingStencilTable(NULL),
             _evaluatorCache(evaluatorCache),
             _patchTable(NULL),
+            _planTable(NULL),
             _deviceContext(deviceContext) {
 
         assert(_refiner);
 
-        MeshInterface<PATCH_TABLE>::refineMesh(
+        MeshInterface<PATCH_TABLE, PLAN_TABLE>::refineMesh(
             *_refiner, level,
             bits.test(MeshAdaptive),
             bits.test(MeshUseSingleCreasePatch));
@@ -381,11 +390,13 @@ public:
     virtual ~Mesh() {
         delete _refiner;
         delete _farPatchTable;
+        delete _farSubdivisionPlanTable;
         delete _vertexBuffer;
         delete _varyingBuffer;
         delete _vertexStencilTable;
         delete _varyingStencilTable;
         delete _patchTable;
+        delete _planTable;
         // deviceContext and evaluatorCache are not owned by this class.
     }
 
@@ -458,6 +469,14 @@ public:
         return _farPatchTable;
     }
 
+    virtual PlanTable * GetPlanTable() const {
+        return _planTable;
+    }
+
+    virtual Far::SubdivisionPlanTable const * GetFarPlanTable() const {
+        return _farSubdivisionPlanTable;
+    }
+
     virtual int GetNumVertices() const { return _numVertices; }
 
     virtual int GetMaxValence() const { return _maxValence; }
@@ -522,7 +541,7 @@ private:
         _farSubdivisionPlanTable =
             Far::SubdivisionPlanTable::Create(*_refiner, options);
         _maxValence = 0;
-        _patchTable = PlanTable::Create(_farSubdivisionPlanTable, _deviceContext);
+        _planTable = PlanTable::Create(*_farSubdivisionPlanTable, _deviceContext);
     }
 
     Far::StencilTable const *
@@ -637,6 +656,7 @@ private:
     EvaluatorCache * _evaluatorCache;
 
     PatchTable * _patchTable;
+    PlanTable * _planTable;
 
     DeviceContext *_deviceContext;
 };

@@ -130,6 +130,7 @@ if( OPENGL_FOUND OR OPENGLES_FOUND )
             glslPatchBSpline.glsl
             glslPatchGregory.glsl
             glslPatchGregoryBasis.glsl
+            glslPatchPlan.glsl
         )
     endif()
 endif()
