@@ -63,6 +63,7 @@ GLFWmonitor* g_primary=0;
 #include <string>
 #include <fstream>
 #include <sstream>
+#include <thread>
 
 using namespace OpenSubdiv;
 
@@ -576,8 +577,55 @@ writeDiagraph(Far::CharacteristicMap const * charmap, int charIndex) {
 GLMesh * g_tessMesh = 0;
 
 static void
+tessChar(Far::Characteristic const * ch, int tessFactor, int charOffset,
+    std::vector<float> & positions, std::vector<float> & normals, std::vector<float> & colors,
+        float * pos, float * norm, float * col) {
+
+    // generate indices
+    for (int y=0; y<(tessFactor-1); ++y) {
+        for (int x=0; x<(tessFactor-1); ++x) {
+                                                                 //  A o----o B
+            int A = 3 * (charOffset + y * tessFactor + x),       //    |\   |
+                B = 3 * (charOffset + y * tessFactor + x+1),     //    | \  |
+                C = 3 * (charOffset + (y+1) * tessFactor + x),   //    |  \ |
+                D = 3 * (charOffset + (y+1) * tessFactor + x+1); //    |   \|
+                                                                 //  C o----o D
+            assert(A < positions.size() && B < positions.size() &&
+                C < positions.size() && D < positions.size());
+
+            // first triangle
+            memcpy(pos, &positions[A],  3 * sizeof(float)); pos+=3;
+            memcpy(norm, &normals[A], 3 * sizeof(float)); norm+=3;
+            memcpy(col, &colors[A],  3 * sizeof(float)); col+=3;
+
+            memcpy(pos, &positions[D],  3 * sizeof(float)); pos+=3;
+            memcpy(norm, &normals[D], 3 * sizeof(float)); norm+=3;
+            memcpy(col, &colors[D],  3 * sizeof(float)); col+=3;
+
+            memcpy(pos, &positions[C],  3 * sizeof(float)); pos+=3;
+            memcpy(norm, &normals[C], 3 * sizeof(float)); norm+=3;
+            memcpy(col, &colors[C],  3 * sizeof(float)); col+=3;
+
+            // second triangle
+            memcpy(pos, &positions[A],  3 * sizeof(float)); pos+=3;
+            memcpy(norm, &normals[A], 3 * sizeof(float)); norm+=3;
+            memcpy(col, &colors[A],  3 * sizeof(float)); col+=3;
+
+            memcpy(pos, &positions[B],  3 * sizeof(float)); pos+=3;
+            memcpy(norm, &normals[B], 3 * sizeof(float)); norm+=3;
+            memcpy(col, &colors[B],  3 * sizeof(float)); col+=3;
+
+            memcpy(pos, &positions[D],  3 * sizeof(float)); pos+=3;
+            memcpy(norm, &normals[D], 3 * sizeof(float)); norm+=3;
+            memcpy(col, &colors[D],  3 * sizeof(float)); col+=3;
+        }
+    }
+}
+
+//#define DO_MULTI_THREAD
+static void
 createTessMesh(Far::CharacteristicMap const * charmap, int tessFactor,
-    std::vector<float> positions, std::vector<float> normals, std::vector<float> colors,
+    std::vector<float> & positions, std::vector<float> & normals, std::vector<float> & colors,
         bool createPointsMesh=false) {
 
     delete g_tessMesh;
@@ -603,56 +651,51 @@ createTessMesh(Far::CharacteristicMap const * charmap, int tessFactor,
         float * pos = topo.positions,
               * norm = topo.normals,
               * col = topo.colors;
+#ifdef DO_MULTI_THREAD
+        static int const nthreads = 16;
+        std::thread threads[nthreads];
+        for (int charIndex=0, charOffset=0; charIndex<nchars; charIndex+=nthreads) {
 
-        for (int i=0, charOffset=0; i<nchars; ++i) {
+            for (int t=0; t<nthreads; ++t) {
+                if (charIndex+t>=nchars) {
+                    break;
+                }
+                Far::Characteristic const * ch = charmap->GetCharacteristic(charIndex+t);
+                if (ch->GetTreeSize()==0) {
+                    continue;
+                }
+                threads[t] = std::thread(tessChar, ch, tessFactor, charOffset,
+                    positions, normals, colors, pos, norm, col);
+                int ofs = (tessFactor-1) * (tessFactor-1) * 18;
+                pos  += ofs;
+                norm += ofs;
+                col  += ofs;
+                charOffset += tessFactor * tessFactor;
+            }
 
-            Far::Characteristic const * ch = charmap->GetCharacteristic(i);
+            for (int t=0; t<nthreads; ++t) {
+                if (threads[t].joinable()) {
+                    threads[t].join();
+                }
+            }
+        }
+#else // DO_MULTI_THREAD
+        for (int charIndex=0, charOffset=0; charIndex<nchars; ++charIndex) {
+
+            Far::Characteristic const * ch = charmap->GetCharacteristic(charIndex);
 
             if (ch->GetTreeSize()==0) {
                 continue;
             }
 
-            // generate indices
-            for (int y=0; y<(tessFactor-1); ++y) {
-                for (int x=0; x<(tessFactor-1); ++x) {
-                                                                         //  A o----o B
-                    int A = 3 * (charOffset + y * tessFactor + x),       //    |\   |
-                        B = 3 * (charOffset + y * tessFactor + x+1),     //    | \  |
-                        C = 3 * (charOffset + (y+1) * tessFactor + x),   //    |  \ |
-                        D = 3 * (charOffset + (y+1) * tessFactor + x+1); //    |   \|
-                                                                         //  C o----o D
-                    assert(A < positions.size() && B < positions.size() &&
-                        C < positions.size() && D < positions.size());
-
-                    // first triangle
-                    memcpy(pos, &positions[A],  3 * sizeof(float)); pos+=3;
-                    memcpy(norm, &normals[A], 3 * sizeof(float)); norm+=3;
-                    memcpy(col, &colors[A],  3 * sizeof(float)); col+=3;
-
-                    memcpy(pos, &positions[D],  3 * sizeof(float)); pos+=3;
-                    memcpy(norm, &normals[D], 3 * sizeof(float)); norm+=3;
-                    memcpy(col, &colors[D],  3 * sizeof(float)); col+=3;
-
-                    memcpy(pos, &positions[C],  3 * sizeof(float)); pos+=3;
-                    memcpy(norm, &normals[C], 3 * sizeof(float)); norm+=3;
-                    memcpy(col, &colors[C],  3 * sizeof(float)); col+=3;
-
-                    // second triangle
-                    memcpy(pos, &positions[A],  3 * sizeof(float)); pos+=3;
-                    memcpy(norm, &normals[A], 3 * sizeof(float)); norm+=3;
-                    memcpy(col, &colors[A],  3 * sizeof(float)); col+=3;
-
-                    memcpy(pos, &positions[B],  3 * sizeof(float)); pos+=3;
-                    memcpy(norm, &normals[B], 3 * sizeof(float)); norm+=3;
-                    memcpy(col, &colors[B],  3 * sizeof(float)); col+=3;
-
-                    memcpy(pos, &positions[D],  3 * sizeof(float)); pos+=3;
-                    memcpy(norm, &normals[D], 3 * sizeof(float)); norm+=3;
-                    memcpy(col, &colors[D],  3 * sizeof(float)); col+=3;
-                }
-            }
+            tessChar(ch, tessFactor, charOffset, positions, normals, colors, pos, norm, col);
+            int ofs = (tessFactor-1) * (tessFactor-1) * 18;
+            pos  += ofs;
+            norm += ofs;
+            col  += ofs;
             charOffset += tessFactor * tessFactor;
         }
+#endif // DO_MULTI_THREAD
         g_tessMesh = new GLMesh(topo);
 
         delete [] topo.positions;
