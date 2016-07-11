@@ -1077,7 +1077,9 @@ bindProgram(Effect effect,
     return primType;
 }
 
-static void
+//------------------------------------------------------------------------------
+
+static int
 bindProgram(Effect effect) {
 
     typedef OpenSubdiv::Far::PatchDescriptor Descriptor;
@@ -1090,12 +1092,39 @@ bindProgram(Effect effect) {
     // lookup shader cache (compile the shader if needed)
     GLDrawConfig *config = g_shaderCache.GetDrawConfig(effectDesc);
     if (!config) {
-        return;
+        return 0;
     }
 
-    GLuint program = config->GetProgram();
+    using namespace OpenSubdiv;
 
+    Osd::GLMeshInterface::PlanTable const * planTable = g_mesh->GetPlanTable();
+    if (!planTable) {
+        return 0;
+    }
+
+    int nplans = planTable->GetNumPlans();
+
+    // bind topology buffers
+    //glBindBuffer(GL_ARRAY_BUFFER, g_mesh->BindVertexBuffer());
+
+    GLuint plansBuffer = planTable->GetSubdivisionPlansBuffer(),
+           treesBuffer = planTable->GetCharacteristicTreesBuffer(),
+           patchControlVerts = g_mesh->BindVertexBuffer();
+    if (plansBuffer && treesBuffer) {
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, patchControlVerts);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, plansBuffer);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, treesBuffer);
+    } else {
+        return 0;
+    }
+
+    // bind program    
+    GLuint program = config->GetProgram();
     glUseProgram(program);
+
+GLUtils::CheckGLErrors("bindProgram\n");
+
+    return nplans;
 }
 
 
@@ -1149,8 +1178,6 @@ display() {
 
     glEnable(GL_DEPTH_TEST);
 
-    glBindVertexArray(g_vao);
-
     // patch drawing
     int patchCount[13]; // [Type] (see far/patchTable.h)
     int numTotalPatches = 0;
@@ -1164,6 +1191,9 @@ display() {
 #endif
 
     if (g_mesh->GetPatchTable()) {
+
+        glBindVertexArray(g_vao);
+
         OpenSubdiv::Osd::PatchArrayVector const & patches =
             g_mesh->GetPatchTable()->GetPatchArrays();
 
@@ -1188,7 +1218,18 @@ display() {
         }
     } else if (g_mesh->GetPlanTable()) {
 
-        bindProgram(GetEffect());
+        // bind empty VAO
+        static GLuint emptyVAO = 0;
+        if (!emptyVAO) {
+            glGenVertexArrays( 1, &emptyVAO );
+        }
+        glBindVertexArray(emptyVAO ); // Contents are ignored
+
+        int nplans = bindProgram(GetEffect());
+
+		glDrawArrays(GL_PATCHES, 0,  nplans);
+        
+        numDrawCalls=1;
     }
 
     s.Stop();

@@ -96,11 +96,12 @@ int OsdPrimitiveIdBase() {
 OSD_USER_VARYING_ATTRIBUTE_DECLARE
 
 out block {
-    int dummy;
+    vec3 position;
     OSD_USER_VARYING_DECLARE
 } outpt;
 
 void main() {
+    outpt.position = ModelViewMatrix * position;
     OSD_USER_VARYING_PER_VERTEX();
 }
 
@@ -110,8 +111,6 @@ void main() {
 // Patches.TessControlBSpline
 //----------------------------------------------------------
 #ifdef TESS_CONTROL_SHADER
-
-patch out vec4 tessOuterLo, tessOuterHi;
 
 in block {
     OSD_USER_VARYING_DECLARE
@@ -125,6 +124,13 @@ out block {
 layout(vertices = 16) out;
 
 void main() {
+
+    if (gl_InvocationID < 4) {
+        gl_TessLevelOuter[gl_InvocationID] = 4;
+    }
+    if (gl_InvocationID < 4) {
+        gl_TessLevelInner[gl_InvocationID] = 4;
+    }
 }
 
 #endif // TESS_CONTROL_SHADER

@@ -35,7 +35,7 @@ namespace Osd {
 
 
 D3D11SubdivisionPlanTable::D3D11SubdivisionPlanTable() :
-    _characteristicTreesBuffer(0), _subdivisionPlansBuffer(0) {
+    _numPlans(0), _characteristicTreesBuffer(0), _subdivisionPlansBuffer(0) {
 }
 
 D3D11SubdivisionPlanTable::~D3D11SubdivisionPlanTable() {
@@ -136,6 +136,7 @@ D3D11SubdivisionPlanTable::allocate(
         pd3d11DeviceContext->Unmap(buffer, 0);
 
         _subdivisionPlansBuffer = buffer;
+        _numPlans = (int)plans.size();
     }
 
     return true;

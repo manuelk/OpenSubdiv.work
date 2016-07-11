@@ -63,12 +63,18 @@ public:
         return _subdivisionPlansBuffer;
     }
 
+    int GetNumPlans() const {
+        return _numPlans;
+    }
+
 protected:
 
     D3D11SubdivisionPlanTable();
 
     bool allocate(
         Far::SubdivisionPlanTable const & plansTable, ID3D11DeviceContext *pd3d11DeviceContext);
+
+    int _numPlans;
 
     ID3D11Buffer * _characteristicTreesBuffer,
                  * _subdivisionPlansBuffer;

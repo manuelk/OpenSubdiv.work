@@ -55,11 +55,17 @@ public:
         return _subdivisionPlansBuffer;
     }
 
+    int GetNumPlans() const {
+        return _numPlans;
+    }
+
 protected:
 
     GLSubdivisionPlanTable();
 
     bool allocate(Far::SubdivisionPlanTable const & plansTable);
+
+    int _numPlans;
 
     GLuint _characteristicTreesBuffer,
            _subdivisionPlansBuffer;
