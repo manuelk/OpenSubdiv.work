@@ -24,7 +24,7 @@
 
 #include "../far/subdivisionPlanTable.h"
 #include "../far/characteristicMap.h"
-#include "../far/characteristicTreeBuilder.h"
+#include "../far/characteristicBuilder.h"
 #include "../far/topologyRefiner.h"
 
 namespace OpenSubdiv {
@@ -83,7 +83,7 @@ SubdivisionPlanTable::Create(TopologyRefiner const & refiner, Options options) {
     CharacteristicMap * charmap = new CharacteristicMap(options);
     charmap->_characteristics.reserve(nplans);
 
-    CharacteristicTreeBuilder treeBuilder(refiner, *charmap);
+    CharacteristicBuilder charBuilder(refiner, *charmap);
 
     SubdivisionPlanTable * table = new SubdivisionPlanTable(charmap);
     table->_plans.reserve(nplans);
@@ -98,7 +98,7 @@ SubdivisionPlanTable::Create(TopologyRefiner const & refiner, Options options) {
         if (verts.size()==regFaceSize) {
 
             Characteristic * ch = new Characteristic(charmap);
-            ch->writeCharacteristicTree(treeBuilder, 0, face);
+            ch->writeCharacteristicTree(charBuilder, 0, face);
             charmap->_characteristics.push_back(ch);
 
             SubdivisionPlan plan;
@@ -110,7 +110,7 @@ SubdivisionPlanTable::Create(TopologyRefiner const & refiner, Options options) {
             for (int i=0; i<children.size(); ++i) {
 
                 Characteristic * ch = new Characteristic(charmap);
-                ch->writeCharacteristicTree(treeBuilder, 1, children[i]);
+                ch->writeCharacteristicTree(charBuilder, 1, children[i]);
                 charmap->_characteristics.push_back(ch);
 
                 SubdivisionPlan plan;
@@ -120,8 +120,8 @@ SubdivisionPlanTable::Create(TopologyRefiner const & refiner, Options options) {
             }
         }
     }
-    charmap->_localPointStencils = treeBuilder.FinalizeStencils();
-    charmap->_localPointVaryingStencils = treeBuilder.FinalizeVaryingStencils();
+    charmap->_localPointStencils = charBuilder.FinalizeStencils();
+    charmap->_localPointVaryingStencils = charBuilder.FinalizeVaryingStencils();
     return table;
 }
 

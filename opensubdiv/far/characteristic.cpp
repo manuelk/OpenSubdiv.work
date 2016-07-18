@@ -23,7 +23,7 @@
 //
 
 #include "../far/characteristic.h"
-#include "../far/characteristicTreeBuilder.h"
+#include "../far/characteristicBuilder.h"
 #include "../far/characteristicMap.h"
 #include "../far/neighborhood.h"
 #include "../far/patchBasis.h"
@@ -249,7 +249,7 @@ Characteristic::~Characteristic() {
 }
 
 void
-Characteristic::writeCharacteristicTree(CharacteristicTreeBuilder & builder,
+Characteristic::writeCharacteristicTree(CharacteristicBuilder & builder,
     int levelIndex, int faceIndex) {
 
     _treeSize = builder.GetTreeSize(levelIndex, faceIndex);

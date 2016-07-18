@@ -36,7 +36,7 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 class CharacteristicMap;
-class CharacteristicTreeBuilder;
+class CharacteristicBuilder;
 class Neighborhood;
 
 ///
@@ -392,10 +392,10 @@ public:
 
 private:
 
-    friend class CharacteristicTreeBuilder;
+    friend class CharacteristicBuilder;
 
     void writeCharacteristicTree(
-        CharacteristicTreeBuilder & builder, int levelIndex, int faceIndex);
+        CharacteristicBuilder & builder, int levelIndex, int faceIndex);
 
     // The sub-patch "tree" is stored as a linear buffer of integers for
     // efficient look-up & traversal on a GPU. Use the Node class to traverse

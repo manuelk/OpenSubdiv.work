@@ -23,7 +23,7 @@
 //
 
 #include "../far/characteristicMap.h"
-#include "../far/characteristicTreeBuilder.h"
+#include "../far/characteristicBuilder.h"
 #include "../far/error.h"
 #include "../far/neighborhoodBuilder.h"
 #include "../far/patchFaceTag.h"
@@ -115,7 +115,7 @@ CharacteristicMap::findCharacteristic(Neighborhood const & n,
 Index
 CharacteristicMap::findOrAddCharacteristic(
     TopologyRefiner const & refiner, NeighborhoodBuilder & neighborhoodBuilder,
-        CharacteristicTreeBuilder & treeBuilder, int faceIndex) {
+        CharacteristicBuilder & charBuilder, int faceIndex) {
 
     TopologyLevel const & coarseLevel = refiner.GetLevel(0);
 
@@ -139,12 +139,12 @@ CharacteristicMap::findOrAddCharacteristic(
             ConstIndexArray childFaces = coarseLevel.GetFaceChildFaces(faceIndex);
             for (int i=0; i<valence; ++i) {
                 Characteristic * ch = new Characteristic(this);
-                ch->writeCharacteristicTree(treeBuilder, 1, childFaces[i]);
+                ch->writeCharacteristicTree(charBuilder, 1, childFaces[i]);
                 _characteristics.push_back(ch);
             }
         } else {
             Characteristic * ch = new Characteristic(this);
-            ch->writeCharacteristicTree(treeBuilder, 0, faceIndex);
+            ch->writeCharacteristicTree(charBuilder, 0, faceIndex);
             _characteristics.push_back(ch);
         }
 
@@ -174,7 +174,7 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
         return 0;
     }
 
-    CharacteristicTreeBuilder treeBuilder(refiner, *this);
+    CharacteristicBuilder charBuilder(refiner, *this);
 
     TopologyLevel const & coarseLevel = refiner.GetLevel(0);
 
@@ -210,7 +210,7 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
             }
 
             Index charIndex = findOrAddCharacteristic(
-                refiner, neighborhoodBuilder, treeBuilder, face);
+                refiner, neighborhoodBuilder, charBuilder, face);
 
             ConstIndexArray fverts = coarseLevel.GetFaceVertices(face);
             if (fverts.size()==regFaceSize) {
@@ -233,8 +233,8 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
         // XXXX manuelk TODO : append end-cap stencils to existing ones !
         assert(0);
     } else {
-        _localPointStencils = treeBuilder.FinalizeStencils();
-        _localPointVaryingStencils = treeBuilder.FinalizeVaryingStencils();
+        _localPointStencils = charBuilder.FinalizeStencils();
+        _localPointVaryingStencils = charBuilder.FinalizeVaryingStencils();
     }
 
     return plansTable;

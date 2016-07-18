@@ -27,7 +27,7 @@
 set(SOURCE_FILES
     characteristic.cpp
     characteristicMap.cpp
-    characteristicTreeBuilder.cpp
+    characteristicBuilder.cpp
     error.cpp
     endCapBSplineBasisPatchFactory.cpp
     endCapGregoryBasisPatchFactory.cpp
@@ -52,7 +52,7 @@ set(SOURCE_FILES
 )
 
 set(PRIVATE_HEADER_FILES
-    characteristicTreeBuilder.h
+    characteristicBuilder.h
     endCapBSplineBasisPatchFactory.h
     endCapGregoryBasisPatchFactory.h
     endCapLegacyGregoryPatchFactory.h

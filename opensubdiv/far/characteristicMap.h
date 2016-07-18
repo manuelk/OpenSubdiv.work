@@ -38,7 +38,7 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Far {
 
-class CharacteristicTreeBuilder;
+class CharacteristicBuilder;
 class Neighborhood;
 class NeighborhoodBuilder;
 class StencilTable;
@@ -165,7 +165,7 @@ private:
 
     Index findOrAddCharacteristic(
         TopologyRefiner const & refiner, NeighborhoodBuilder & neighborhoodBuilder,
-            CharacteristicTreeBuilder & treeBuilder, int faceIndex);
+            CharacteristicBuilder & charBuilder, int faceIndex);
 
     std::vector<int> _characteristicsHash;
 

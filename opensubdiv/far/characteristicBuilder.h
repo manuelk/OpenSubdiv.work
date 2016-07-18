@@ -41,14 +41,14 @@ class TopologyRefiner;
 class CharacteristicMap;
 
 // A specialized builder for subdivision plan hierarchies
-class CharacteristicTreeBuilder {
+class CharacteristicBuilder {
 
 public:
 
-    CharacteristicTreeBuilder(
+    CharacteristicBuilder(
         TopologyRefiner const & refiner, CharacteristicMap const & charmap);
 
-    ~CharacteristicTreeBuilder();
+    ~CharacteristicBuilder();
 
     // Returns the size of the tree for the given face
     int GetTreeSize(int levelIndex, int faceIndex) const;

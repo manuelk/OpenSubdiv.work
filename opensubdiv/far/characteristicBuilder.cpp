@@ -22,7 +22,7 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
-#include "../far/characteristicTreeBuilder.h"
+#include "../far/CharacteristicBuilder.h"
 #include "../far/characteristicMap.h"
 #include "../far/endCapBSplineBasisPatchFactory.h"
 #include "../far/endCapGregoryBasisPatchFactory.h"
@@ -217,7 +217,7 @@ copyColIndices(int evIndex, Index const * src, Index * dst) {
 typedef Characteristic::NodeDescriptor NodeDescriptor;
 
 bool
-CharacteristicTreeBuilder::computeSubPatchDomain(
+CharacteristicBuilder::computeSubPatchDomain(
     int levelIndex, Index faceIndex, short * s, short * t) const {
 
     // Move up the hierarchy accumulating u,v indices to the coarse level:
@@ -257,7 +257,7 @@ CharacteristicTreeBuilder::computeSubPatchDomain(
 }
 
 int
-CharacteristicTreeBuilder::writeRegularNode(
+CharacteristicBuilder::writeRegularNode(
     int levelIndex, int faceIndex, uint8_t * data) const {
 
     PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
@@ -331,7 +331,7 @@ CharacteristicTreeBuilder::writeRegularNode(
 }
 
 int
-CharacteristicTreeBuilder::writeEndCapNode(
+CharacteristicBuilder::writeEndCapNode(
     int levelIndex, int faceIndex, uint8_t * data) const {
 
     assert(_endcapBuilder);
@@ -392,7 +392,7 @@ CharacteristicTreeBuilder::writeEndCapNode(
 }
 
 int
-CharacteristicTreeBuilder::writeRecursiveNode(
+CharacteristicBuilder::writeRecursiveNode(
     int levelIndex, int faceIndex, int offset, uint8_t * data) const {
 
     int dataSize = sizeof(NodeDescriptor) + 4 * sizeof(int);
@@ -422,7 +422,7 @@ CharacteristicTreeBuilder::writeRecursiveNode(
 }
 
 bool
-CharacteristicTreeBuilder::nodeIsTerminal(
+CharacteristicBuilder::nodeIsTerminal(
     int levelIndex, int faceIndex, int * evIndex) const {
 
     if (_charmap.GetOptions().useTerminalNode) {
@@ -481,7 +481,7 @@ CharacteristicTreeBuilder::nodeIsTerminal(
 }
 
 int
-CharacteristicTreeBuilder::writeTerminalNode(
+CharacteristicBuilder::writeTerminalNode(
     int levelIndex, int faceIndex, int evIndex, int offset, uint8_t * data) const {
 
     int dataSize = sizeof(NodeDescriptor) + 1*sizeof(int) + 25*sizeof(int);
@@ -568,7 +568,7 @@ CharacteristicTreeBuilder::writeTerminalNode(
 }
 
 int
-CharacteristicTreeBuilder::writeNode(
+CharacteristicBuilder::writeNode(
     int levelIndex, int faceIndex, int offset, uint8_t * data) const {
 
     PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
@@ -593,14 +593,14 @@ CharacteristicTreeBuilder::writeNode(
 }
 
 int
-CharacteristicTreeBuilder::GetTreeSize(
+CharacteristicBuilder::GetTreeSize(
     int levelIndex, int faceIndex) const {
 
     return writeNode(levelIndex, faceIndex, 0, nullptr) / sizeof(int);
 }
 
 void
-CharacteristicTreeBuilder::WriteTree(
+CharacteristicBuilder::WriteTree(
     int levelIndex, int faceIndex, int * treePtr) const {
 
     assert(treePtr);
@@ -608,19 +608,19 @@ CharacteristicTreeBuilder::WriteTree(
 }
 
 StencilTable const *
-CharacteristicTreeBuilder::FinalizeStencils() {
+CharacteristicBuilder::FinalizeStencils() {
     assert(_endcapBuilder);
     return _endcapBuilder->FinalizeStencils();
 }
 
 StencilTable const *
-CharacteristicTreeBuilder::FinalizeVaryingStencils() {
+CharacteristicBuilder::FinalizeVaryingStencils() {
     assert(_endcapBuilder);
     return _endcapBuilder->FinalizeVaryingStencils();
 }
 
 // constructor
-CharacteristicTreeBuilder::CharacteristicTreeBuilder(
+CharacteristicBuilder::CharacteristicBuilder(
     TopologyRefiner const & refiner, CharacteristicMap const & charmap) :
         _refiner(refiner), _charmap(charmap) {
 
@@ -658,7 +658,7 @@ CharacteristicTreeBuilder::CharacteristicTreeBuilder(
     }
 }
 
-CharacteristicTreeBuilder::~CharacteristicTreeBuilder() {
+CharacteristicBuilder::~CharacteristicBuilder() {
     delete _endcapBuilder;
 }
 

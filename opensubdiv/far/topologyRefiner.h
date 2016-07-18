@@ -187,7 +187,7 @@ protected:
     friend class PtexIndices;
     friend class PrimvarRefiner;
     friend struct PatchFaceTag;
-    friend class CharacteristicTreeBuilder;
+    friend class CharacteristicBuilder;
 
     Vtr::internal::Level & getLevel(int l) { return *_levels[l]; }
     Vtr::internal::Level const & getLevel(int l) const { return *_levels[l]; }
