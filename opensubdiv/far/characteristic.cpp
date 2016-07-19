@@ -248,23 +248,6 @@ Characteristic::~Characteristic() {
     }
 }
 
-void
-Characteristic::writeCharacteristicTree(CharacteristicBuilder & builder,
-    int levelIndex, int faceIndex) {
-
-    _treeSize = builder.GetTreeSize(levelIndex, faceIndex);
-    _tree = new int[_treeSize];
-#if 0
-    // debug : paint memory
-    for (int i=0; i<treeSize; ++i) {
-        _tree[i]=-1;
-    }
-#endif
-    builder.WriteTree(levelIndex, faceIndex, _tree);
-}
-
-
-
 Characteristic::Node
 Characteristic::GetTreeNode(float s, float t, unsigned char * quadrant) const {
 

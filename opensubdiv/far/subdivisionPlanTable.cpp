@@ -98,8 +98,7 @@ SubdivisionPlanTable::Create(TopologyRefiner const & refiner, Options options) {
         ConstIndexArray verts = coarseLevel.GetFaceVertices(face);
         if (verts.size()==regFaceSize) {
 
-            Characteristic * ch = new Characteristic(charmap);
-            ch->writeCharacteristicTree(charBuilder, 0, face);
+            Characteristic const * ch = charBuilder.Create(0, face);
             charmap->_characteristics.push_back(ch);
 
             SubdivisionPlan plan;
@@ -111,8 +110,7 @@ SubdivisionPlanTable::Create(TopologyRefiner const & refiner, Options options) {
             ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
             for (int i=0; i<children.size(); ++i) {
 
-                Characteristic * ch = new Characteristic(charmap);
-                ch->writeCharacteristicTree(charBuilder, 1, children[i]);
+                Characteristic const * ch = charBuilder.Create(1, children[i]);
                 charmap->_characteristics.push_back(ch);
 
                 SubdivisionPlan plan;

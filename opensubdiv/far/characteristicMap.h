@@ -169,7 +169,7 @@ private:
 
     std::vector<int> _characteristicsHash;
 
-    std::vector<Characteristic *> _characteristics;
+    std::vector<Characteristic const *> _characteristics;
 
 private:
 

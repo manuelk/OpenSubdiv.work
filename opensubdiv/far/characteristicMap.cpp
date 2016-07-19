@@ -40,7 +40,7 @@ CharacteristicMap::addCharacteristicToHash(
     TopologyLevel const & level, NeighborhoodBuilder & neighborhoodBuilder,
         int faceIndex, int charIndex, int valence) {
 
-    Characteristic * ch = _characteristics[charIndex];
+    Characteristic * ch = (Characteristic *)_characteristics[charIndex];
 
     ch->reserveNeighborhoods(valence);
 
@@ -138,14 +138,10 @@ CharacteristicMap::findOrAddCharacteristic(
         if (valence!=regValence) {
             ConstIndexArray childFaces = coarseLevel.GetFaceChildFaces(faceIndex);
             for (int i=0; i<valence; ++i) {
-                Characteristic * ch = new Characteristic(this);
-                ch->writeCharacteristicTree(charBuilder, 1, childFaces[i]);
-                _characteristics.push_back(ch);
+                _characteristics.push_back(charBuilder.Create(1, childFaces[i]));
             }
         } else {
-            Characteristic * ch = new Characteristic(this);
-            ch->writeCharacteristicTree(charBuilder, 0, faceIndex);
-            _characteristics.push_back(ch);
+            _characteristics.push_back(charBuilder.Create(0, faceIndex));
         }
 
         addCharacteristicToHash(

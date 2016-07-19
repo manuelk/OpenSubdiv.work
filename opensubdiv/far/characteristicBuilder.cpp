@@ -626,19 +626,39 @@ CharacteristicBuilder::writeNode(
 }
 
 int
-CharacteristicBuilder::GetTreeSize(
+CharacteristicBuilder::getTreeSize(
     int levelIndex, int faceIndex) const {
 
     return getNodeSize(levelIndex, faceIndex) / sizeof(int);
 }
 
 void
-CharacteristicBuilder::WriteTree(
+CharacteristicBuilder::writeTree(
     int levelIndex, int faceIndex, int * treePtr) const {
 
     assert(treePtr);
     writeNode(levelIndex, faceIndex, 0, (uint8_t *)treePtr);
 }
+
+Characteristic const *
+CharacteristicBuilder::Create(int levelIndex, int faceIndex) {
+
+    Characteristic * ch = new Characteristic(&_charmap);
+
+    // populate tree
+    ch->_treeSize = getTreeSize(levelIndex, faceIndex);
+    ch->_tree = new int[ch->_treeSize];
+#if 0
+    // debug : paint memory
+    for (int i=0; i<treeSize; ++i) {
+        ch->_tree[i]=-1;
+    }
+#endif
+    writeTree(levelIndex, faceIndex, ch->_tree);
+    
+    return ch; 
+}
+
 
 StencilTable const *
 CharacteristicBuilder::FinalizeStencils() {

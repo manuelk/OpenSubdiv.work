@@ -91,15 +91,7 @@ public:
     bool IsEquivalent(Neighborhood const & other) const;
 
     /// \brief Remaps a vertex index to the local neighborhood
-    Index Remap(Index vertIndex) const {
-        Index * remaps = getVertRemaps();
-        for (int i=0; i<_vertRemapsCount; ++i) {
-            if (remaps[i]==vertIndex) {
-                return i;
-            }
-        }
-        return INDEX_INVALID;
-    }
+    Index Remap(Index vertIndex) const;
 
 public:
 
@@ -135,7 +127,7 @@ private:
 
     int * getFaceValences() const { return (int *)(this+1); }
 
-    int * getFaceVerts() const { return getFaceValences() + _faceValencesCount; }
+    int * getFaceVerts() const { return getFaceValences()+_faceValencesCount; }
 
     Tag * getTags() const { return (Tag *)(getFaceVerts()+_faceVertsCount); }
 
@@ -167,6 +159,17 @@ Neighborhood::IsEquivalent(Neighborhood const & other) const {
     return memcmp(this, &other, asize)==0;
 }
 
+inline Index
+Neighborhood::Remap(Index vertIndex) const {
+    Index * remaps = getVertRemaps();
+    for (int i=0; i<_vertRemapsCount; ++i) {
+        if (remaps[i]==vertIndex) {
+            return i;
+        }
+    }
+    return INDEX_INVALID;
+}
+
 inline int
 Neighborhood::getSize(int valences, int faceVerts, int tags, int vertRemaps) {
     int size = sizeof(Neighborhood);
@@ -189,7 +192,6 @@ Neighborhood::hashBytes(void const * bytes, size_t size) {
     }
     return hvalue;
 }
-
 
 } // end namespace Far
 

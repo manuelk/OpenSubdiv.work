@@ -40,7 +40,7 @@ class CharacteristicBuilder;
 class Neighborhood;
 
 ///
-///  \brief Stores a characteristic plan
+///  \brief Stores a subdivision "characteristic"
 ///
 /// * Topology trees :
 ///   A tree representation of the hierarchies of feature adaptive sub-patches.
@@ -100,41 +100,36 @@ class Characteristic {
 
 public:
 
+    class Node;
+
     /// \brief Destructor
     ~Characteristic();
 
     /// \brief Returns the map this characteristic belongs to
     CharacteristicMap const * GetCharacteristicMap() const { return _characteristicMap; }
 
-public:
-
-
-    ///
-    /// Neighborhoods
-    ///
-
     //@{
-    ///  @name Neighborhood access methods
+    ///  @name Evaluation methods
     ///
 
-    /// \brief Returns the number of (rotated) neighborhoods
-    int GetNumNeighborhoods() const {
-        return (int)_neighborhoods.size();
-    }
+    /// \brief Evaluate basis functions for position and first derivatives at a
+    /// given (s,t) parametric location of a patch.
+    ///
+    /// @param s       Patch coordinate (in coarse face normalized space)
+    ///
+    /// @param t       Patch coordinate (in coarse face normalized space)
+    ///
+    /// @param wP      Weights (evaluated basis functions) for the position
+    ///
+    /// @param wDs     Weights (evaluated basis functions) for derivative wrt s
+    ///
+    /// @param wDt     Weights (evaluated basis functions) for derivative wrt t
+    ///
+    /// @return        The leaf node pointing to the sub-patch evaluated
+    ///
+    Node EvaluateBasis(float s, float t,
+        float wP[], float wDs[], float wDt[], unsigned char * quadrant=0) const;
 
-    /// \brief Returns the neighborhood at 'index'
-    Neighborhood const * GetNeighborhood(int index) const {
-        return _neighborhoods[index];
-    }
-
-    /// \brief Returns the starting edge (rotation) at 'index'
-    int GetStartingEdge(int index) const {
-        return _startEdges[index];
-    }
-
-    /// \brief Returns the index of a neighborhood equivalent to
-    /// 'n' (or INDEX_INVALID)
-    int FindEquivalentNeighborhood(Neighborhood const & n) const;
     //@}
 
 public:
@@ -365,9 +360,6 @@ private:
 
     friend class CharacteristicBuilder;
 
-    void writeCharacteristicTree(
-        CharacteristicBuilder & builder, int levelIndex, int faceIndex);
-
     // The sub-patch "tree" is stored as a linear buffer of integers for
     // efficient look-up & traversal on a GPU. Use the Node class to traverse
     // the tree and access each node's data.
@@ -409,35 +401,35 @@ private:
 
 public:
 
+    ///
+    /// Neighborhoods
+    ///
+
     //@{
-    ///  @name Evaluation methods
+    ///  @name Neighborhood access methods
     ///
 
-    /// \brief Evaluate basis functions for position and first derivatives at a
-    /// given (s,t) parametric location of a patch.
-    ///
-    /// @param s       Patch coordinate (in coarse face normalized space)
-    ///
-    /// @param t       Patch coordinate (in coarse face normalized space)
-    ///
-    /// @param wP      Weights (evaluated basis functions) for the position
-    ///
-    /// @param wDs     Weights (evaluated basis functions) for derivative wrt s
-    ///
-    /// @param wDt     Weights (evaluated basis functions) for derivative wrt t
-    ///
-    /// @return        The leaf node pointing to the sub-patch evaluated
-    ///
-    Node EvaluateBasis(float s, float t,
-        float wP[], float wDs[], float wDt[], unsigned char * quadrant=0) const;
+    /// \brief Returns the number of (rotated) neighborhoods
+    int GetNumNeighborhoods() const {
+        return (int)_neighborhoods.size();
+    }
 
+    /// \brief Returns the neighborhood at 'index'
+    Neighborhood const * GetNeighborhood(int index) const {
+        return _neighborhoods[index];
+    }
+
+    /// \brief Returns the starting edge (rotation) at 'index'
+    int GetStartingEdge(int index) const {
+        return _startEdges[index];
+    }
+
+    /// \brief Returns the index of a neighborhood equivalent to
+    /// 'n' (or INDEX_INVALID)
+    int FindEquivalentNeighborhood(Neighborhood const & n) const;
     //@}
 
 private:
-
-    //
-    // Neighborhoods
-    //
 
     void reserveNeighborhoods(int count);
 
@@ -449,6 +441,8 @@ private:
     std::vector<int> _startEdges;
 
 private:
+
+    friend class CharacteristicBuilder;
     friend class CharacteristicMap;
     friend class SubdivisionPlanTable;
 

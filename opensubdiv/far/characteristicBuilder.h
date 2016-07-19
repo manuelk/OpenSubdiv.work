@@ -38,6 +38,7 @@ struct EndCapBuilder;
 struct PatchFaceTag;
 class StencilTable;
 class TopologyRefiner;
+class Characteristic;
 class CharacteristicMap;
 
 // A specialized builder for subdivision plan hierarchies
@@ -51,11 +52,8 @@ public:
 
     ~CharacteristicBuilder();
 
-    // Returns the size of the tree for the given face
-    int GetTreeSize(int levelIndex, int faceIndex) const;
-
-    // Writes the tree into treePtr
-    void WriteTree(int levelIndex, int faceIndex, int * treePtr) const;
+    // Creats a characteristic for the given level & face
+    Characteristic const * Create(int levelIndex, int faceIndex);
 
     // Perform final operations on stencils and returns the tables
     // Note : should not be called until all trees have been written.
@@ -75,6 +73,8 @@ private:
 
     int getNodeSize(int levelIndex, int faceIndex) const;
 
+    int getTreeSize(int levelIndex, int faceIndex) const;
+
 
     bool nodeIsTerminal(int levelIndex, int faceIndex, int * evIndex=0) const;
 
@@ -87,6 +87,8 @@ private:
     int writeEndCapNode(int leveIndex, int faceIndex, uint8_t * data) const;
 
     int writeNode(int leveIndex, int faceIndex, int offset, uint8_t * data) const;
+
+    void writeTree(int levelIndex, int faceIndex, int * treePtr) const;
 
     bool computeSubPatchDomain(int levelIndex, Index faceIndex, short * s, short * t) const;
 
