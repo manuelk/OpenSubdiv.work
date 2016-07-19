@@ -112,9 +112,10 @@ D3D11SubdivisionPlanTable::allocate(
         if (!data)
             return false;
 
-        for (int i=0; i<charmap->GetNumCharacteristics(); ++i) {
+        for (int i=0, offset=0; i<charmap->GetNumCharacteristics(); ++i) {
             Far::Characteristic const * ch = charmap->GetCharacteristic(i);
-            memcpy(data + ch->GetTreeOffset(), ch->GetTreeData(),ch->GetTreeSize() * sizeof(int));
+            memcpy(data + offset, ch->GetTreeData(), ch->GetTreeSize() * sizeof(int));
+            offset += ch->GetTreeSize();
         }
         pd3d11DeviceContext->Unmap(buffer, 0);
 

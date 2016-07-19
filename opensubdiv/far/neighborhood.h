@@ -90,6 +90,17 @@ public:
     /// \brief Returns true if both neighborhoods are topologically equivalent
     bool IsEquivalent(Neighborhood const & other) const;
 
+    /// \brief Remaps a vertex index to the local neighborhood
+    Index Remap(Index vertIndex) const {
+        Index * remaps = getVertRemaps();
+        for (int i=0; i<_vertRemapsCount; ++i) {
+            if (remaps[i]==vertIndex) {
+                return i;
+            }
+        }
+        return INDEX_INVALID;
+    }
+
 public:
 
     //

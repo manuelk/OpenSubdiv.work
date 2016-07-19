@@ -45,6 +45,7 @@ class CharacteristicBuilder {
 
 public:
 
+    // Constructor
     CharacteristicBuilder(
         TopologyRefiner const & refiner, CharacteristicMap const & charmap);
 
@@ -53,19 +54,27 @@ public:
     // Returns the size of the tree for the given face
     int GetTreeSize(int levelIndex, int faceIndex) const;
 
-    // Returns the tree offset (accumulates the sizes of trees as they are created)
-    int GetTreeOffset() const { return _treeOffset; }
-
     // Writes the tree into treePtr
     void WriteTree(int levelIndex, int faceIndex, int * treePtr) const;
 
     // Perform final operations on stencils and returns the tables
-    // Note : should not be called until all trees have been written.    
+    // Note : should not be called until all trees have been written.
     StencilTable const * FinalizeStencils();
 
     StencilTable const * FinalizeVaryingStencils();
 
 private:
+
+    int getTerminalNodeSize(int levelIndex) const;
+
+    int getRecursiveNodeSize(int levelIndex, int faceIndex) const;
+
+    int getEndCapNodeSize() const;
+
+    int getRegularNodeSize(int levelIndex, int faceIndex) const;
+
+    int getNodeSize(int levelIndex, int faceIndex) const;
+
 
     bool nodeIsTerminal(int levelIndex, int faceIndex, int * evIndex=0) const;
 
@@ -91,6 +100,8 @@ private:
 
     CharacteristicMap const & _charmap;
 
+    StencilTable const * _stencils;
+
     std::vector<PatchFaceTag> _patchTags;
 
     //
@@ -105,8 +116,6 @@ private:
 
     std::vector<PatchFaceTag const *> _levelPatchTags;
     std::vector<Index> _levelVertOffsets;
-    
-    int _treeOffset;
 };
 
 

@@ -261,8 +261,6 @@ Characteristic::writeCharacteristicTree(CharacteristicBuilder & builder,
     }
 #endif
     builder.WriteTree(levelIndex, faceIndex, _tree);
-    
-    _treeOffset = builder.GetTreeOffset();
 }
 
 

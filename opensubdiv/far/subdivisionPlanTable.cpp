@@ -88,6 +88,7 @@ SubdivisionPlanTable::Create(TopologyRefiner const & refiner, Options options) {
     SubdivisionPlanTable * table = new SubdivisionPlanTable(charmap);
     table->_plans.reserve(nplans);
 
+    int rootNodeOffset = 0;
     for (int face = 0; face < nfaces; ++face) {
 
         if (coarseLevel.IsFaceHole(face)) {
@@ -103,8 +104,9 @@ SubdivisionPlanTable::Create(TopologyRefiner const & refiner, Options options) {
 
             SubdivisionPlan plan;
             plan.charIndex = (int)charmap->_characteristics.size()-1;
-            plan.rootNodeOffset = ch->GetTreeOffset();
+            plan.rootNodeOffset = rootNodeOffset;
             table->_plans.push_back(plan);
+            rootNodeOffset += ch->GetTreeSize();
         } else {
             ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
             for (int i=0; i<children.size(); ++i) {
@@ -115,8 +117,9 @@ SubdivisionPlanTable::Create(TopologyRefiner const & refiner, Options options) {
 
                 SubdivisionPlan plan;
                 plan.charIndex = (int)charmap->_characteristics.size()-1;
-                plan.rootNodeOffset = ch->GetTreeOffset();
+                plan.rootNodeOffset = rootNodeOffset;
                 table->_plans.push_back(plan);
+                rootNodeOffset += ch->GetTreeSize();
             }
         }
     }

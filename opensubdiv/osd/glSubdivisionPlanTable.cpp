@@ -67,10 +67,11 @@ GLSubdivisionPlanTable::allocate(Far::SubdivisionPlanTable const & plansTable) {
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, _characteristicTreesBuffer );
     int size = charmap->GetCharacteristicTreeSizeTotal();
     glBufferData(GL_SHADER_STORAGE_BUFFER, size, NULL, GL_STATIC_DRAW );
-    for (int i=0; i<charmap->GetNumCharacteristics(); ++i) {
+    for (int i=0, offset=0; i<charmap->GetNumCharacteristics(); ++i) {
         Far::Characteristic const * ch = charmap->GetCharacteristic(i);
         glBufferSubData(GL_SHADER_STORAGE_BUFFER,
-            ch->GetTreeOffset(), ch->GetTreeSize(), ch->GetTreeData());
+            offset, ch->GetTreeSize(), ch->GetTreeData());
+        offset += ch->GetTreeSize();
     }
 
     // subdivision plans

@@ -80,12 +80,12 @@ class Neighborhood;
 ///     sequential winding order used elsewhere in OpenSubdiv. Instead, the
 ///     domains of sub-patches are stored with a "^ bitwise" winding order.
 ///     Winding patterns:
-///       Sequential    ^ Bitwise          
-///       +---+---+     +---+---+          
-///       | 3 | 2 |     | 2 | 3 |          
-///       +---+---+     +---+---+          
-///       | 0 | 1 |     | 0 | 1 |          
-///       +---+---+     +---+---+          
+///       Sequential    ^ Bitwise
+///       +---+---+     +---+---+
+///       | 3 | 2 |     | 2 | 3 |
+///       +---+---+     +---+---+
+///       | 0 | 1 |     | 0 | 1 |
+///       +---+---+     +---+---+
 ///     This winding pattern allows for faster traversal by using simple
 ///     bitwise operators.
 ///  XXXX manuelk GPU-side gains may not be worth the complexity...
@@ -121,7 +121,7 @@ public:
     int GetNumNeighborhoods() const {
         return (int)_neighborhoods.size();
     }
-    
+
     /// \brief Returns the neighborhood at 'index'
     Neighborhood const * GetNeighborhood(int index) const {
         return _neighborhoods[index];
@@ -333,9 +333,6 @@ public:
     /// \brief Returns the size of the patches tree (number of ints)
     int GetTreeSize() const { return _treeSize; }
 
-    /// \brief Returns the offset of the tree (integer stride)
-    int GetTreeOffset() const { return _treeOffset; }
-
     /// \brief Returns the tree data
     int const * GetTreeData() const { return _tree; }
 
@@ -363,6 +360,52 @@ public:
     void WriteTreeDiagraph(FILE * fout,
         int charIndex=0, bool showIndices=true, bool isSubgraph=false) const;
     //@}
+
+private:
+
+    friend class CharacteristicBuilder;
+
+    void writeCharacteristicTree(
+        CharacteristicBuilder & builder, int levelIndex, int faceIndex);
+
+    // The sub-patch "tree" is stored as a linear buffer of integers for
+    // efficient look-up & traversal on a GPU. Use the Node class to traverse
+    // the tree and access each node's data.
+    int * _tree,
+          _treeSize;
+
+public:
+
+    //
+    // Supports
+    //
+
+    struct Support {
+    
+        Support(int _size, LocalIndex const * _indices, float const * _weights) :
+            size(_size), indices(_indices), weights(_weights) { }
+    
+        short size;
+        LocalIndex const * indices;
+        float const      * weights;
+    };
+
+    // Returns the total number of supports for this characteristic
+    int GetNumSupportsTotal() const { return (int)_sizes.size(); }
+    
+    // Returns the number of supports needing to be evaluated at a given level
+    int GetNumSupports(int levelIndex) const { return _supportLevelCounts[levelIndex]; }
+
+    // Returns the support data for the support of given index
+    Support GetSupport(Index supportIndex) const;
+
+private:
+
+    short                   _supportLevelCounts[10];
+    std::vector<short>      _sizes;
+    std::vector<LocalIndex> _indices;
+    std::vector<Index>      _offsets;
+    std::vector<float>      _weights;
 
 public:
 
@@ -392,20 +435,6 @@ public:
 
 private:
 
-    friend class CharacteristicBuilder;
-
-    void writeCharacteristicTree(
-        CharacteristicBuilder & builder, int levelIndex, int faceIndex);
-
-    // The sub-patch "tree" is stored as a linear buffer of integers for
-    // efficient look-up & traversal on a GPU. Use the Node class to traverse
-    // the tree and access each node's data.
-    int * _tree,
-          _treeOffset,
-          _treeSize;
-
-private:
-
     //
     // Neighborhoods
     //
@@ -424,7 +453,7 @@ private:
     friend class SubdivisionPlanTable;
 
     Characteristic(CharacteristicMap const * charmap) :
-        _tree(0), _treeOffset(0), _treeSize(0), _characteristicMap(charmap) { }
+        _tree(0), _treeSize(0), _characteristicMap(charmap) { }
 
     CharacteristicMap const * _characteristicMap;
 };
@@ -472,6 +501,12 @@ Characteristic::NodeDescriptor::Normalize( float & u, float & v ) const {
     v = (v - pv) / frac;
 }
 
+inline Characteristic::Support
+Characteristic::GetSupport(Index supportIndex) const {
+    assert(!_offsets.empty() && supportIndex<_offsets.size());
+    Index offset = _offsets[supportIndex];
+    return Support(_sizes[offset], &_indices[offset], &_weights[offset]);
+}
 
 } // end namespace Far
 
