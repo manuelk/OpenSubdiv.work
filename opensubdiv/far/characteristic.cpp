@@ -242,16 +242,15 @@ Characteristic::Node::getNodeSize() const {
 //
 
 Characteristic::~Characteristic() {
-    delete _tree;
     for (int i=0; i<(int)_neighborhoods.size(); ++i) {
-        delete _neighborhoods[i];
+        free((void *)_neighborhoods[i]);
     }
 }
 
 Characteristic::Node
 Characteristic::GetTreeNode(float s, float t, unsigned char * quadrant) const {
 
-    assert(_tree && sizeof(NodeDescriptor)==sizeof(int));
+    assert(sizeof(NodeDescriptor)==sizeof(int));
 
     // traverse the sub-patch tree to the (s,t) coordinates
     int offset = 0, corner = 0;
@@ -493,8 +492,6 @@ Characteristic::FindEquivalentNeighborhood(Neighborhood const & n) const {
     }
     return INDEX_INVALID;
 }
-
-
 
 } // end namespace Far
 

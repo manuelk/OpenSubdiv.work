@@ -326,10 +326,10 @@ public:
 
 
     /// \brief Returns the size of the patches tree (number of ints)
-    int GetTreeSize() const { return _treeSize; }
+    int GetTreeSize() const { return (int)_tree.size(); }
 
     /// \brief Returns the tree data
-    int const * GetTreeData() const { return _tree; }
+    int const * GetTreeData() const { return &_tree[0]; }
 
     /// \brief Returns a pointer to the root node of the sub-patches tree
     Node GetTreeRootNode() const { return Node(this, 0); }
@@ -363,8 +363,7 @@ private:
     // The sub-patch "tree" is stored as a linear buffer of integers for
     // efficient look-up & traversal on a GPU. Use the Node class to traverse
     // the tree and access each node's data.
-    int * _tree,
-          _treeSize;
+    std::vector<int> _tree;
 
 public:
 
@@ -373,10 +372,10 @@ public:
     //
 
     struct Support {
-    
+
         Support(int _size, LocalIndex const * _indices, float const * _weights) :
             size(_size), indices(_indices), weights(_weights) { }
-    
+
         short size;
         LocalIndex const * indices;
         float const      * weights;
@@ -384,14 +383,19 @@ public:
 
     // Returns the total number of supports for this characteristic
     int GetNumSupportsTotal() const { return (int)_sizes.size(); }
-    
+
     // Returns the number of supports needing to be evaluated at a given level
     int GetNumSupports(int levelIndex) const { return _supportLevelCounts[levelIndex]; }
 
     // Returns the support data for the support of given index
     Support GetSupport(Index supportIndex) const;
 
+    // Returns the number of control vertices in the characteristic neighborhood
+    short GetNumControlVertices() const { return _numControlVertices; }
+
 private:
+
+    int                     _numControlVertices;
 
     short                   _supportLevelCounts[10];
     std::vector<short>      _sizes;
@@ -427,6 +431,7 @@ public:
     /// \brief Returns the index of a neighborhood equivalent to
     /// 'n' (or INDEX_INVALID)
     int FindEquivalentNeighborhood(Neighborhood const & n) const;
+
     //@}
 
 private:
@@ -446,8 +451,8 @@ private:
     friend class CharacteristicMap;
     friend class SubdivisionPlanTable;
 
-    Characteristic(CharacteristicMap const * charmap) :
-        _tree(0), _treeSize(0), _characteristicMap(charmap) { }
+    Characteristic(CharacteristicMap const * charmap, int numControlVertices) :
+        _characteristicMap(charmap), _numControlVertices(numControlVertices) { }
 
     CharacteristicMap const * _characteristicMap;
 };

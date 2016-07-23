@@ -336,17 +336,17 @@ printPatchTables(Far::TopologyRefiner const * refiner) {
 }
 
 static void
-printCharmapNodes(Far::CharacteristicMap const * charmap) {
+printCharmapNodes(Far::CharacteristicMap const & charmap) {
 
     typedef Far::Characteristic::Node Node;
     typedef Far::Characteristic::NodeDescriptor NodeDesc;
 
     printf("Nodes :\n");
 
-    int nchars = charmap->GetNumCharacteristics();
+    int nchars = charmap.GetNumCharacteristics();
     for (int i=0; i<nchars; ++i) {
 
-        Far::Characteristic const * ch = charmap->GetCharacteristic(i);
+        Far::Characteristic const * ch = charmap.GetCharacteristic(i);
 
         printf("Characteristic : %d\n", i);
 
@@ -474,22 +474,18 @@ createFaceNumbers(Far::TopologyRefiner const & refiner,
 }
 
 static void
-createNodeNumbers(Far::CharacteristicMap const * charmap,
+createNodeNumbers(Far::CharacteristicMap const & charmap,
     std::vector<Vertex> const & vertexBuffer) {
 
-    if (!charmap) {
-        return;
-    }
-
     g_currentCharIndex = std::max(0,
-        std::min(g_currentCharIndex, charmap->GetNumCharacteristics()-1));
+        std::min(g_currentCharIndex, charmap.GetNumCharacteristics()-1));
 
     g_currentNodeIndex = std::max(-1, g_currentNodeIndex);
 
     if (g_currentCharIndex>=0 && g_currentNodeIndex>=0) {
 
         Far::Characteristic const * ch =
-            charmap->GetCharacteristic(g_currentCharIndex);
+            charmap.GetCharacteristic(g_currentCharIndex);
 
         Far::Characteristic::Node node = ch->GetTreeNode(0);
 
@@ -541,11 +537,7 @@ createNodeNumbers(Far::CharacteristicMap const * charmap,
 
 //------------------------------------------------------------------------------
 static void
-writeDiagraph(Far::CharacteristicMap const * charmap, int charIndex) {
-
-    if (!charmap) {
-        return;
-    }
+writeDiagraph(Far::CharacteristicMap const & charmap, int charIndex) {
 
     static int counter=0;
     char fname[64];
@@ -556,16 +548,16 @@ writeDiagraph(Far::CharacteristicMap const * charmap, int charIndex) {
         fprintf(stderr, "Could not open %s\n", fname);
     }
 
-    if (charIndex>=0 && charIndex<charmap->GetNumCharacteristics()) {
+    if (charIndex>=0 && charIndex<charmap.GetNumCharacteristics()) {
 
-        Far::Characteristic const * ch = charmap->GetCharacteristic(charIndex);
+        Far::Characteristic const * ch = charmap.GetCharacteristic(charIndex);
 
         bool showIndices = true,
              isSubgraph = false;
         ch->WriteTreeDiagraph(fout, charIndex, showIndices, isSubgraph);
     } else {
         bool showIndices = true;
-        charmap->WriteCharacteristicsDiagraphs(fout, showIndices);
+        charmap.WriteCharacteristicsDiagraphs(fout, showIndices);
     }
     fclose(fout);
     fprintf(stdout, "Saved %s\n", fname);
@@ -624,7 +616,7 @@ tessChar(Far::Characteristic const * ch, int tessFactor, int charOffset,
 
 //#define DO_MULTI_THREAD
 static void
-createTessMesh(Far::CharacteristicMap const * charmap, int tessFactor,
+createTessMesh(Far::CharacteristicMap const & charmap, int tessFactor,
     std::vector<float> & positions, std::vector<float> & normals, std::vector<float> & colors,
         bool createPointsMesh=false) {
 
@@ -637,7 +629,7 @@ createTessMesh(Far::CharacteristicMap const * charmap, int tessFactor,
         topo.nverts = (int)positions.size()/3;
         g_tessMesh = new GLMesh(topo, GLMesh::DRAW_POINTS);
     } else {
-        int nchars = charmap->GetNumCharacteristics(),
+        int nchars = charmap.GetNumCharacteristics(),
             ntriangles = 2 * (tessFactor-1) * (tessFactor-1) * nchars;
 
         // create tess mesh
@@ -660,7 +652,7 @@ createTessMesh(Far::CharacteristicMap const * charmap, int tessFactor,
                 if (charIndex+t>=nchars) {
                     break;
                 }
-                Far::Characteristic const * ch = charmap->GetCharacteristic(charIndex+t);
+                Far::Characteristic const * ch = charmap.GetCharacteristic(charIndex+t);
                 if (ch->GetTreeSize()==0) {
                     continue;
                 }
@@ -682,7 +674,7 @@ createTessMesh(Far::CharacteristicMap const * charmap, int tessFactor,
 #else // DO_MULTI_THREAD
         for (int charIndex=0, charOffset=0; charIndex<nchars; ++charIndex) {
 
-            Far::Characteristic const * ch = charmap->GetCharacteristic(charIndex);
+            Far::Characteristic const * ch = charmap.GetCharacteristic(charIndex);
 
             if (ch->GetTreeSize()==0) {
                 continue;
@@ -755,17 +747,17 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         Far::CharacteristicMap * charmap = new Far::CharacteristicMap(options);
         g_plansTable = charmap->HashTopology(*refiner);
     } else {
-        g_plansTable = Far::SubdivisionPlanTable::Create(*refiner, options);
+        //g_plansTable = Far::SubdivisionPlanTable::Create(*refiner, options);
     }
 
-    Far::CharacteristicMap const * charmap = g_plansTable->GetCharacteristicMap();
+    Far::CharacteristicMap const & charmap = g_plansTable->GetCharacteristicMap();
 
     // create vertex primvar data buffer
     std::vector<Vertex> supportsBuffer;
     {
         int numVertsTotal = refiner->GetNumVerticesTotal();
-        if (charmap->GetLocalPointStencilTable()) {
-            numVertsTotal += charmap->GetLocalPointStencilTable()->GetNumStencils();
+        if (charmap.GetLocalPointStencilTable()) {
+            numVertsTotal += charmap.GetLocalPointStencilTable()->GetNumStencils();
         }
 
         supportsBuffer.resize(numVertsTotal);
@@ -790,7 +782,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
             // endpatch basis conversion
             Far::StencilTable const * localPoints =
-                charmap->GetLocalPointStencilTable();
+                charmap.GetLocalPointStencilTable();
             if (localPoints) {
                 localPoints->UpdateValues(verts, verts + refiner->GetNumVerticesTotal());
             }
@@ -823,7 +815,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 #endif
 
     if (g_DrawNodeIDs) {
-        createNodeIDs(*charmap, supportsBuffer);
+        createNodeIDs(charmap, supportsBuffer);
     }
 
     Far::SubdivisionPlanVector const & plans = g_plansTable->GetSubdivisionPlans();
@@ -849,7 +841,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
         int charIndex = plans[i].charIndex;
 
-        Far::Characteristic const * ch = charmap->GetCharacteristic(charIndex);
+        Far::Characteristic const * ch = charmap.GetCharacteristic(charIndex);
 
         if (ch->GetTreeSize()==0) {
             continue; // skip holes
@@ -975,7 +967,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
     for (int i=0; i<nplans; ++i) {
 
-        Char const & ch = charmap->GetCharacteristic(i);
+        Char const & ch = charmap.GetCharacteristic(i);
 
         // interpolate vertices
         float wP[20], wDs[20], wDt[20];
@@ -1214,10 +1206,9 @@ display() {
         g_hud.DrawString(10, -40,  "Triangles  : %d", g_tessMesh ? g_tessMesh->GetNumTriangles() : -1);
         g_hud.DrawString(10, -20,  "FPS        : %3.1f", fps);
 
-        Far::CharacteristicMap const * charmap = g_plansTable ? g_plansTable->GetCharacteristicMap() : 0 ;
-        g_hud.DrawString(-280, -120, "Chars : %d", charmap ? charmap->GetNumCharacteristics() : 0);
+        g_hud.DrawString(-280, -120, "Chars : %d", g_plansTable ? g_plansTable->GetCharacteristicMap().GetNumCharacteristics() : -1);
         g_hud.DrawString(-280, -100, "Plans : %d", g_plansTable ? (int)g_plansTable->GetSubdivisionPlans().size() : 0);
-        g_hud.DrawString(-280, -80, "Trees : %.1f (kb)", charmap ? g_treeSizeTotal * sizeof(int) / 1024.0f : 0.0f);
+        g_hud.DrawString(-280, -80, "Trees : %.1f (kb)", g_plansTable ? g_treeSizeTotal * sizeof(int) / 1024.0f : 0.0f);
 
         g_hud.Flush();
     }

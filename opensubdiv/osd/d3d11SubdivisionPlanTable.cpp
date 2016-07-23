@@ -97,11 +97,11 @@ D3D11SubdivisionPlanTable::allocate(
     pd3d11DeviceContext->GetDevice(&pd3d11Device);
     assert(pd3d11Device);
 
-    Far::CharacteristicMap const * charmap = plansTable.GetCharacteristicMap();
+    Far::CharacteristicMap const & charmap = plansTable.GetCharacteristicMap();
     Far::SubdivisionPlanVector const & plans = plansTable.GetSubdivisionPlans();
 
     {   // characteristic trees
-        int size = charmap->GetCharacteristicTreeSizeTotal();
+        int size = charmap.GetCharacteristicTreeSizeTotal();
 
         ID3D11Buffer * buffer = createBuffer(pd3d11Device, size, sizeof(int));
         if (!buffer)
@@ -112,8 +112,8 @@ D3D11SubdivisionPlanTable::allocate(
         if (!data)
             return false;
 
-        for (int i=0, offset=0; i<charmap->GetNumCharacteristics(); ++i) {
-            Far::Characteristic const * ch = charmap->GetCharacteristic(i);
+        for (int i=0, offset=0; i<charmap.GetNumCharacteristics(); ++i) {
+            Far::Characteristic const * ch = charmap.GetCharacteristic(i);
             memcpy(data + offset, ch->GetTreeData(), ch->GetTreeSize() * sizeof(int));
             offset += ch->GetTreeSize();
         }

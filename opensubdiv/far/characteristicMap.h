@@ -56,7 +56,7 @@ public:
     struct Options {
 
         Options() :
-             hashSize(0),
+             hashSize(10000),
              endCapType(ENDCAP_BSPLINE_BASIS),
              useTerminalNode(false) { }
 

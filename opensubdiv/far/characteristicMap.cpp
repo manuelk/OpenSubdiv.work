@@ -138,10 +138,14 @@ CharacteristicMap::findOrAddCharacteristic(
         if (valence!=regValence) {
             ConstIndexArray childFaces = coarseLevel.GetFaceChildFaces(faceIndex);
             for (int i=0; i<valence; ++i) {
-                _characteristics.push_back(charBuilder.Create(1, childFaces[i]));
+                Characteristic const * ch =
+                    charBuilder.Create(1, childFaces[i], *n);
+                _characteristics.push_back(ch);
             }
         } else {
-            _characteristics.push_back(charBuilder.Create(0, faceIndex));
+            Characteristic const * ch =
+                charBuilder.Create(0, faceIndex, *n);
+            _characteristics.push_back(ch);
         }
 
         addCharacteristicToHash(
@@ -166,7 +170,7 @@ CharacteristicMap::supportsEndCaps(EndCapType type) {
 SubdivisionPlanTable const *
 CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
 
-    if (!supportsEndCaps(_options.GetEndCapType())) {
+    if (!supportsEndCaps(_options.GetEndCapType()) || _options.hashSize<=0) {
         return 0;
     }
 
@@ -180,49 +184,49 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
         nplans = SubdivisionPlanTable::countPlans(coarseLevel, regFaceSize),
         hashSize = _options.hashSize;
 
-    SubdivisionPlanTable * plansTable = new SubdivisionPlanTable(this);
+    SubdivisionPlanTable * plansTable = new SubdivisionPlanTable(*this);
 
     SubdivisionPlanVector & plans = plansTable->_plans;
-
     plans.reserve(nplans);
 
-    if (hashSize>0) {
+    std::vector<Index> & controls = plansTable->_controlVertices;
+    controls.resize(nplans*20);
 
-        // hash topology : faces with redundant topological configurations share
-        // the same characteristic
+    // hash topology : faces with redundant topological configurations share
+    // the same characteristic
 
-        // XXXX manuelk TODO this can only work with localized stencils for
-        // support verts. Right now, characteristic trees only gather global
-        // stencil indices. This will have to be revisited...
+    // XXXX manuelk TODO this can only work with localized stencils for
+    // support verts. Right now, characteristic trees only gather global
+    // stencil indices. This will have to be revisited...
 
-        _characteristicsHash.resize(hashSize, INDEX_INVALID);
+    _characteristicsHash.resize(hashSize, INDEX_INVALID);
 
-        NeighborhoodBuilder neighborhoodBuilder;
+    NeighborhoodBuilder neighborhoodBuilder;
 
-        for (int face = 0; face < nfaces; ++face) {
+    for (int face = 0, firstControl = 0; face < nfaces; ++face) {
 
-            if (coarseLevel.IsFaceHole(face)) {
-                continue;
-            }
+        if (coarseLevel.IsFaceHole(face)) {
+            continue;
+        }
 
-            Index charIndex = findOrAddCharacteristic(
-                refiner, neighborhoodBuilder, charBuilder, face);
+        Index charIndex = findOrAddCharacteristic(
+            refiner, neighborhoodBuilder, charBuilder, face);
 
-            ConstIndexArray fverts = coarseLevel.GetFaceVertices(face);
-            if (fverts.size()==regFaceSize) {
-                SubdivisionPlan plan;
-                plan.charIndex = charIndex;
-                plan.rootNodeOffset = INDEX_INVALID;
-                plans.push_back(plan);
-            } else {
-                for (int i=0; i<fverts.size(); ++i) {
-                    SubdivisionPlan plan;
-                    plan.charIndex = charIndex+i;
-                    plan.rootNodeOffset = INDEX_INVALID;
-                    plans.push_back(plan);
-                }
+        int numControlVertices =
+            GetCharacteristic(charIndex)->GetNumControlVertices();
+
+        ConstIndexArray fverts = coarseLevel.GetFaceVertices(face);
+        if (fverts.size()==regFaceSize) {
+            plans.push_back(
+                SubdivisionPlan(numControlVertices, firstControl, charIndex));
+        } else {
+            for (int i=0; i<fverts.size(); ++i) {
+                plans.push_back(
+                    SubdivisionPlan(numControlVertices, firstControl, charIndex+i));
             }
         }
+        
+        firstControl += numControlVertices;
     }
     
     if (_localPointStencils && _localPointVaryingStencils) {

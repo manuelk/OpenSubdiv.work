@@ -39,8 +39,13 @@ namespace Far {
 class TopologyRefiner;
 
 struct SubdivisionPlan {
-    Index charIndex,
-          rootNodeOffset;
+
+    SubdivisionPlan(int _numControls, int _firstControl, int _charIndex) :
+        numControls(_numControls), firstControl(_firstControl), charIndex(_charIndex) { }
+
+    int numControls,
+        firstControl,
+        charIndex;
 };
 
 typedef std::vector<SubdivisionPlan> SubdivisionPlanVector;
@@ -65,25 +70,18 @@ class SubdivisionPlanTable {
 
 public:
 
-    /// \brief destructor
-    ~SubdivisionPlanTable();
-
     typedef CharacteristicMap::Options Options;
-
-    /// \brief Returns a plans table (no topology hahsing)
-    static SubdivisionPlanTable const *
-        Create(TopologyRefiner const & refiner, Options options=Options());
 
     Characteristic const * GetCharacteristic(Index planIndex) const {
         Index charIndex = _plans[planIndex].charIndex;
-        return _charmap->GetCharacteristic(charIndex);
+        return _charmap.GetCharacteristic(charIndex);
     }
 
     SubdivisionPlanVector const & GetSubdivisionPlans() const {
         return _plans;
     }
 
-    CharacteristicMap const * GetCharacteristicMap() const {
+    CharacteristicMap const & GetCharacteristicMap() const {
         return _charmap;
     }
 
@@ -91,7 +89,7 @@ private:
 
     friend class CharacteristicMap;
 
-    SubdivisionPlanTable(CharacteristicMap const * charmap);
+    SubdivisionPlanTable(CharacteristicMap const & charmap);
 
     static int countPlans(TopologyLevel const & coarseLevel, int regFaceSize);
 
@@ -99,7 +97,9 @@ private:
 
     SubdivisionPlanVector _plans;
 
-    CharacteristicMap const * _charmap;
+    std::vector<Index> _controlVertices;
+
+    CharacteristicMap const & _charmap;
 };
 
 

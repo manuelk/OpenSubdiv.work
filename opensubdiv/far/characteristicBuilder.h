@@ -35,6 +35,7 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 struct EndCapBuilder;
+class Neighborhood;
 struct PatchFaceTag;
 class StencilTable;
 class TopologyRefiner;
@@ -53,7 +54,7 @@ public:
     ~CharacteristicBuilder();
 
     // Creats a characteristic for the given level & face
-    Characteristic const * Create(int levelIndex, int faceIndex);
+    Characteristic const * Create(int levelIndex, int faceIndex, Neighborhood const & neighborhood);
 
     // Perform final operations on stencils and returns the tables
     // Note : should not be called until all trees have been written.
@@ -63,32 +64,27 @@ public:
 
 private:
 
-    int getTerminalNodeSize(int levelIndex) const;
+    struct Context;
 
-    int getRecursiveNodeSize(int levelIndex, int faceIndex) const;
 
-    int getEndCapNodeSize() const;
+    void identifyNode(int levelIndex, int faceIndex, Context * context);
 
-    int getRegularNodeSize(int levelIndex, int faceIndex) const;
 
-    int getNodeSize(int levelIndex, int faceIndex) const;
+    void populateNode(int levelIndex, int faceIndex, Context * context);
 
-    int getTreeSize(int levelIndex, int faceIndex) const;
+    void populateRegularNode(int levelIndex, int faceIndex, Context * context);
+
+    void populateEndCapNode(int levelIndex, int faceIndex, Context * context);
+
+    void populateTerminalNode(int levelIndex, int faceIndex, int evIndex, Context * context);
+
+    void populateRecursiveNode(int levelIndex, int faceIndex, Context * context);
+
+
+    void populateSupports(Context const & context, Neighborhood const & neighborhood, Characteristic * ch);
 
 
     bool nodeIsTerminal(int levelIndex, int faceIndex, int * evIndex=0) const;
-
-    int writeTerminalNode(int leveIndex, int faceIndex, int evIndex, int offset, uint8_t * data) const;
-
-    int writeRecursiveNode(int leveIndex, int faceIndex, int offset, uint8_t * data) const;
-
-    int writeRegularNode(int leveIndex, int faceIndex, uint8_t * data) const;
-
-    int writeEndCapNode(int leveIndex, int faceIndex, uint8_t * data) const;
-
-    int writeNode(int leveIndex, int faceIndex, int offset, uint8_t * data) const;
-
-    void writeTree(int levelIndex, int faceIndex, int * treePtr) const;
 
     bool computeSubPatchDomain(int levelIndex, Index faceIndex, short * s, short * t) const;
 
@@ -101,8 +97,6 @@ private:
     TopologyRefiner const & _refiner;
 
     CharacteristicMap const & _charmap;
-
-    StencilTable const * _stencils;
 
     std::vector<PatchFaceTag> _patchTags;
 

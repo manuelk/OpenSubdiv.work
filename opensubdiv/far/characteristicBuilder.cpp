@@ -26,6 +26,7 @@
 #include "../far/characteristicMap.h"
 #include "../far/endCapBSplineBasisPatchFactory.h"
 #include "../far/endCapGregoryBasisPatchFactory.h"
+#include "../far/neighborhood.h"
 #include "../far/patchFaceTag.h"
 #include "../far/stencilTableFactory.h"
 #include "../far/topologyRefinerFactory.h"
@@ -257,182 +258,6 @@ CharacteristicBuilder::computeSubPatchDomain(
     return nonquad;
 }
 
-int
-CharacteristicBuilder::getRegularNodeSize(int levelIndex, int faceIndex) const {
-    PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
-    return sizeof(NodeDescriptor) + 16 * sizeof(int) + (patchTag.isSingleCrease ? sizeof(float) : 0);
-}
-
-int
-CharacteristicBuilder::writeRegularNode(
-    int levelIndex, int faceIndex, uint8_t * data) const {
-
-    PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
-
-    int dataSize = sizeof(NodeDescriptor) + 16 * sizeof(int) + (patchTag.isSingleCrease ? sizeof(float) : 0);
-
-    Vtr::internal::Level const & level = _refiner.getLevel(levelIndex);
-
-    Index patchVerts[16];
-
-    int bIndex = patchTag.boundaryIndex,
-        boundaryMask = patchTag.boundaryMask,
-        transitionMask = patchTag.transitionMask,
-        levelVertOffset = _levelVertOffsets[levelIndex];
-
-    int const * permutation = 0;
-    bool singleCrease = false;
-    float sharpness = 0.f;
-
-    if (patchTag.boundaryCount == 0) {
-        static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
-        permutation = permuteRegular;
-        level.gatherQuadRegularInteriorPatchPoints(faceIndex, patchVerts, 0);
-        if (patchTag.isSingleCrease) {
-            int maxIsolation = _refiner.GetAdaptiveOptions().isolationLevel;
-            singleCrease = true;
-            boundaryMask = (1<<bIndex);
-            sharpness = level.getEdgeSharpness((level.getFaceEdges(faceIndex)[bIndex]));
-            sharpness = std::min(sharpness, (float)(maxIsolation-levelIndex));
-        }
-    } else if (patchTag.boundaryCount == 1) {
-        // Expand boundary patch vertices and rotate to restore correct orientation.
-        static int const permuteBoundary[4][16] = {
-            { -1, -1, -1, -1, 11, 3, 0, 4, 10, 2, 1, 5, 9, 8, 7, 6 },
-            { 9, 10, 11, -1, 8, 2, 3, -1, 7, 1, 0, -1, 6, 5, 4, -1 },
-            { 6, 7, 8, 9, 5, 1, 2, 10, 4, 0, 3, 11, -1, -1, -1, -1 },
-            { -1, 4, 5, 6, -1, 0, 1, 7, -1, 3, 2, 8, -1, 11, 10, 9 } };
-        permutation = permuteBoundary[bIndex];
-        level.gatherQuadRegularBoundaryPatchPoints(faceIndex, patchVerts, bIndex);
-    } else if (patchTag.boundaryCount == 2) {
-        // Expand corner patch vertices and rotate to restore correct orientation.
-        static int const permuteCorner[4][16] = {
-            { -1, -1, -1, -1, -1, 0, 1, 4, -1, 3, 2, 5, -1, 8, 7, 6 },
-            { -1, -1, -1, -1, 8, 3, 0, -1, 7, 2, 1, -1, 6, 5, 4, -1 },
-            { 6, 7, 8, -1, 5, 2, 3, -1, 4, 1, 0, -1, -1, -1, -1, -1 },
-            { -1, 4, 5, 6, -1, 1, 2, 7, -1, 0, 3, 8, -1, -1, -1, -1 } };
-        permutation = permuteCorner[bIndex];
-        level.gatherQuadRegularCornerPatchPoints(faceIndex, patchVerts, bIndex);
-    } else {
-        assert(patchTag.boundaryCount <= 2);
-    }
-
-    short u, v;
-    bool nonquad = computeSubPatchDomain(levelIndex, faceIndex, &u, &v);
-
-    // copy to buffer
-    ((NodeDescriptor *)data)->SetPatch(Characteristic::NODE_REGULAR,
-        nonquad, singleCrease, levelIndex, boundaryMask, u, v) ;
-    data += sizeof(NodeDescriptor);
-
-    if (patchTag.isSingleCrease) {
-        *(float *)data = sharpness;
-        data += sizeof(float);
-    }
-
-    offsetAndPermuteIndices(patchVerts, 16, levelVertOffset, permutation, (Index *)data);
-
-    return dataSize;
-}
-
-int
-CharacteristicBuilder::getEndCapNodeSize() const {
-    assert(_endcapBuilder);
-    EndCapType type = _endcapBuilder->type;
-    int dataSize = sizeof(NodeDescriptor);
-    switch (type) {
-        case ENDCAP_BSPLINE_BASIS:
-            dataSize += 16 * sizeof(Index);
-            break;
-        case ENDCAP_GREGORY_BASIS:
-            dataSize += 20 * sizeof(Index);
-            break;
-        default:
-            assert(0);
-    }
-    return dataSize;
-}
-
-
-int
-CharacteristicBuilder::writeEndCapNode(
-    int levelIndex, int faceIndex, uint8_t * data) const {
-
-    assert(_endcapBuilder);
-    int dataSize = getEndCapNodeSize();
-
-    Vtr::internal::Level const & level = _refiner.getLevel(levelIndex);
-
-    PatchFaceTag const * levelPatchTags = _levelPatchTags[levelIndex];
-
-    Index levelVertOffset = _levelVertOffsets[levelIndex];
-
-    ConstIndexArray cvs;
-    switch (_endcapBuilder->type) {
-        case ENDCAP_BILINEAR_BASIS:
-            assert(0);
-            break;
-        case ENDCAP_BSPLINE_BASIS:
-            cvs = _endcapBuilder->bsplineBasis->GetPatchPoints(
-                &level, faceIndex, levelPatchTags, levelVertOffset);
-            break;
-        case ENDCAP_GREGORY_BASIS:
-            cvs = _endcapBuilder->gregoryBasis->GetPatchPoints(
-                &level, faceIndex, levelPatchTags, levelVertOffset);
-            break;
-        default:
-            assert(0);
-    }
-
-    // copy to buffer
-
-    short u, v;
-    bool nonquad = computeSubPatchDomain(levelIndex, faceIndex, &u, &v);
-
-    // copy to buffer
-    ((NodeDescriptor *)data)->SetPatch(Characteristic::NODE_END,
-        nonquad, false, levelIndex, 0, u, v);
-    data += sizeof(NodeDescriptor);
-
-    assert(sizeof(Index)==sizeof(int));
-    memcpy(data, cvs.begin(), cvs.size() * sizeof(int));
-
-    return dataSize;
-}
-
-int
-CharacteristicBuilder::getRecursiveNodeSize(int levelIndex, int faceIndex) const {
-    int dataSize = sizeof(NodeDescriptor) + 4 * sizeof(int);
-    // traverse each child to accumulate data size
-    ConstIndexArray children = _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
-    for (int i=0; i<children.size(); ++i) {
-        dataSize += getNodeSize(levelIndex+1, children[i]);
-    }
-    return dataSize;
-}
-
-int
-CharacteristicBuilder::writeRecursiveNode(
-    int levelIndex, int faceIndex, int offset, uint8_t * data) const {
-
-    int dataSize = sizeof(NodeDescriptor) + 4 * sizeof(int);
-
-    ((NodeDescriptor *)data)->SetRecursive(levelIndex);
-
-    int * childrenOffsets = (int *)(data + sizeof(NodeDescriptor));
-
-    ConstIndexArray children =
-        _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
-
-    for (int i=0; i<children.size(); ++i) {
-        // save the offset in the nodes array where each child is stored
-        int childOffset = offset + dataSize/sizeof(int);
-        dataSize += writeNode(levelIndex+1, children[i], childOffset, data+dataSize);
-        childrenOffsets[permuteWinding(i)] = childOffset;
-    }
-    return dataSize;
-}
-
 bool
 CharacteristicBuilder::nodeIsTerminal(
     int levelIndex, int faceIndex, int * evIndex) const {
@@ -492,20 +317,225 @@ CharacteristicBuilder::nodeIsTerminal(
     return false;
 }
 
-int
-CharacteristicBuilder::getTerminalNodeSize(int levelIndex) const {
-    // we don't need to recurse here : we know that there will always be
-    // one terminal node + one end-cap node for each level of isolation left
-    int endNodeSize = getEndCapNodeSize(),
-        termNodeSize = sizeof(NodeDescriptor) + 1*sizeof(int) + 25*sizeof(int);
-    return termNodeSize * (_refiner.GetMaxLevel()-levelIndex) + endNodeSize;
+struct CharacteristicBuilder::Context {
+
+    Context(Index _faceIndex, bool _nonquad, Characteristic * _ch) :
+        faceIndex(_faceIndex), nonquad(_nonquad), ch(_ch),
+            numSupports(0), firstSupport(0),
+                treeSize(0), treeOffset(0) { }
+
+    Characteristic * ch;
+
+    bool nonquad;
+
+    Index faceIndex;
+
+    int numSupports,
+        firstSupport,
+        treeSize,
+        treeOffset;
+
+    std::vector<int> supportIndices;
+};
+
+//
+// XXXX tree : [ descriptor ][ firstSupport ]
+//
+
+inline int
+getEndCapNumSupports(EndCapType type) {
+    switch (type) {
+        case ENDCAP_BSPLINE_BASIS: return 16;
+        case ENDCAP_GREGORY_BASIS: return 20;
+        default:
+            assert(0);
+    }
+    return 0;
 }
 
-int
-CharacteristicBuilder::writeTerminalNode(
-    int levelIndex, int faceIndex, int evIndex, int offset, uint8_t * data) const {
+inline int
+getTerminalNumSupports(int nlevels, EndCapType type) {
+    return getEndCapNumSupports(type) + 25 * nlevels;
+}
 
-    int dataSize = sizeof(NodeDescriptor) + 1*sizeof(int) + 25*sizeof(int);
+inline int
+getRegularNodeSize(bool isSingleCrease) {
+    return sizeof(NodeDescriptor) + 1 * sizeof(int) + isSingleCrease ? sizeof(float) : 0;
+}
+
+inline int
+getEndCapNodeSize() {
+    return sizeof(NodeDescriptor) + 1 * sizeof(int);
+}
+
+inline int
+getTerminalNodeSize(int nlevels) {
+    return getEndCapNodeSize() +
+        nlevels * (sizeof(NodeDescriptor) + 1 * sizeof(int) + 1 * sizeof(int));
+}
+
+inline int
+getRecursiveNodeSize() {
+    return sizeof(NodeDescriptor) + 4 * sizeof(int);
+}
+
+void
+CharacteristicBuilder::identifyNode(int levelIndex, int faceIndex, Context * c) {
+
+    PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
+    if (patchTag.hasPatch) {
+        if (patchTag.isRegular) {
+            c->numSupports += 16;
+            c->treeSize += getRegularNodeSize(patchTag.isSingleCrease);
+        } else {
+            c->numSupports += getEndCapNumSupports(_endcapBuilder->type);
+            c->treeSize += getEndCapNodeSize();
+        }
+    } else {
+        int evIndex = INDEX_INVALID;
+        if (nodeIsTerminal(levelIndex, faceIndex, &evIndex)) {
+            // we don't need to recurse here : we know that there will always be
+            // one terminal node + one end-cap node for each level of isolation left
+            EndCapType type = _endcapBuilder->type;
+            int nlevels = _refiner.GetMaxLevel() - levelIndex;
+            c->numSupports += getTerminalNumSupports(nlevels, type);
+            c->treeSize += getTerminalNodeSize(nlevels);
+        } else {
+            // recurse through children to accumulate
+            c->treeSize += getRecursiveNodeSize();
+            ConstIndexArray children =
+                _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
+            for (int i=0; i<children.size(); ++i) {
+                identifyNode(levelIndex+1, children[i], c);
+            }
+        }
+    }
+}
+
+void
+CharacteristicBuilder::populateRegularNode(
+    int levelIndex, int faceIndex, Context * c) {
+
+    PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
+
+    Vtr::internal::Level const & level = _refiner.getLevel(levelIndex);
+
+    Index patchVerts[16];
+
+    int bIndex = patchTag.boundaryIndex,
+        boundaryMask = patchTag.boundaryMask,
+        transitionMask = patchTag.transitionMask,
+        levelVertOffset = _levelVertOffsets[levelIndex];
+
+    int const * permutation = 0;
+    bool singleCrease = false;
+    float sharpness = 0.f;
+
+    if (patchTag.boundaryCount == 0) {
+        static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
+        permutation = permuteRegular;
+        level.gatherQuadRegularInteriorPatchPoints(faceIndex, patchVerts, 0);
+        if (patchTag.isSingleCrease) {
+            int maxIsolation = _refiner.GetAdaptiveOptions().isolationLevel;
+            singleCrease = true;
+            boundaryMask = (1<<bIndex);
+            sharpness = level.getEdgeSharpness((level.getFaceEdges(faceIndex)[bIndex]));
+            sharpness = std::min(sharpness, (float)(maxIsolation-levelIndex));
+        }
+    } else if (patchTag.boundaryCount == 1) {
+        // Expand boundary patch vertices and rotate to restore correct orientation.
+        static int const permuteBoundary[4][16] = {
+            { -1, -1, -1, -1, 11, 3, 0, 4, 10, 2, 1, 5, 9, 8, 7, 6 },
+            { 9, 10, 11, -1, 8, 2, 3, -1, 7, 1, 0, -1, 6, 5, 4, -1 },
+            { 6, 7, 8, 9, 5, 1, 2, 10, 4, 0, 3, 11, -1, -1, -1, -1 },
+            { -1, 4, 5, 6, -1, 0, 1, 7, -1, 3, 2, 8, -1, 11, 10, 9 } };
+        permutation = permuteBoundary[bIndex];
+        level.gatherQuadRegularBoundaryPatchPoints(faceIndex, patchVerts, bIndex);
+    } else if (patchTag.boundaryCount == 2) {
+        // Expand corner patch vertices and rotate to restore correct orientation.
+        static int const permuteCorner[4][16] = {
+            { -1, -1, -1, -1, -1, 0, 1, 4, -1, 3, 2, 5, -1, 8, 7, 6 },
+            { -1, -1, -1, -1, 8, 3, 0, -1, 7, 2, 1, -1, 6, 5, 4, -1 },
+            { 6, 7, 8, -1, 5, 2, 3, -1, 4, 1, 0, -1, -1, -1, -1, -1 },
+            { -1, 4, 5, 6, -1, 1, 2, 7, -1, 0, 3, 8, -1, -1, -1, -1 } };
+        permutation = permuteCorner[bIndex];
+        level.gatherQuadRegularCornerPatchPoints(faceIndex, patchVerts, bIndex);
+    } else {
+        assert(patchTag.boundaryCount <= 2);
+    }
+
+    short u, v;
+    bool nonquad = computeSubPatchDomain(levelIndex, faceIndex, &u, &v);
+
+    // copy to buffers
+    int * tree = &c->ch->_tree[c->treeOffset];
+
+    ((NodeDescriptor *)tree)->SetPatch(Characteristic::NODE_REGULAR,
+        nonquad, singleCrease, levelIndex, boundaryMask, u, v);
+    ++tree;
+
+    *tree = c->firstSupport;
+    ++tree;
+
+    if (patchTag.isSingleCrease) {
+        *(float *)tree = sharpness;
+    }
+
+    Index * supportIndices = &c->supportIndices[c->firstSupport];
+    offsetAndPermuteIndices(patchVerts, 16, levelVertOffset, permutation, supportIndices);
+    c->firstSupport += 16;
+}
+
+void
+CharacteristicBuilder::populateEndCapNode(
+    int levelIndex, int faceIndex, Context * c) {
+
+    assert(_endcapBuilder);
+
+    Vtr::internal::Level const & level = _refiner.getLevel(levelIndex);
+
+    PatchFaceTag const * levelPatchTags = _levelPatchTags[levelIndex];
+
+    Index levelVertOffset = _levelVertOffsets[levelIndex];
+
+    ConstIndexArray cvs;
+    switch (_endcapBuilder->type) {
+        case ENDCAP_BILINEAR_BASIS:
+            assert(0);
+            break;
+        case ENDCAP_BSPLINE_BASIS:
+            cvs = _endcapBuilder->bsplineBasis->GetPatchPoints(
+                &level, faceIndex, levelPatchTags, levelVertOffset);
+            break;
+        case ENDCAP_GREGORY_BASIS:
+            cvs = _endcapBuilder->gregoryBasis->GetPatchPoints(
+                &level, faceIndex, levelPatchTags, levelVertOffset);
+            break;
+        default:
+            assert(0);
+    }
+
+    short u, v;
+    bool nonquad = computeSubPatchDomain(levelIndex, faceIndex, &u, &v);
+
+    // copy to buffers
+    int * tree = &c->ch->_tree[c->treeOffset];
+    ((NodeDescriptor *)tree)->SetPatch(Characteristic::NODE_END,
+        nonquad, false, levelIndex, 0, u, v);
+    ++tree;
+
+    Index * supportIndices = &c->supportIndices[c->firstSupport];
+    memcpy(supportIndices, cvs.begin(), cvs.size() * sizeof(Index));
+    c->firstSupport += cvs.size();
+}
+
+void
+CharacteristicBuilder::populateTerminalNode(
+    int levelIndex, int faceIndex, int evIndex, Context * c) {
+
+    // xxxx manuelk right now terminal nodes are recursive : paper suggests
+    // a single node packing 25 * level supports. Might be doable but this code
+    // will have to be modified along with descriptor layout
 
     assert(evIndex!=INDEX_INVALID);
 
@@ -523,7 +553,7 @@ CharacteristicBuilder::writeTerminalNode(
         _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
 
     // gather support indices for the 3 sub-patches
-    Index * supportIndices = (int *)(data + sizeof(NodeDescriptor) + sizeof(int));
+    Index * supportIndices = &c->supportIndices[c->firstSupport];
     for (int child=0; child<childFaceIndices.size(); ++child) {
 
         int childFaceIndex = childFaceIndices[child];
@@ -552,15 +582,11 @@ CharacteristicBuilder::writeTerminalNode(
             // child contains the EV
             assert(evIndex==child);
 
-            // save the offset to the end-cap child node
-            childNodeOffset = offset + dataSize / sizeof(int);
-
             if (patchTag.hasPatch) {
                 // we have reached the maximum isolation : end-cap node
-                dataSize += writeEndCapNode(childLevelIndex, childFaceIndex, data + dataSize);
+                populateEndCapNode(childLevelIndex, childFaceIndex, c);
             } else {
-                dataSize += writeTerminalNode(childLevelIndex,
-                    childFaceIndex, evIndex, childNodeOffset, data+dataSize);
+                populateTerminalNode(childLevelIndex, childFaceIndex, evIndex, c);
             }
         }
     }
@@ -571,92 +597,124 @@ CharacteristicBuilder::writeTerminalNode(
     short u, v;
     bool nonquad = computeSubPatchDomain(childLevelIndex, childFaceIndices[0], &u, &v);
 
-    ((NodeDescriptor *)data)->SetTerminal(nonquad, levelIndex, permuteWinding(evIndex), u, v);
+    int * tree = &c->ch->_tree[c->treeOffset];
+    ((NodeDescriptor *)tree)->SetTerminal(nonquad, levelIndex, permuteWinding(evIndex), u, v);
+    ++tree;
 
-    int * childNodePtr = (int *)(data + sizeof(NodeDescriptor));
-    *childNodePtr = childNodeOffset;
+    *tree = c->firstSupport;
+    ++tree;
 
-    return dataSize;
-}
-
-int
-CharacteristicBuilder::getNodeSize(int levelIndex, int faceIndex) const {
-    PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
-    int dataSize = 0;
-    if (patchTag.hasPatch) {
-        if (patchTag.isRegular) {
-            dataSize = getRegularNodeSize(levelIndex, faceIndex);
-        } else {
-            dataSize = getEndCapNodeSize();
-        }
-    } else {
-        int evIndex = INDEX_INVALID;
-        if (nodeIsTerminal(levelIndex, faceIndex, &evIndex)) {
-            dataSize = getTerminalNodeSize(levelIndex);
-        } else {
-            dataSize = getRecursiveNodeSize(levelIndex, faceIndex);
-        }
-    }
-    return dataSize;
-}
-
-int
-CharacteristicBuilder::writeNode(
-    int levelIndex, int faceIndex, int offset, uint8_t * data) const {
-
-    PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
-
-    int dataSize = 0;
-
-    if (patchTag.hasPatch) {
-        if (patchTag.isRegular) {
-            dataSize = writeRegularNode(levelIndex, faceIndex, data);
-        } else {
-            dataSize = writeEndCapNode(levelIndex, faceIndex, data);
-        }
-    } else {
-        int evIndex = INDEX_INVALID;
-        if (nodeIsTerminal(levelIndex, faceIndex, &evIndex)) {
-            dataSize = writeTerminalNode(levelIndex, faceIndex, evIndex, offset, data);
-        } else {
-            dataSize = writeRecursiveNode(levelIndex, faceIndex, offset, data);
-        }
-    }
-    return dataSize;
-}
-
-int
-CharacteristicBuilder::getTreeSize(
-    int levelIndex, int faceIndex) const {
-
-    return getNodeSize(levelIndex, faceIndex) / sizeof(int);
+    c->firstSupport += 25;
 }
 
 void
-CharacteristicBuilder::writeTree(
-    int levelIndex, int faceIndex, int * treePtr) const {
+CharacteristicBuilder::populateRecursiveNode(
+    int levelIndex, int faceIndex, Context * c) {
 
-    assert(treePtr);
-    writeNode(levelIndex, faceIndex, 0, (uint8_t *)treePtr);
+    int * tree = &c->ch->_tree[c->treeOffset];
+    ((NodeDescriptor *)tree)->SetRecursive(levelIndex);
+    ++tree;
+
+    ConstIndexArray children =
+        _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
+
+    for (int i=0; i<children.size(); ++i) {
+        tree[i] = c->treeOffset;
+        populateNode(levelIndex+1, children[i], c);
+    }
+}
+
+void
+CharacteristicBuilder::populateNode(
+    int levelIndex, int faceIndex, Context * c) {
+
+    PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
+    if (patchTag.hasPatch) {
+        if (patchTag.isRegular) {
+            populateRegularNode(levelIndex, faceIndex, c);
+        } else {
+            populateEndCapNode(levelIndex, faceIndex, c);
+        }
+    } else {
+        int evIndex = INDEX_INVALID;
+        if (nodeIsTerminal(levelIndex, faceIndex, &evIndex)) {
+        } else {
+            populateRecursiveNode(levelIndex, faceIndex, c);
+        }
+    }
+}
+
+void
+CharacteristicBuilder::populateSupports(
+    Context const & context, Neighborhood const & neighborhood, Characteristic * ch) {
+
+    // generate stencils table
+    // XXXX manuelk : need to switch this for a code path that only computes
+    // the stencils needed for the neighborhoods not yet in the map
+    Far::StencilTableFactory::Options options;
+    options.generateOffsets = true;
+    options.generateIntermediateLevels = false;
+    Far::StencilTable const * stencils =
+        Far::StencilTableFactory::Create(_refiner, options);
+
+    // count the total number of influence weights for all the supports
+    int numSupports = (int)context.supportIndices.size(),
+        numWeightsTotal = 0;
+    for (int i=0; i<numSupports; ++i) {
+        numWeightsTotal += stencils->GetSizes()[context.supportIndices[i]];
+    }
+
+    ch->_sizes.resize(numSupports);
+    ch->_offsets.resize(numSupports);
+    ch->_indices.resize(numWeightsTotal);
+    ch->_weights.resize(numWeightsTotal);
+
+    // copy the stencil weights into the supports
+    for (int i=0, offset=0; i<numSupports; ++i) {
+
+        Stencil stencil = stencils->GetStencil(context.supportIndices[i]);
+
+        int size = stencil.GetSize();
+
+        ch->_sizes[i] = size;
+
+        for (int k=0; k<size; ++i) {
+            ch->_indices[offset+k] =
+                neighborhood.Remap(stencil.GetVertexIndices()[k]);
+        }
+
+        memcpy(&ch->_weights[offset], stencil.GetWeights(), size * sizeof(float));
+
+        ch->_offsets[i] = offset;
+
+        offset += stencil.GetSize();
+    }
+
+    delete stencils;
 }
 
 Characteristic const *
-CharacteristicBuilder::Create(int levelIndex, int faceIndex) {
+CharacteristicBuilder::Create(
+    int levelIndex, int faceIndex, Neighborhood const & neighborhood) {
 
-    Characteristic * ch = new Characteristic(&_charmap);
+    Characteristic * ch =
+        new Characteristic(&_charmap, neighborhood.GetNumVertices());
 
-    // populate tree
-    ch->_treeSize = getTreeSize(levelIndex, faceIndex);
-    ch->_tree = new int[ch->_treeSize];
-#if 0
-    // debug : paint memory
-    for (int i=0; i<treeSize; ++i) {
-        ch->_tree[i]=-1;
-    }
-#endif
-    writeTree(levelIndex, faceIndex, ch->_tree);
-    
-    return ch; 
+    bool nonquad = levelIndex!=0;
+
+    Context context(faceIndex, nonquad, ch);
+
+    identifyNode(levelIndex, faceIndex, &context);
+
+    ch->_tree.resize(context.treeSize);
+
+    context.supportIndices.resize(context.numSupports);
+
+    populateNode(levelIndex, faceIndex, &context);
+
+    populateSupports(context, neighborhood, ch);
+
+    return ch;
 }
 
 
@@ -675,17 +733,7 @@ CharacteristicBuilder::FinalizeVaryingStencils() {
 // constructor
 CharacteristicBuilder::CharacteristicBuilder(
     TopologyRefiner const & refiner, CharacteristicMap const & charmap) :
-        _refiner(refiner), _charmap(charmap), _stencils(0) {
-
-    // generate stencils table
-    // XXXX manuelk : need to switch this for a code path that only computes
-    // the stencils needed for the neighborhoods not yet in the map
-    {
-        Far::StencilTableFactory::Options options;
-        options.generateOffsets = true;
-        options.generateIntermediateLevels = false;
-        _stencils = Far::StencilTableFactory::Create(_refiner, options);
-    }
+        _refiner(refiner), _charmap(charmap) {
 
     // identify patch types
     bool useSingleCrease = refiner.GetAdaptiveOptions().useSingleCreasePatch;

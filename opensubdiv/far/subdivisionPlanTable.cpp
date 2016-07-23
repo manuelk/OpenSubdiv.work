@@ -33,16 +33,7 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 SubdivisionPlanTable::SubdivisionPlanTable(
-    CharacteristicMap const * charmap) : _charmap(charmap) {
-}
-
-SubdivisionPlanTable::~SubdivisionPlanTable() {
-    // If the characteristics map is set to hashing, then client code owns it.
-    // Otherwise, the SubdivisionPlanTable allocated it and is responsible for
-    // destroying it.
-    if (_charmap->GetOptions().hashSize==0) {
-        delete _charmap;
-    }
+    CharacteristicMap const & charmap) : _charmap(charmap) {
 }
 
 int
@@ -62,70 +53,6 @@ SubdivisionPlanTable::countPlans(
     }
     return nplans;
 }
-
-SubdivisionPlanTable const *
-SubdivisionPlanTable::Create(TopologyRefiner const & refiner, Options options) {
-
-    if (!CharacteristicMap::supportsEndCaps(options.GetEndCapType())) {
-        return 0;
-    }
-
-    TopologyLevel const & coarseLevel = refiner.GetLevel(0);
-
-    int regFaceSize = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType());
-
-    int nfaces = coarseLevel.GetNumFaces(),
-        nplans = countPlans(coarseLevel, regFaceSize);
-
-    // note : this map is not set to hash topology and we own it (destructor
-    //        will delete it)
-    options.hashSize = 0;
-    CharacteristicMap * charmap = new CharacteristicMap(options);
-    charmap->_characteristics.reserve(nplans);
-
-    CharacteristicBuilder charBuilder(refiner, *charmap);
-
-    SubdivisionPlanTable * table = new SubdivisionPlanTable(charmap);
-    table->_plans.reserve(nplans);
-
-    int rootNodeOffset = 0;
-    for (int face = 0; face < nfaces; ++face) {
-
-        if (coarseLevel.IsFaceHole(face)) {
-            continue;
-        }
-
-        ConstIndexArray verts = coarseLevel.GetFaceVertices(face);
-        if (verts.size()==regFaceSize) {
-
-            Characteristic const * ch = charBuilder.Create(0, face);
-            charmap->_characteristics.push_back(ch);
-
-            SubdivisionPlan plan;
-            plan.charIndex = (int)charmap->_characteristics.size()-1;
-            plan.rootNodeOffset = rootNodeOffset;
-            table->_plans.push_back(plan);
-            rootNodeOffset += ch->GetTreeSize();
-        } else {
-            ConstIndexArray children = coarseLevel.GetFaceChildFaces(face);
-            for (int i=0; i<children.size(); ++i) {
-
-                Characteristic const * ch = charBuilder.Create(1, children[i]);
-                charmap->_characteristics.push_back(ch);
-
-                SubdivisionPlan plan;
-                plan.charIndex = (int)charmap->_characteristics.size()-1;
-                plan.rootNodeOffset = rootNodeOffset;
-                table->_plans.push_back(plan);
-                rootNodeOffset += ch->GetTreeSize();
-            }
-        }
-    }
-    charmap->_localPointStencils = charBuilder.FinalizeStencils();
-    charmap->_localPointVaryingStencils = charBuilder.FinalizeVaryingStencils();
-    return table;
-}
-
 
 
 } // end namespace Far
