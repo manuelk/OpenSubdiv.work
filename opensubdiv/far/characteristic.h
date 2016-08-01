@@ -106,7 +106,7 @@ public:
     ~Characteristic();
 
     /// \brief Returns the map this characteristic belongs to
-    CharacteristicMap const * GetCharacteristicMap() const { return _characteristicMap; }
+    CharacteristicMap const & GetCharacteristicMap() const { return _characteristicMap; }
 
     //@{
     ///  @name Evaluation methods
@@ -259,6 +259,8 @@ public:
         int field0:32;
     };
 
+    struct Support;
+
     /// Tree Node
     ///
     /// note : The burden is on the client to check whether a particular accessor
@@ -275,27 +277,28 @@ public:
             return _characteristic->_tree[_treeOffset];
         }
 
-        /// \brief Returns the number of children nodes
-        int GetNumChildrenNodes() const;
+        /// \brief Returns a pointer to the characteric that owns this node
+        Characteristic const * GetCharacteristic() const { return _characteristic; }
+        /// \brief Returns the number of support points required for the
+        /// sub-patch pointed to by this node
+        int GetNumSupports() const;
 
-        /// \brief Returns the node's child at index
-        /// note : 4 children for RECURSIVE nodes, 1 child for TERMINAL nodes
-        Node GetChildNode(int childIndex=0) const;
+        /// \brief Returns the requested support at index
+        /// (index is relative : in range [0, GetNumSupports()])
+        Characteristic::Support GetSupport(int supportIndex) const;
 
         /// \brief Returns the creased edge sharpness
         /// note : the value is undefined for any node other than REGULAR
         ///        with a SingleCrease flag set to true
         float GetSharpness() const;
 
-        /// \brief Returns a pointer to the indices of the support points
-        ConstIndexArray GetSupportIndices() const;
 
-        /// \brief Copies the 16 support indices of the selected quadrant of
-        //  a terminal node
-        void GetSupportIndices(unsigned char quadrant, Index * indices) const;
+        /// \brief Returns the number of children nodes
+        int GetNumChildrenNodes() const;
 
-        /// \brief Returns a pointer to the characteric that owns this node
-        Characteristic const * GetCharacteristic() const { return _characteristic; }
+        /// \brief Returns the node's child at index
+        /// note : 4 children for RECURSIVE nodes, 1 child for TERMINAL nodes
+        Node GetChildNode(int childIndex=0) const;
 
         /// \brief Returns the node's relative offset in the tree (integer stride)
         int GetTreeOffset() const { return _treeOffset; }
@@ -313,9 +316,20 @@ public:
             return &_characteristic->_tree[_treeOffset];
         }
 
+        static int getRegularNodeSize(bool isSharp) { return isSharp ? 3 : 2; }
+
+        static int getEndCapNodeSize() { return 2; }
+
+        static int getTerminalNodeSize() { return 3; }
+
+        static int getRecursiveNodeSize() { return 5; }
+
+        Index getFirstSupportIndex() const;
+
         int getNodeSize() const;
 
         friend class Characteristic;
+        friend class CharacteristicBuilder;
 
         Node(Characteristic const * ch, int treeOffset) :
             _characteristic(ch), _treeOffset(treeOffset) { }
@@ -397,7 +411,7 @@ private:
 
     int                     _numControlVertices;
 
-    short                   _supportLevelCounts[10];
+    short                   _supportLevelCounts[10]; // XXX TODO
     std::vector<short>      _sizes;
     std::vector<LocalIndex> _indices;
     std::vector<Index>      _offsets;
@@ -451,10 +465,10 @@ private:
     friend class CharacteristicMap;
     friend class SubdivisionPlanTable;
 
-    Characteristic(CharacteristicMap const * charmap, int numControlVertices) :
+    Characteristic(CharacteristicMap const & charmap, int numControlVertices) :
         _characteristicMap(charmap), _numControlVertices(numControlVertices) { }
 
-    CharacteristicMap const * _characteristicMap;
+    CharacteristicMap const & _characteristicMap;
 };
 
 

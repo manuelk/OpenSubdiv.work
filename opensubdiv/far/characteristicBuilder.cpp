@@ -317,12 +317,24 @@ CharacteristicBuilder::nodeIsTerminal(
     return false;
 }
 
+//
+// Builder context
+//
+
 struct CharacteristicBuilder::Context {
 
     Context(Index _faceIndex, bool _nonquad, Characteristic * _ch) :
         faceIndex(_faceIndex), nonquad(_nonquad), ch(_ch),
             numSupports(0), firstSupport(0),
                 treeSize(0), treeOffset(0) { }
+
+    int * GetCurrentTreePtr() {
+        return &ch->_tree[treeOffset];
+    }
+
+    int * GetCurrentSupportsPtr() {
+        return &supportIndices[firstSupport];
+    }
 
     Characteristic * ch;
 
@@ -358,38 +370,19 @@ getTerminalNumSupports(int nlevels, EndCapType type) {
     return getEndCapNumSupports(type) + 25 * nlevels;
 }
 
-inline int
-getRegularNodeSize(bool isSingleCrease) {
-    return sizeof(NodeDescriptor) + 1 * sizeof(int) + isSingleCrease ? sizeof(float) : 0;
-}
-
-inline int
-getEndCapNodeSize() {
-    return sizeof(NodeDescriptor) + 1 * sizeof(int);
-}
-
-inline int
-getTerminalNodeSize(int nlevels) {
-    return getEndCapNodeSize() +
-        nlevels * (sizeof(NodeDescriptor) + 1 * sizeof(int) + 1 * sizeof(int));
-}
-
-inline int
-getRecursiveNodeSize() {
-    return sizeof(NodeDescriptor) + 4 * sizeof(int);
-}
-
 void
 CharacteristicBuilder::identifyNode(int levelIndex, int faceIndex, Context * c) {
+
+    typedef Characteristic::Node Node;
 
     PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
     if (patchTag.hasPatch) {
         if (patchTag.isRegular) {
             c->numSupports += 16;
-            c->treeSize += getRegularNodeSize(patchTag.isSingleCrease);
+            c->treeSize += Node::getRegularNodeSize(patchTag.isSingleCrease);
         } else {
             c->numSupports += getEndCapNumSupports(_endcapBuilder->type);
-            c->treeSize += getEndCapNodeSize();
+            c->treeSize += Node::getEndCapNodeSize();
         }
     } else {
         int evIndex = INDEX_INVALID;
@@ -399,10 +392,10 @@ CharacteristicBuilder::identifyNode(int levelIndex, int faceIndex, Context * c) 
             EndCapType type = _endcapBuilder->type;
             int nlevels = _refiner.GetMaxLevel() - levelIndex;
             c->numSupports += getTerminalNumSupports(nlevels, type);
-            c->treeSize += getTerminalNodeSize(nlevels);
+            c->treeSize += Node::getEndCapNodeSize() + nlevels*Node::getTerminalNodeSize();
         } else {
             // recurse through children to accumulate
-            c->treeSize += getRecursiveNodeSize();
+            c->treeSize += Node::getRecursiveNodeSize();
             ConstIndexArray children =
                 _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
             for (int i=0; i<children.size(); ++i) {
@@ -414,7 +407,7 @@ CharacteristicBuilder::identifyNode(int levelIndex, int faceIndex, Context * c) 
 
 void
 CharacteristicBuilder::populateRegularNode(
-    int levelIndex, int faceIndex, Context * c) {
+    int levelIndex, int faceIndex, Context * ctx) {
 
     PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
 
@@ -468,27 +461,29 @@ CharacteristicBuilder::populateRegularNode(
     bool nonquad = computeSubPatchDomain(levelIndex, faceIndex, &u, &v);
 
     // copy to buffers
-    int * tree = &c->ch->_tree[c->treeOffset];
+    int * tree = ctx->GetCurrentTreePtr();
 
     ((NodeDescriptor *)tree)->SetPatch(Characteristic::NODE_REGULAR,
         nonquad, singleCrease, levelIndex, boundaryMask, u, v);
     ++tree;
 
-    *tree = c->firstSupport;
+    *tree = ctx->firstSupport;
     ++tree;
 
-    if (patchTag.isSingleCrease) {
+    if (singleCrease) {
         *(float *)tree = sharpness;
     }
 
-    Index * supportIndices = &c->supportIndices[c->firstSupport];
-    offsetAndPermuteIndices(patchVerts, 16, levelVertOffset, permutation, supportIndices);
-    c->firstSupport += 16;
+    offsetAndPermuteIndices(
+        patchVerts, 16, levelVertOffset, permutation, ctx->GetCurrentSupportsPtr());
+
+    ctx->firstSupport += 16;
+    ctx->treeOffset += Characteristic::Node::getRegularNodeSize(singleCrease);
 }
 
 void
 CharacteristicBuilder::populateEndCapNode(
-    int levelIndex, int faceIndex, Context * c) {
+    int levelIndex, int faceIndex, Context * ctx) {
 
     assert(_endcapBuilder);
 
@@ -519,19 +514,23 @@ CharacteristicBuilder::populateEndCapNode(
     bool nonquad = computeSubPatchDomain(levelIndex, faceIndex, &u, &v);
 
     // copy to buffers
-    int * tree = &c->ch->_tree[c->treeOffset];
+    int * tree = ctx->GetCurrentTreePtr();
     ((NodeDescriptor *)tree)->SetPatch(Characteristic::NODE_END,
         nonquad, false, levelIndex, 0, u, v);
     ++tree;
 
-    Index * supportIndices = &c->supportIndices[c->firstSupport];
-    memcpy(supportIndices, cvs.begin(), cvs.size() * sizeof(Index));
-    c->firstSupport += cvs.size();
+    *tree = ctx->firstSupport;
+    ++tree;
+
+    memcpy(ctx->GetCurrentSupportsPtr(), cvs.begin(), cvs.size() * sizeof(Index));
+
+    ctx->firstSupport += cvs.size();
+    ctx->treeOffset += Characteristic::Node::getEndCapNodeSize();
 }
 
 void
 CharacteristicBuilder::populateTerminalNode(
-    int levelIndex, int faceIndex, int evIndex, Context * c) {
+    int levelIndex, int faceIndex, int evIndex, Context * ctx) {
 
     // xxxx manuelk right now terminal nodes are recursive : paper suggests
     // a single node packing 25 * level supports. Might be doable but this code
@@ -552,9 +551,18 @@ CharacteristicBuilder::populateTerminalNode(
     ConstIndexArray childFaceIndices =
         _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
 
-    // gather support indices for the 3 sub-patches
-    Index * supportIndices = &c->supportIndices[c->firstSupport];
+    int * tree = ctx->GetCurrentTreePtr(),
+          nodeSize = Characteristic::Node::getTerminalNodeSize(),
+          firstSupport = ctx->firstSupport,
+          childOffset = ctx->treeOffset + nodeSize;
+
+    Index * supportIndices = ctx->GetCurrentSupportsPtr();
+
+    ctx->treeOffset += nodeSize;
+    ctx->firstSupport += 25;
+
     for (int child=0; child<childFaceIndices.size(); ++child) {
+        // gather support indices for the 3 sub-patches
 
         int childFaceIndex = childFaceIndices[child];
 
@@ -584,9 +592,9 @@ CharacteristicBuilder::populateTerminalNode(
 
             if (patchTag.hasPatch) {
                 // we have reached the maximum isolation : end-cap node
-                populateEndCapNode(childLevelIndex, childFaceIndex, c);
+                populateEndCapNode(childLevelIndex, childFaceIndex, ctx);
             } else {
-                populateTerminalNode(childLevelIndex, childFaceIndex, evIndex, c);
+                populateTerminalNode(childLevelIndex, childFaceIndex, evIndex, ctx);
             }
         }
     }
@@ -597,49 +605,51 @@ CharacteristicBuilder::populateTerminalNode(
     short u, v;
     bool nonquad = computeSubPatchDomain(childLevelIndex, childFaceIndices[0], &u, &v);
 
-    int * tree = &c->ch->_tree[c->treeOffset];
     ((NodeDescriptor *)tree)->SetTerminal(nonquad, levelIndex, permuteWinding(evIndex), u, v);
     ++tree;
 
-    *tree = c->firstSupport;
+    *tree = firstSupport;
     ++tree;
 
-    c->firstSupport += 25;
+    *tree = childOffset;
+    ++tree;
 }
 
 void
 CharacteristicBuilder::populateRecursiveNode(
-    int levelIndex, int faceIndex, Context * c) {
+    int levelIndex, int faceIndex, Context * ctx) {
 
-    int * tree = &c->ch->_tree[c->treeOffset];
+    int * tree = ctx->GetCurrentTreePtr();
     ((NodeDescriptor *)tree)->SetRecursive(levelIndex);
     ++tree;
 
+    ctx->treeOffset += Characteristic::Node::getRecursiveNodeSize();
+
     ConstIndexArray children =
         _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
-
-    for (int i=0; i<children.size(); ++i) {
-        tree[i] = c->treeOffset;
-        populateNode(levelIndex+1, children[i], c);
+    assert(children.size()==4);
+    for (int i=0; i<4; ++i) {
+        tree[i] = ctx->treeOffset;
+        populateNode(levelIndex+1, children[i], ctx);
     }
 }
 
 void
 CharacteristicBuilder::populateNode(
-    int levelIndex, int faceIndex, Context * c) {
+    int levelIndex, int faceIndex, Context * ctx) {
 
     PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
     if (patchTag.hasPatch) {
         if (patchTag.isRegular) {
-            populateRegularNode(levelIndex, faceIndex, c);
+            populateRegularNode(levelIndex, faceIndex, ctx);
         } else {
-            populateEndCapNode(levelIndex, faceIndex, c);
+            populateEndCapNode(levelIndex, faceIndex, ctx);
         }
     } else {
         int evIndex = INDEX_INVALID;
         if (nodeIsTerminal(levelIndex, faceIndex, &evIndex)) {
         } else {
-            populateRecursiveNode(levelIndex, faceIndex, c);
+            populateRecursiveNode(levelIndex, faceIndex, ctx);
         }
     }
 }
@@ -698,7 +708,7 @@ CharacteristicBuilder::Create(
     int levelIndex, int faceIndex, Neighborhood const & neighborhood) {
 
     Characteristic * ch =
-        new Characteristic(&_charmap, neighborhood.GetNumVertices());
+        new Characteristic(_charmap, neighborhood.GetNumVertices());
 
     bool nonquad = levelIndex!=0;
 

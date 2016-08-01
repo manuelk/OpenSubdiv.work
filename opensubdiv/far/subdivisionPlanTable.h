@@ -77,6 +77,10 @@ public:
         return _charmap.GetCharacteristic(charIndex);
     }
 
+    int GetNumSubdivisionPlans() const {
+        return (int)_plans.size();
+    }
+
     SubdivisionPlanVector const & GetSubdivisionPlans() const {
         return _plans;
     }

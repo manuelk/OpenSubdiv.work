@@ -251,7 +251,7 @@ getAdaptiveColor(Far::Characteristic::Node node) {
     } else if (desc.GetType()==Far::Characteristic::NODE_END) {
 
         Far::EndCapType type =
-            node.GetCharacteristic()->GetCharacteristicMap()->GetEndCapType();
+            node.GetCharacteristic()->GetCharacteristicMap().GetEndCapType();
         switch (type) {
             case Far::ENDCAP_BILINEAR_BASIS : break;
             case Far::ENDCAP_BSPLINE_BASIS : break;
@@ -335,108 +335,15 @@ printPatchTables(Far::TopologyRefiner const * refiner) {
     delete patchTable;
 }
 
-static void
-printCharmapNodes(Far::CharacteristicMap const & charmap) {
-
-    typedef Far::Characteristic::Node Node;
-    typedef Far::Characteristic::NodeDescriptor NodeDesc;
-
-    printf("Nodes :\n");
-
-    int nchars = charmap.GetNumCharacteristics();
-    for (int i=0; i<nchars; ++i) {
-
-        Far::Characteristic const * ch = charmap.GetCharacteristic(i);
-
-        printf("Characteristic : %d\n", i);
-
-        int nodeIndex = 0;
-        for (Node it = ch->GetTreeNode(0); it.GetTreeOffset()<ch->GetTreeSize(); ++it, ++nodeIndex) {
-
-            NodeDesc desc = it.GetDescriptor();
-
-            if (desc.GetType()!=Far::Characteristic::NODE_REGULAR &&
-                desc.GetType()!=Far::Characteristic::NODE_END) {
-                continue;
-            }
-
-            printf("    ");
-
-            Far::PatchParam param;
-            param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), desc.GetDepth(),
-                desc.NonQuadRoot(), desc.GetBoundaryMask(), 0);
-            param.Print();
-            printf(" ");
-
-            Far::ConstIndexArray supportIndices = it.GetSupportIndices();
-            printArray(supportIndices);
-            printf(" ID=%3d type=%d offset=%4d screase=%d", nodeIndex, desc.GetType(), it.GetTreeOffset(), desc.SingleCrease());
-            float const * c = getAdaptiveColor(it);
-            printf(" bcount=%d color=(%f %f %f)", desc.GetBoundaryCount(), c[0], c[1], c[2]);
-            printf("\n");
-        }
-    }
-    fflush(stdout);
-}
-
 //------------------------------------------------------------------------------
 
 GLFont * g_font=0;
-
-static void
-createNodeIDs(Far::CharacteristicMap const & charmap,
-    std::vector<Vertex> const & vertexBuffer) {
-
-    typedef Far::Characteristic::Node Node;
-    typedef Far::Characteristic::NodeDescriptor NodeDesc;
-
-    int nchars = charmap.GetNumCharacteristics();
-
-    for (int i=0; i<nchars; ++i) {
-
-        Far::Characteristic const * ch = charmap.GetCharacteristic(i);
-
-        Node it = ch->GetTreeNode(0);
-        for (int nindex=0; it.GetTreeOffset()<ch->GetTreeSize(); ++nindex, ++it) {
-
-            NodeDesc desc = it.GetDescriptor();
-
-            if (desc.GetType()==Far::Characteristic::NODE_RECURSIVE)
-                continue;
-
-            OpenSubdiv::Far::ConstIndexArray const cvs = it.GetSupportIndices();
-
-            Vertex center;
-            center.Clear();
-
-            float weight = 1.0f / cvs.size();
-            for (int k=0; k<cvs.size(); ++k) {
-                int support = cvs[k];
-                if (support!=Far::INDEX_INVALID) {
-                    center.AddWithWeight(vertexBuffer[support], weight);
-                }
-            }
-
-            static char buf[16];
-            snprintf(buf, 16, "%d-%d", i, nindex);
-            g_font->Print3D(center.point, buf, 1);
-        }
-    }
-
-}
 
 //------------------------------------------------------------------------------
 int g_currentCharIndex = 0,
     g_currentNodeIndex = -1;
 
 Far::Characteristic::Node g_currentNode;
-
-static int remapTerminalIndices[4][16] = {
-    {0, 1, 2, 3, 5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18},
-    {1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19},
-    {5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 23}, // note : winding order is 0, 1, 3, 2
-    {6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24},
-};
 
 static void
 createVertNumbers(Far::TopologyRefiner const & refiner,
@@ -492,11 +399,11 @@ createNodeNumbers(Far::CharacteristicMap const & charmap,
         for (int count=0; node.GetTreeOffset()<ch->GetTreeSize(); ++node, ++count) {
 
             if (count==g_currentNodeIndex) {
-
+/*
                 g_currentNode = node;
 
                 Far::ConstIndexArray supports = node.GetSupportIndices();
-#if 0
+
                 Far::Characteristic::NodeDescriptor desc = node.GetDescriptor();
 
                 if (desc.GetType()==Far::Characteristic::NODE_TERMINAL) {
@@ -513,7 +420,7 @@ createNodeNumbers(Far::CharacteristicMap const & charmap,
                     printf("\n------------\n");
                     fflush(stdout);
                 }
-#endif
+
                 for (int k=0; k<supports.size(); ++k) {
 
                     Far::Index vertIndex = supports[k];
@@ -529,6 +436,7 @@ createNodeNumbers(Far::CharacteristicMap const & charmap,
                     }
                 }
                 return;
+*/            
             }
         }
     }
@@ -569,7 +477,7 @@ writeDiagraph(Far::CharacteristicMap const & charmap, int charIndex) {
 GLMesh * g_tessMesh = 0;
 
 static void
-tessChar(Far::Characteristic const * ch, int tessFactor, int charOffset,
+tessChar(int tessFactor, int charOffset,
     std::vector<float> & positions, std::vector<float> & normals, std::vector<float> & colors,
         float * pos, float * norm, float * col) {
 
@@ -616,7 +524,7 @@ tessChar(Far::Characteristic const * ch, int tessFactor, int charOffset,
 
 //#define DO_MULTI_THREAD
 static void
-createTessMesh(Far::CharacteristicMap const & charmap, int tessFactor,
+createTessMesh(Far::SubdivisionPlanTable const & plansTable, int tessFactor,
     std::vector<float> & positions, std::vector<float> & normals, std::vector<float> & colors,
         bool createPointsMesh=false) {
 
@@ -629,8 +537,9 @@ createTessMesh(Far::CharacteristicMap const & charmap, int tessFactor,
         topo.nverts = (int)positions.size()/3;
         g_tessMesh = new GLMesh(topo, GLMesh::DRAW_POINTS);
     } else {
-        int nchars = charmap.GetNumCharacteristics(),
-            ntriangles = 2 * (tessFactor-1) * (tessFactor-1) * nchars;
+    
+        int nplans = plansTable.GetNumSubdivisionPlans(),
+            ntriangles = 2 * (tessFactor-1) * (tessFactor-1) * nplans;
 
         // create tess mesh
 
@@ -643,51 +552,24 @@ createTessMesh(Far::CharacteristicMap const & charmap, int tessFactor,
         float * pos = topo.positions,
               * norm = topo.normals,
               * col = topo.colors;
-#ifdef DO_MULTI_THREAD
-        static int const nthreads = 16;
-        std::thread threads[nthreads];
-        for (int charIndex=0, charOffset=0; charIndex<nchars; charIndex+=nthreads) {
 
-            for (int t=0; t<nthreads; ++t) {
-                if (charIndex+t>=nchars) {
-                    break;
-                }
-                Far::Characteristic const * ch = charmap.GetCharacteristic(charIndex+t);
-                if (ch->GetTreeSize()==0) {
-                    continue;
-                }
-                threads[t] = std::thread(tessChar, ch, tessFactor, charOffset,
-                    positions, normals, colors, pos, norm, col);
-                int ofs = (tessFactor-1) * (tessFactor-1) * 18;
-                pos  += ofs;
-                norm += ofs;
-                col  += ofs;
-                charOffset += tessFactor * tessFactor;
-            }
+        for (int i=0, offset=0; i<nplans; ++i) {
 
-            for (int t=0; t<nthreads; ++t) {
-                if (threads[t].joinable()) {
-                    threads[t].join();
-                }
-            }
-        }
-#else // DO_MULTI_THREAD
-        for (int charIndex=0, charOffset=0; charIndex<nchars; ++charIndex) {
+            Far::SubdivisionPlan const & plan =
+                plansTable.GetSubdivisionPlans()[i];
 
-            Far::Characteristic const * ch = charmap.GetCharacteristic(charIndex);
-
-            if (ch->GetTreeSize()==0) {
+            if (plan.charIndex==Far::INDEX_INVALID) {
                 continue;
             }
 
-            tessChar(ch, tessFactor, charOffset, positions, normals, colors, pos, norm, col);
+            tessChar(tessFactor, offset, positions, normals, colors, pos, norm, col);
             int ofs = (tessFactor-1) * (tessFactor-1) * 18;
             pos  += ofs;
             norm += ofs;
             col  += ofs;
-            charOffset += tessFactor * tessFactor;
+            offset += tessFactor * tessFactor;
         }
-#endif // DO_MULTI_THREAD
+
         g_tessMesh = new GLMesh(topo);
 
         delete [] topo.positions;
@@ -706,8 +588,6 @@ GLControlMeshDisplay g_controlMeshDisplay;
 Osd::GLVertexBuffer * g_controlMeshVerts = 0;
 
 Far::SubdivisionPlanTable const * g_plansTable;
-
-int g_treeSizeTotal = 0;
 
 static void
 createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
@@ -742,64 +622,31 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     Far::CharacteristicMap::Options options;
     options.endCapType = g_endCap;
     options.useTerminalNode = g_useTerminalNodes;
-    if (g_useTopologyHashing) {
-        options.hashSize = 5000;
-        Far::CharacteristicMap * charmap = new Far::CharacteristicMap(options);
-        g_plansTable = charmap->HashTopology(*refiner);
-    } else {
-        //g_plansTable = Far::SubdivisionPlanTable::Create(*refiner, options);
-    }
+    options.hashSize = 5000;
+    Far::CharacteristicMap * charmap = new Far::CharacteristicMap(options);
 
-    Far::CharacteristicMap const & charmap = g_plansTable->GetCharacteristicMap();
+    g_plansTable = charmap->HashTopology(*refiner);
 
-    // create vertex primvar data buffer
-    std::vector<Vertex> supportsBuffer;
+    // copy coarse vertices positions
+    std::vector<Vertex> controlVerts(shape->GetNumVertices());
     {
-        int numVertsTotal = refiner->GetNumVerticesTotal();
-        if (charmap.GetLocalPointStencilTable()) {
-            numVertsTotal += charmap.GetLocalPointStencilTable()->GetNumStencils();
-        }
-
-        supportsBuffer.resize(numVertsTotal);
-        Vertex * verts = &supportsBuffer[0];
-
-        // copy coarse vertices positions
-        int ncoarseverts = shape->GetNumVertices();
-        for (int i=0; i<ncoarseverts; ++i) {
+        for (int i=0; i<shape->GetNumVertices(); ++i) {
             float const * ptr = &shape->verts[i*3];
-            memcpy(verts[i].point, ptr, 3 * sizeof(float));
-        }
-
-        // populate primvar buffer with Far interpolated vertex data
-        {
-            // TopologyRefiner interpolation
-            Vertex * src = verts;
-            for (int level = 1; level <= refiner->GetMaxLevel(); ++level) {
-                Vertex * dst = src + refiner->GetLevel(level-1).GetNumVertices();
-                Far::PrimvarRefiner(*refiner).Interpolate(level, src, dst);
-                src = dst;
-            }
-
-            // endpatch basis conversion
-            Far::StencilTable const * localPoints =
-                charmap.GetLocalPointStencilTable();
-            if (localPoints) {
-                localPoints->UpdateValues(verts, verts + refiner->GetNumVerticesTotal());
-            }
+            memcpy(controlVerts[i].point, ptr, 3 * sizeof(float));
         }
     }
 
     delete shape;
 
     if (g_DrawVertIDs) {
-        createVertNumbers(*refiner, supportsBuffer);
+        createVertNumbers(*refiner, controlVerts);
     }
     if (g_DrawFaceIDs) {
-        createFaceNumbers(*refiner, supportsBuffer);
+        createFaceNumbers(*refiner, controlVerts);
     }
 
     // draw selected node data
-    createNodeNumbers(charmap, supportsBuffer);
+    //createNodeNumbers(charmap, supportsBuffer);
 
 
     //
@@ -811,12 +658,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 //#define DEBUG_PRINT
 #ifdef DEBUG_PRINT
     printPatchTables(refiner);
-    printCharmapNodes(charmap);
 #endif
-
-    if (g_DrawNodeIDs) {
-        createNodeIDs(charmap, supportsBuffer);
-    }
 
     Far::SubdivisionPlanVector const & plans = g_plansTable->GetSubdivisionPlans();
     int nplans = (int)plans.size();
@@ -824,8 +666,6 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
     // interpolate limits
 
-#define TESS_DOMAIN
-#ifdef TESS_DOMAIN
     nverts = tessFactor * tessFactor * nplans;
 
     std::vector<float> positions(3 * nverts),
@@ -836,22 +676,16 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
           * norm = &normals[0],
           * col = &colors[0];
 
-    g_treeSizeTotal = 0;
+    std::vector<Vertex> supports;
+
+    float wP[20], wDs[20], wDt[20];
+
     for (int i=0; i<nplans; ++i) {
 
-        int charIndex = plans[i].charIndex;
-
-        Far::Characteristic const * ch = charmap.GetCharacteristic(charIndex);
-
-        if (ch->GetTreeSize()==0) {
-            continue; // skip holes
-        }
-
-        g_treeSizeTotal += ch->GetTreeSize();
+        Far::Characteristic const * ch =
+            g_plansTable->GetCharacteristic(plans[i].charIndex);
 
         // interpolate vertices
-        float wP[20], wDs[20], wDt[20];
-
         for (int y=0; y<tessFactor; ++y) {
             for (int x=0; x<tessFactor; ++x, pos+=3, norm+=3, col+=3) {
 
@@ -864,32 +698,28 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 Far::Characteristic::Node node =
                     ch->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant);
 
-                Far::Characteristic::NodeDescriptor desc = node.GetDescriptor();
+                // evaluate supports from characteristic stencils
+                int nsupports = node.GetNumSupports();
 
-                Far::ConstIndexArray supportIndices = node.GetSupportIndices();
+                supports.resize(nsupports);
 
-                Far::Index supports[16];
-                if (desc.GetType()==Far::Characteristic::NODE_TERMINAL) {
-                    node.GetSupportIndices(quadrant, supports);
-                    supportIndices = Far::ConstIndexArray(supports, 16);
+                for (int j=0; j<nsupports; ++j) {
+                
+                    Far::Characteristic::Support stencil = node.GetSupport(j);
+                    assert(stencil.size>0 && stencil.indices!=0 && stencil.weights!=0);
+
+                    supports[j].Clear();
+                    for (short k=0; k<stencil.size; ++k) {
+                         supports[j].AddWithWeight(
+                             controlVerts[stencil.indices[k]], stencil.weights[k]);
+                    }
+
                 }
-//printf("s=%f t=%f depth=%d quadrant=%d\n", s, t, node.GetDescriptor().GetDepth(), quadrant);
-//printBasis(wP);
-//printf("supports=");
-//printIndices(supportIndices.begin(), 16);
-//printf("\n------------------------\n");
-
-                // interpolate support points with basis weights
+                 // interpolate support points with basis weights
                 LimitFrame limit;
                 limit.Clear();
-                for (int k=0; k<supportIndices.size(); ++k) {
-                    assert(supportIndices[k]<(int)supportsBuffer.size());
-
-                    if (supportIndices[k]==-1)
-                        continue;
-
-                    Vertex const & support = supportsBuffer[supportIndices[k]];
-                    limit.AddWithWeight(support, wP[k], wDs[k], wDt[k]);
+                for (int j=0; j<nsupports; ++j) {
+                    limit.AddWithWeight(supports[j], wP[j], wDs[j], wDt[j]);
                 }
 
                 memcpy(pos, limit.point, 3 * sizeof(float));
@@ -897,6 +727,8 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 // normal
                 cross(norm, limit.deriv1, limit.deriv2 );
                 normalize(norm);
+
+                Far::Characteristic::NodeDescriptor desc = node.GetDescriptor();
 
                 // color
                 switch (g_shadingMode) {
@@ -951,85 +783,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         }
     }
 
-    createTessMesh(charmap, tessFactor, positions, normals, colors);
-
-#else /* TESS_DOMAIN */
-
-    typedef Far::Characteristic Char;
-    typedef Far::Characteristic::Node Node;
-    typedef Far::Characteristic::NodeDescriptor NodeDesc;
-
-    std::vector<float> positions,
-                       normals,
-                       colors;
-
-    int ntriangles = 0;
-
-    for (int i=0; i<nplans; ++i) {
-
-        Char const & ch = charmap.GetCharacteristic(i);
-
-        // interpolate vertices
-        float wP[20], wDs[20], wDt[20];
-
-        int ncount=0;
-        Node node = ch.GetTreeNode(0);
-        while (node.GetTreeOffset() < ch.GetTreeSize()) {
-
-            NodeDesc desc = node.GetDescriptor();
-
-            if (desc.GetType()==Char::NODE_REGULAR ||
-                desc.GetType()==Char::NODE_END) {
-
-                Far::ConstIndexArray supportIndices = node.GetSupportIndices();
-
-                for (int y=0; y<tessFactor; ++y) {
-                    for (int x=0; x<tessFactor; ++x) {
-
-                        // compute basis weights at location (s,t)
-                        float s = (float)x / (float)(tessFactor-1),
-                              t = (float)y / (float)(tessFactor-1);
-
-                        ch.EvaluateBasis(node, s, t, wP, wDs, wDt);
-
-                        // interpolate support points with basis weights
-                        LimitFrame limit;
-                        limit.Clear();
-                        for (int k=0; k<supportIndices.size(); ++k) {
-                            assert(supportIndices[k]<supportsBuffer.size());
-                            Vertex const & support = supportsBuffer[supportIndices[k]];
-                            limit.AddWithWeight(support, wP[k], wDs[k], wDt[k]);
-                        }
-
-                        float n[3] = { 3.3f, 3.3f, 3.3f };
-                        cross(n, limit.deriv1, limit.deriv2 );
-
-                        positions.push_back(limit.point[0]);
-                        positions.push_back(limit.point[1]);
-                        positions.push_back(limit.point[2]+ncount*0.25f);
-
-                        normals.push_back(n[0]);
-                        normals.push_back(n[1]);
-                        normals.push_back(n[2]);
-
-                        float const * c = g_palette[ncount % 7];
-                        //float c[3] = { s, 0.1f, t };
-                        colors.push_back(c[0]);
-                        colors.push_back(c[1]);
-                        colors.push_back(c[2]);
-                    }
-                }
-
-                ntriangles += 2 * (tessFactor-1) * (tessFactor-1);
-
-                ++ncount;
-            }
-            ++node;
-        }
-    }
-
-    createTessMesh(charmap, tessFactor, positions, normals, colors, true);
-#endif /* TESS_DOMAIN */
+    createTessMesh(*g_plansTable, tessFactor, positions, normals, colors);
 
     delete refiner;
 }
@@ -1208,7 +962,6 @@ display() {
 
         g_hud.DrawString(-280, -120, "Chars : %d", g_plansTable ? g_plansTable->GetCharacteristicMap().GetNumCharacteristics() : -1);
         g_hud.DrawString(-280, -100, "Plans : %d", g_plansTable ? (int)g_plansTable->GetSubdivisionPlans().size() : 0);
-        g_hud.DrawString(-280, -80, "Trees : %.1f (kb)", g_plansTable ? g_treeSizeTotal * sizeof(int) / 1024.0f : 0.0f);
 
         g_hud.Flush();
     }

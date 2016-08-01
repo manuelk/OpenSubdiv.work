@@ -126,115 +126,78 @@ Characteristic::Node::GetChildNode(int childIndex) const {
 
 float
 Characteristic::Node::GetSharpness() const {
-
     assert(GetDescriptor().SingleCrease());
-
-    float const * ptr = (float const *)(
-        getNodeData() + sizeof(NodeDescriptor)/sizeof(int));
-    return *ptr;
+    return *(float const *)(getNodeData() + 2);
 }
 
-ConstIndexArray
-Characteristic::Node::GetSupportIndices() const {
-
-    int const * supportsPtr = getNodeData() + sizeof(NodeDescriptor)/sizeof(int);
-
-    NodeDescriptor desc = GetDescriptor();
-    switch (desc.GetType()) {
-        case NODE_REGULAR : {
-            if (desc.SingleCrease()) {
-                supportsPtr += sizeof(float)/sizeof(int);
-            }
-            return ConstIndexArray(supportsPtr, 16);
-        }
-        case NODE_END: {
-            EndCapType endType =
-                GetCharacteristic()->GetCharacteristicMap()->GetEndCapType();
-            int nsupports = 0;
-            switch (endType) {
-                case ENDCAP_BILINEAR_BASIS : nsupports = 0; break;
-                case ENDCAP_BSPLINE_BASIS  : nsupports = 16; break;
-                case ENDCAP_GREGORY_BASIS  : nsupports = 20; break;
-                default:
-                    assert(0);
-            }
-            return ConstIndexArray(supportsPtr, nsupports);
-        }
-        case NODE_TERMINAL: {
-            ++supportsPtr; // skip child node offset
-            return ConstIndexArray(supportsPtr, 25);
-        } break;
-        case NODE_RECURSIVE:
-        default:
-            return ConstIndexArray(nullptr, 0);
-    }
+Index
+Characteristic::Node::getFirstSupportIndex() const {
+    return *(getNodeData() + 1);
 }
-
-void
-Characteristic::Node::GetSupportIndices(
-    unsigned char quadrant, Index * indices) const {
-
-    assert(GetDescriptor().GetType()==NODE_TERMINAL);
-
-    static int permuteTerminal[4][16] = {
-        {0, 1, 2, 3, 5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18},
-        {1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19},
-        {5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 23}, // note : winding order is 0, 1, 3, 2
-        {6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24},
-    };
-
-    // get all 25 indices
-    ConstIndexArray supportIndices = GetSupportIndices();
-
-    // copy the 16 support indices for quadrant
-    for (int k=0; k<16; ++k) {
-        indices[k] = supportIndices[permuteTerminal[quadrant][k]];
-    }
-}
-
 
 int
 Characteristic::Node::getNodeSize() const {
+    NodeDescriptor desc = GetDescriptor();
+    switch (desc.GetType()) {
+        case Characteristic::NODE_RECURSIVE:
+            return getRecursiveNodeSize();
+        case Characteristic::NODE_REGULAR :
+            return getRegularNodeSize(desc.SingleCrease());
+        case Characteristic::NODE_END:
+            return getEndCapNodeSize();
+        case Characteristic::NODE_TERMINAL:
+            return getTerminalNodeSize();
+        default:
+            assert(0);
+    }
+    return 0;
+}
 
-    int size = sizeof(NodeDescriptor)/sizeof(int);
+int
+Characteristic::Node::GetNumSupports() const {
+    switch (GetDescriptor().GetType()) {
+        case Characteristic::NODE_REGULAR : return 16;
+        case Characteristic::NODE_END : {
+            CharacteristicMap const & charmap =
+                GetCharacteristic()->GetCharacteristicMap();
+            switch (charmap.GetEndCapType()) {
+                case ENDCAP_BSPLINE_BASIS: return 16;
+                case ENDCAP_GREGORY_BASIS: return 20;
+                default:
+                    assert(0);
+                    return 0;
+            }
+        }
+        default:
+            return 0;
+    }
+}
+
+Characteristic::Support
+Characteristic::Node::GetSupport(int supportIndex) const {
+
+    Index firstSupport = getFirstSupportIndex();
 
     NodeDescriptor desc = GetDescriptor();
     switch (desc.GetType()) {
-
-        case Characteristic::NODE_RECURSIVE:
-            size += 4; // children offsets
-            break;
-
-        case Characteristic::NODE_REGULAR : {
-            if (desc.SingleCrease()) {
-                size += sizeof(float)/sizeof(int);
-            }
-            size += 16; // support indices
-        } break;
-
-        case Characteristic::NODE_END: {
-            EndCapType endType =
-                GetCharacteristic()->GetCharacteristicMap()->GetEndCapType();
-            switch (endType) {
-                case ENDCAP_NONE           : break;
-                case ENDCAP_BILINEAR_BASIS : size += 4; break;
-                case ENDCAP_BSPLINE_BASIS  : size += 16; break;
-                case ENDCAP_GREGORY_BASIS  : size += 20; break;
-                default:
-                    assert(0);
-            }
-        } break;
-
-        case Characteristic::NODE_TERMINAL: {
-            size += 1;  // child offset
-            size += 25; // support indices
-        } break;
-
+        case NODE_REGULAR:
+        case NODE_END:
+            return GetCharacteristic()->GetSupport(firstSupport + supportIndex);
+        case NODE_TERMINAL: {
+            // note : winding order is 0, 1, 3, 2 !
+            static int permuteTerminal[4][16] = {
+                {0, 1, 2, 3, 5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18},
+                {1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19},
+                {5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 23},
+                {6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24},
+            };
+            supportIndex = permuteTerminal[desc.GetEvIndex()][supportIndex];
+            return GetCharacteristic()->GetSupport(supportIndex);
+        }
         default:
             assert(0);
-            break;
+            return Support(0, 0, 0);            
     }
-    return size;
 }
 
 //
@@ -316,7 +279,7 @@ Characteristic::EvaluateBasis(float s, float t,
             param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), depth,
                 desc.NonQuadRoot(), desc.GetBoundaryMask(), 0);
 
-            switch (GetCharacteristicMap()->GetEndCapType()) {
+            switch (GetCharacteristicMap().GetEndCapType()) {
                 case ENDCAP_NONE :
                     break;
                 case ENDCAP_BILINEAR_BASIS :
@@ -396,7 +359,7 @@ printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charInde
         case Characteristic::NODE_REGULAR : {
                 fprintf(fout, "  %zu [label=\"R\\n", nodeID);
                 if (showIndices) {
-                    printNodeIndices(fout, node.GetSupportIndices());
+                    //printNodeIndices(fout, node.GetSupportIndices());
                 }
                 if (desc.SingleCrease()) {
                     fprintf(fout, "\\n\\nsharp=%f", node.GetSharpness());
@@ -411,7 +374,7 @@ printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charInde
         case Characteristic::NODE_END : {
                 fprintf(fout, "  %zu [label=\"E\\n", nodeID);
                 if (showIndices) {
-                    printNodeIndices(fout, node.GetSupportIndices());
+                    //printNodeIndices(fout, node.GetSupportIndices());
                 }
                 fprintf(fout, "\", shape=box, style=filled, color=darkorange]\n");
             } break;
@@ -428,7 +391,7 @@ printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charInde
         case Characteristic::NODE_TERMINAL : {
             fprintf(fout, "  %zu [shape=box, style=filled, color=grey, label=\"T", nodeID);
             if (showIndices) {
-                printNodeIndices(fout, node.GetSupportIndices());
+                //printNodeIndices(fout, node.GetSupportIndices());
             }
             fprintf(fout, "\"]\n");
 
