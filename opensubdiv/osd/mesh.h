@@ -538,10 +538,12 @@ private:
             assert(0); // unsupported !!!
             return;
         }
+/*
         _farSubdivisionPlanTable =
             Far::SubdivisionPlanTable::Create(*_refiner, options);
         _maxValence = 0;
         _planTable = PlanTable::Create(*_farSubdivisionPlanTable, _deviceContext);
+*/
     }
 
     Far::StencilTable const *
@@ -587,14 +589,14 @@ private:
 
             initializeSubdivisionPlanTable(bits);
 
-            Far::CharacteristicMap const * charmap =
+            Far::CharacteristicMap const & charmap =
                 _farSubdivisionPlanTable->GetCharacteristicMap();
 
             vertexStencils = appendLocalPointsStencils(vertexStencils,
-                charmap->GetLocalPointStencilTable());
+                charmap.GetLocalPointStencilTable());
 
             varyingStencils = appendLocalPointsStencils(varyingStencils,
-                charmap->GetLocalPointVaryingStencilTable());
+                charmap.GetLocalPointVaryingStencilTable());
         } else {
 
             initializePatchTable(level, bits);

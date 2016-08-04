@@ -278,7 +278,10 @@ public:
         }
 
         /// \brief Returns a pointer to the characteric that owns this node
-        Characteristic const * GetCharacteristic() const { return _characteristic; }
+        Characteristic const * GetCharacteristic() const {
+            return _characteristic;
+        }
+
         /// \brief Returns the number of support points required for the
         /// sub-patch pointed to by this node
         int GetNumSupports() const;
@@ -292,6 +295,7 @@ public:
         ///        with a SingleCrease flag set to true
         float GetSharpness() const;
 
+    public:
 
         /// \brief Returns the number of children nodes
         int GetNumChildrenNodes() const;

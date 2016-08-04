@@ -91,16 +91,6 @@ struct EndCapBuilder {
         return endcapStencils;
     }
 
-    StencilTable const * FinalizeVaryingStencils() {
-        if (endcapVaryingStencils && (endcapVaryingStencils->GetNumStencils() > 0)) {
-            endcapVaryingStencils->finalize();
-        } else {
-            delete endcapVaryingStencils;
-            endcapVaryingStencils = nullptr;
-        }
-        return endcapVaryingStencils;
-    }
-
     EndCapType type;
 
     union {
@@ -235,7 +225,7 @@ CharacteristicBuilder::computeSubPatchDomain(
         Vtr::internal::Refinement const& refinement  = _refiner.getRefinement(i-1);
         Vtr::internal::Level const&      parentLevel = _refiner.getLevel(i-1);
 
-        Vtr::Index parentFaceIndex    = refinement.getChildFaceParentFace(faceIndex);
+        Vtr::Index parentFaceIndex  = refinement.getChildFaceParentFace(faceIndex);
                  childIndexInParent = refinement.getChildFaceInParentFace(faceIndex);
 
         if (parentLevel.getFaceVertices(parentFaceIndex).size() == 4) {
@@ -323,20 +313,22 @@ CharacteristicBuilder::nodeIsTerminal(
 
 struct CharacteristicBuilder::Context {
 
-    Context(Index _faceIndex, bool _nonquad, Characteristic * _ch) :
-        faceIndex(_faceIndex), nonquad(_nonquad), ch(_ch),
-            numSupports(0), firstSupport(0),
-                treeSize(0), treeOffset(0) { }
+    Context(Index _faceIndex, bool _nonquad,
+        Characteristic * _ch, Neighborhood const * _n) :
+            faceIndex(_faceIndex), nonquad(_nonquad), ch(_ch), n(_n),
+                numSupports(0), firstSupport(0), treeSize(0), treeOffset(0) { }
 
     int * GetCurrentTreePtr() {
         return &ch->_tree[treeOffset];
     }
 
-    int * GetCurrentSupportsPtr() {
+    int * GetCurrentSupportIndicesPtr() {
         return &supportIndices[firstSupport];
     }
 
     Characteristic * ch;
+
+    Neighborhood const * n;
 
     bool nonquad;
 
@@ -475,7 +467,7 @@ CharacteristicBuilder::populateRegularNode(
     }
 
     offsetAndPermuteIndices(
-        patchVerts, 16, levelVertOffset, permutation, ctx->GetCurrentSupportsPtr());
+        patchVerts, 16, levelVertOffset, permutation, ctx->GetCurrentSupportIndicesPtr());
 
     ctx->firstSupport += 16;
     ctx->treeOffset += Characteristic::Node::getRegularNodeSize(singleCrease);
@@ -522,7 +514,7 @@ CharacteristicBuilder::populateEndCapNode(
     *tree = ctx->firstSupport;
     ++tree;
 
-    memcpy(ctx->GetCurrentSupportsPtr(), cvs.begin(), cvs.size() * sizeof(Index));
+    memcpy(ctx->GetCurrentSupportIndicesPtr(), cvs.begin(), cvs.size()*sizeof(Index));
 
     ctx->firstSupport += cvs.size();
     ctx->treeOffset += Characteristic::Node::getEndCapNodeSize();
@@ -556,7 +548,7 @@ CharacteristicBuilder::populateTerminalNode(
           firstSupport = ctx->firstSupport,
           childOffset = ctx->treeOffset + nodeSize;
 
-    Index * supportIndices = ctx->GetCurrentSupportsPtr();
+    Index * supportIndices = ctx->GetCurrentSupportIndicesPtr();
 
     ctx->treeOffset += nodeSize;
     ctx->firstSupport += 25;
@@ -648,96 +640,127 @@ CharacteristicBuilder::populateNode(
     } else {
         int evIndex = INDEX_INVALID;
         if (nodeIsTerminal(levelIndex, faceIndex, &evIndex)) {
+            populateTerminalNode(levelIndex, faceIndex, evIndex, ctx);
         } else {
             populateRecursiveNode(levelIndex, faceIndex, ctx);
         }
     }
 }
 
-void
-CharacteristicBuilder::populateSupports(
-    Context const & context, Neighborhood const & neighborhood, Characteristic * ch) {
+Far::StencilTable const *
+generateStencils(
+    Far::TopologyRefiner const & refiner, EndCapBuilder & endcapBuilder) {
 
-    // generate stencils table
-    // XXXX manuelk : need to switch this for a code path that only computes
-    // the stencils needed for the neighborhoods not yet in the map
     Far::StencilTableFactory::Options options;
     options.generateOffsets = true;
-    options.generateIntermediateLevels = false;
-    Far::StencilTable const * stencils =
-        Far::StencilTableFactory::Create(_refiner, options);
+    options.generateIntermediateLevels = true;
+    StencilTable const * regularStencils =
+        Far::StencilTableFactory::Create(refiner, options);
 
-    // count the total number of influence weights for all the supports
-    int numSupports = (int)context.supportIndices.size(),
-        numWeightsTotal = 0;
-    for (int i=0; i<numSupports; ++i) {
-        numWeightsTotal += stencils->GetSizes()[context.supportIndices[i]];
-    }
+    StencilTable const * localPointStencils =
+        endcapBuilder.FinalizeStencils();
 
-    ch->_sizes.resize(numSupports);
-    ch->_offsets.resize(numSupports);
-    ch->_indices.resize(numWeightsTotal);
-    ch->_weights.resize(numWeightsTotal);
+    // concatenate & factorize end-cap stencils
+    StencilTable const * supportStencils =
+        Far::StencilTableFactory::AppendLocalPointStencilTable(
+            refiner, regularStencils, localPointStencils);
 
-    // copy the stencil weights into the supports
-    for (int i=0, offset=0; i<numSupports; ++i) {
+    delete regularStencils;
+    delete localPointStencils;
 
-        Stencil stencil = stencils->GetStencil(context.supportIndices[i]);
+    return supportStencils;
+}
 
-        int size = stencil.GetSize();
+void
+CharacteristicBuilder::FinalizeSupports() {
 
-        ch->_sizes[i] = size;
+    // XXXX manuelk : need to switch this for a code path that only computes
+    // the stencils needed for the neighborhoods not yet in the map instead of
+    // factorizing the entire mesh, including all redundant topologies
 
-        for (int k=0; k<size; ++i) {
-            ch->_indices[offset+k] =
-                neighborhood.Remap(stencil.GetVertexIndices()[k]);
+    StencilTable const * supportStencils =
+        generateStencils(_refiner, *_endcapBuilder);
+
+    // iterate over all the characteristics that were created and populate
+    // their supports
+    for (int ctxIndex=0; ctxIndex<(int)_contexts.size(); ++ctxIndex) {
+
+        Context & context = *_contexts[ctxIndex];
+
+        Characteristic * ch = context.ch;
+
+        // count the total number of influence weights for all the supports
+        int numCVs = _levelVertOffsets[1],
+            numSupports = 0,
+            numWeights = 0;
+
+        // XXXX manuelk FIX ME : skipping invalid indices probably messes
+        // up the "firstSupport" offset of the characteristic
+        for (int i=0; i<(int)context.supportIndices.size(); ++i) {
+            int stencilIndex = context.supportIndices[i];
+            if (stencilIndex!=INDEX_INVALID) {
+                ++numSupports;
+                numWeights += supportStencils->GetSizes()[stencilIndex-numCVs];
+            }
         }
 
-        memcpy(&ch->_weights[offset], stencil.GetWeights(), size * sizeof(float));
+        // copy the stencil weights into the supports
+        ch->_sizes.resize(numSupports);
+        ch->_offsets.resize(numSupports);
+        ch->_indices.resize(numWeights);
+        ch->_weights.resize(numWeights);
 
-        ch->_offsets[i] = offset;
+        Neighborhood const * neighborhood = context.n;
+        assert(neighborhood);
 
-        offset += stencil.GetSize();
+        for (int i=0, offset=0; i<numSupports; ++i) {
+
+            int stencilIndex = context.supportIndices[i];
+            if (stencilIndex==INDEX_INVALID) {
+                continue;
+            }
+
+            Stencil stencil = supportStencils->GetStencil(stencilIndex-numCVs);
+            assert(stencil.GetSize()>0);
+
+            int size = stencil.GetSize();
+            ch->_sizes[i] = size;
+            ch->_offsets[i] = offset;
+            for (int k=0; k<size; ++k) {
+                ch->_indices[offset+k] =
+                neighborhood->Remap(stencil.GetVertexIndices()[k]);
+                ch->_weights[offset+k] = stencil.GetWeights()[k];
+            }
+            offset += size;
+        }
+        delete context.n;
     }
 
-    delete stencils;
+    delete supportStencils;
 }
 
 Characteristic const *
 CharacteristicBuilder::Create(
-    int levelIndex, int faceIndex, Neighborhood const & neighborhood) {
+    int levelIndex, int faceIndex, Neighborhood const * neighborhood) {
 
     Characteristic * ch =
-        new Characteristic(_charmap, neighborhood.GetNumVertices());
+        new Characteristic(_charmap, neighborhood->GetNumVertices());
 
     bool nonquad = levelIndex!=0;
 
-    Context context(faceIndex, nonquad, ch);
+    Context * context = new Context(faceIndex, nonquad, ch, neighborhood);
 
-    identifyNode(levelIndex, faceIndex, &context);
+    identifyNode(levelIndex, faceIndex, context);
 
-    ch->_tree.resize(context.treeSize);
+    ch->_tree.resize(context->treeSize);
 
-    context.supportIndices.resize(context.numSupports);
+    context->supportIndices.resize(context->numSupports);
 
-    populateNode(levelIndex, faceIndex, &context);
+    populateNode(levelIndex, faceIndex, context);
 
-    populateSupports(context, neighborhood, ch);
+    _contexts.push_back(context);
 
     return ch;
-}
-
-
-StencilTable const *
-CharacteristicBuilder::FinalizeStencils() {
-    assert(_endcapBuilder);
-    return _endcapBuilder->FinalizeStencils();
-}
-
-StencilTable const *
-CharacteristicBuilder::FinalizeVaryingStencils() {
-    assert(_endcapBuilder);
-    return _endcapBuilder->FinalizeVaryingStencils();
 }
 
 // constructor
@@ -779,6 +802,9 @@ CharacteristicBuilder::CharacteristicBuilder(
 }
 
 CharacteristicBuilder::~CharacteristicBuilder() {
+    for (int i=0; i<(int)_contexts.size(); ++i) {
+        delete _contexts[i];
+    }
     delete _endcapBuilder;
 }
 

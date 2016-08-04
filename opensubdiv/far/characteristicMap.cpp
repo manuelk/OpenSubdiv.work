@@ -119,6 +119,9 @@ CharacteristicMap::findOrAddCharacteristic(
 
     TopologyLevel const & coarseLevel = refiner.GetLevel(0);
 
+    // note : this neighborhood is deleted by the CharacteristicBuilder
+    // build context after all the new characteristic supports have been
+    // finalized (smart pointers would be nice here)
     Neighborhood const * n = neighborhoodBuilder.Create(coarseLevel, faceIndex);
 
     int rotation = 0;
@@ -139,19 +142,18 @@ CharacteristicMap::findOrAddCharacteristic(
             ConstIndexArray childFaces = coarseLevel.GetFaceChildFaces(faceIndex);
             for (int i=0; i<valence; ++i) {
                 Characteristic const * ch =
-                    charBuilder.Create(1, childFaces[i], *n);
+                    charBuilder.Create(1, childFaces[i], n);
                 _characteristics.push_back(ch);
             }
         } else {
             Characteristic const * ch =
-                charBuilder.Create(0, faceIndex, *n);
+                charBuilder.Create(0, faceIndex, n);
             _characteristics.push_back(ch);
         }
 
         addCharacteristicToHash(
             coarseLevel, neighborhoodBuilder, faceIndex, charIndex, valence);
     }
-    delete n;
     return charIndex;
 }
 
@@ -195,10 +197,6 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
     // hash topology : faces with redundant topological configurations share
     // the same characteristic
 
-    // XXXX manuelk TODO this can only work with localized stencils for
-    // support verts. Right now, characteristic trees only gather global
-    // stencil indices. This will have to be revisited...
-
     _characteristicsHash.resize(hashSize, INDEX_INVALID);
 
     NeighborhoodBuilder neighborhoodBuilder;
@@ -206,6 +204,7 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
     for (int face = 0, firstControl = 0; face < nfaces; ++face) {
 
         if (coarseLevel.IsFaceHole(face)) {
+            plans.push_back(SubdivisionPlan(0, INDEX_INVALID, INDEX_INVALID));
             continue;
         }
 
@@ -225,17 +224,10 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
                     SubdivisionPlan(numControlVertices, firstControl, charIndex+i));
             }
         }
-        
         firstControl += numControlVertices;
     }
-    
-    if (_localPointStencils && _localPointVaryingStencils) {
-        // XXXX manuelk TODO : append end-cap stencils to existing ones !
-        assert(0);
-    } else {
-        _localPointStencils = charBuilder.FinalizeStencils();
-        _localPointVaryingStencils = charBuilder.FinalizeVaryingStencils();
-    }
+
+    charBuilder.FinalizeSupports();
 
     return plansTable;
 }

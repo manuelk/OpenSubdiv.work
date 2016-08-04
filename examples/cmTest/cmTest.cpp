@@ -78,7 +78,7 @@ enum ShadingMode {
     SHADING_TREE_DEPTH,
 };
 
-int g_level = 3,
+int g_level = 2,
     g_shadingMode = SHADING_PATCH_TYPE,
     g_tessLevel = 10,
     g_tessLevelMin = 2,

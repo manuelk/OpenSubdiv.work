@@ -29,6 +29,8 @@
 
 #include "../far/types.h"
 
+#include <vector>
+
 namespace OpenSubdiv {
 namespace OPENSUBDIV_VERSION {
 
@@ -53,14 +55,10 @@ public:
 
     ~CharacteristicBuilder();
 
-    // Creats a characteristic for the given level & face
-    Characteristic const * Create(int levelIndex, int faceIndex, Neighborhood const & neighborhood);
+    // Creates a characteristic for the given level & face
+    Characteristic const * Create(int levelIndex, int faceIndex, Neighborhood const * neighborhood);
 
-    // Perform final operations on stencils and returns the tables
-    // Note : should not be called until all trees have been written.
-    StencilTable const * FinalizeStencils();
-
-    StencilTable const * FinalizeVaryingStencils();
+    void FinalizeSupports();
 
 private:
 
@@ -99,6 +97,8 @@ private:
     CharacteristicMap const & _charmap;
 
     std::vector<PatchFaceTag> _patchTags;
+
+    std::vector<Context *> _contexts;
 
     //
     // End-cap stencils
