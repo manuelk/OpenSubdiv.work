@@ -73,30 +73,15 @@ public:
     };
 
     /// \brief Constructor
-    CharacteristicMap(Options options=Options()) :
-        _options(options), _localPointStencils(0), _localPointVaryingStencils(0) { }
-
+    CharacteristicMap(Options options=Options());
 
     //// \brief Returns the map's configuration options
     Options GetOptions() const { return _options; }
 
-    //@{
-    ///  @name Plans
-    ///
-    /// \anchor arrays_of_plans
-    ///
 
     /// \brief Hashes the topology from the refiner mesh into the map
     /// Note : the refiner must be adaptively refined !
     SubdivisionPlanTable const * HashTopology(TopologyRefiner const & refiner);
-
-    //@}
-
-    //@{
-    ///  @name Characteristics
-    ///
-    /// \anchor arrays_of_characteristics
-    ///
 
     /// \brief Reurns the number of characteristics in the map
     int GetNumCharacteristics() const {
@@ -107,27 +92,6 @@ public:
     Characteristic const * GetCharacteristic(Index charIndex) const {
         return _characteristics[charIndex];
     }
-
-    //@}
-
-    //@{
-    ///  @name Change of basis end-cap patches
-    ///
-    /// \brief Accessors for change of basis patch points
-    ///
-    /// \brief Returns the stencil table to get change of basis end-cap
-    ///        patch points.
-    StencilTable const * GetLocalPointStencilTable() const {
-        return _localPointStencils;
-    }
-
-    /// \brief Returns the varying stencil table for the change of basis
-    ///        end-cap patch points.
-    StencilTable const * GetLocalPointVaryingStencilTable() const {
-        return _localPointVaryingStencils;
-    }
-    //@}
-
 
     /// \brief Returns the capacity of the hash map
     int GetHashMapCapacity() const {
@@ -145,11 +109,13 @@ public:
 
 private:
 
+    //
+    // Options & flags
+    //
+
     friend class SubdivisionPlanTable;
 
     static bool supportsEndCaps(EndCapType type);
-
-    // flags
     Options _options;
 
 private:
@@ -159,23 +125,23 @@ private:
     //
     Index findCharacteristic(Neighborhood const & n, int * rotation=0) const;
 
-    void addCharacteristicToHash(TopologyLevel const & level,
+    void addCharacteristicToHash(
+        TopologyLevel const & level,
         NeighborhoodBuilder & neighborhoodBuilder,
-             int faceIndex, int charIndex, int valence);
+        int faceIndex,
+        int charIndex,
+        int valence);
 
     Index findOrAddCharacteristic(
-        TopologyRefiner const & refiner, NeighborhoodBuilder & neighborhoodBuilder,
-            CharacteristicBuilder & charBuilder, int faceIndex);
+        TopologyRefiner const & refiner,
+        NeighborhoodBuilder & neighborhoodBuilder,
+        CharacteristicBuilder & charBuilder,
+        int faceIndex,
+        Neighborhood const ** neighborhood=0);
 
     std::vector<int> _characteristicsHash;
 
     std::vector<Characteristic const *> _characteristics;
-
-private:
-
-    // endcap stencils
-    StencilTable const * _localPointStencils,        // endcap basis conversion stencils
-                       * _localPointVaryingStencils; // endcap varying stencils (for convenience)
 };
 
 } // end namespace Far

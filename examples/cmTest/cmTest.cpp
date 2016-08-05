@@ -603,19 +603,19 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         Far::TopologyRefinerFactory<Shape>::Create(*shape,
             Far::TopologyRefinerFactory<Shape>::Options(sdctype, sdcoptions));
 
-    // control mesh
-    delete g_controlMeshVerts;
-    int nverts = shape->GetNumVertices();
-    g_controlMeshVerts = Osd::GLVertexBuffer::Create(3, nverts);
-    g_controlMeshVerts->UpdateData(&shape->verts[0], 0, nverts);
-    g_controlMeshDisplay.SetTopology(refiner->GetLevel(0));
-
     // refine adaptively
     {
         Far::TopologyRefiner::AdaptiveOptions options(maxlevel);
         options.useSingleCreasePatch = true;
         refiner->RefineAdaptive(options);
     }
+
+    // control mesh
+    delete g_controlMeshVerts;
+    int nverts = shape->GetNumVertices();
+    g_controlMeshVerts = Osd::GLVertexBuffer::Create(3, nverts);
+    g_controlMeshVerts->UpdateData(&shape->verts[0], 0, nverts);
+    g_controlMeshDisplay.SetTopology(refiner->GetLevel(0));
 
     // build characteristics map
     delete g_plansTable;
@@ -629,11 +629,9 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
     // copy coarse vertices positions
     std::vector<Vertex> controlVerts(shape->GetNumVertices());
-    {
-        for (int i=0; i<shape->GetNumVertices(); ++i) {
-            float const * ptr = &shape->verts[i*3];
-            memcpy(controlVerts[i].point, ptr, 3 * sizeof(float));
-        }
+    for (int i=0; i<shape->GetNumVertices(); ++i) {
+        float const * ptr = &shape->verts[i*3];
+        memcpy(controlVerts[i].point, ptr, 3 * sizeof(float));
     }
 
     delete shape;
@@ -653,37 +651,33 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     // tessellate
     //
 
-    int const tessFactor = g_tessLevel;
+    int const tessFactor = g_tessLevel,
+              nplans = g_plansTable->GetNumPlans();
 
 //#define DEBUG_PRINT
 #ifdef DEBUG_PRINT
     printPatchTables(refiner);
 #endif
 
-    Far::SubdivisionPlanVector const & plans = g_plansTable->GetSubdivisionPlans();
-    int nplans = (int)plans.size();
-
-
-    // interpolate limits
-
     nverts = tessFactor * tessFactor * nplans;
 
     std::vector<float> positions(3 * nverts),
                        normals(3 * nverts),
                        colors(3 * nverts);
-
     float * pos = &positions[0],
           * norm = &normals[0],
           * col = &colors[0];
 
     std::vector<Vertex> supports;
 
+    // interpolate limits
+
     float wP[20], wDs[20], wDt[20];
 
-    for (int i=0; i<nplans; ++i) {
+    for (int planIndex=0; planIndex<nplans; ++planIndex) {
 
         Far::Characteristic const * ch =
-            g_plansTable->GetCharacteristic(plans[i].charIndex);
+            g_plansTable->GetPlanCharacteristic(planIndex);
 
         // interpolate vertices
         for (int y=0; y<tessFactor; ++y) {
@@ -697,25 +691,47 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
                 Far::Characteristic::Node node =
                     ch->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant);
-
+                //
                 // evaluate supports from characteristic stencils
+                //
+
+                // note : the "better way" to do this would be to build a list
+                // of all the nodes that contain samples, evaluate the supports
+                // and then evaluate all limits. This would save a lot of
+                // redundant support points evaluations (XXXX should think about
+                // adding this as a far class)
+
                 int nsupports = node.GetNumSupports();
 
+                // this resize should be mostly "free"
+                // XXXX manuelk we could allocate correctly if CharacteristicMap
+                // stored the max size of all characteristics supports
                 supports.resize(nsupports);
 
                 for (int j=0; j<nsupports; ++j) {
                 
+                    // get the stencil for this support point
                     Far::Characteristic::Support stencil = node.GetSupport(j);
-                    assert(stencil.size>0 && stencil.indices!=0 && stencil.weights!=0);
 
                     supports[j].Clear();
                     for (short k=0; k<stencil.size; ++k) {
+
+                         // remap the support stencil indices, which are local
+                         // to the characteristic's neighborhood, to the control
+                         // mesh topology.
+                         Far::Index vertIndex =
+                             g_plansTable->GetMeshControlVertexIndex(planIndex, stencil.indices[k]);
+
                          supports[j].AddWithWeight(
-                             controlVerts[stencil.indices[k]], stencil.weights[k]);
+                             controlVerts[vertIndex], stencil.weights[k]);
                     }
 
                 }
-                 // interpolate support points with basis weights
+
+                //
+                // limit points : interpolate support points with basis weights
+                //
+
                 LimitFrame limit;
                 limit.Clear();
                 for (int j=0; j<nsupports; ++j) {

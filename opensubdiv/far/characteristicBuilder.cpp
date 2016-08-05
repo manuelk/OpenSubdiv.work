@@ -647,12 +647,13 @@ CharacteristicBuilder::populateNode(
     }
 }
 
-Far::StencilTable const *
-generateStencils(
+static Far::StencilTable const *
+generateStencilTable(
     Far::TopologyRefiner const & refiner, EndCapBuilder & endcapBuilder) {
 
     Far::StencilTableFactory::Options options;
     options.generateOffsets = true;
+    options.generateControlVerts = true;
     options.generateIntermediateLevels = true;
     StencilTable const * regularStencils =
         Far::StencilTableFactory::Create(refiner, options);
@@ -672,6 +673,17 @@ generateStencils(
 }
 
 void
+CharacteristicBuilder::clearContexts() {
+    for (int i=0; i<(int)_contexts.size(); ++i) {
+        // delete the temporary "full" neighborhoods that were allocated by
+        // CharacteristicMap::findOrAddCharacteristic()
+        delete _contexts[i]->n;
+        delete _contexts[i];
+    }
+    _contexts.clear();
+}
+
+void
 CharacteristicBuilder::FinalizeSupports() {
 
     // XXXX manuelk : need to switch this for a code path that only computes
@@ -679,7 +691,7 @@ CharacteristicBuilder::FinalizeSupports() {
     // factorizing the entire mesh, including all redundant topologies
 
     StencilTable const * supportStencils =
-        generateStencils(_refiner, *_endcapBuilder);
+        generateStencilTable(_refiner, *_endcapBuilder);
 
     // iterate over all the characteristics that were created and populate
     // their supports
@@ -689,19 +701,14 @@ CharacteristicBuilder::FinalizeSupports() {
 
         Characteristic * ch = context.ch;
 
-        // count the total number of influence weights for all the supports
-        int numCVs = _levelVertOffsets[1],
-            numSupports = 0,
+        // count the total number of influence weights & indices
+        // for all the supports
+        int numSupports = (int)context.supportIndices.size(),
             numWeights = 0;
-
-        // XXXX manuelk FIX ME : skipping invalid indices probably messes
-        // up the "firstSupport" offset of the characteristic
-        for (int i=0; i<(int)context.supportIndices.size(); ++i) {
+        for (int i=0; i<numSupports; ++i) {
             int stencilIndex = context.supportIndices[i];
-            if (stencilIndex!=INDEX_INVALID) {
-                ++numSupports;
-                numWeights += supportStencils->GetSizes()[stencilIndex-numCVs];
-            }
+            numWeights += stencilIndex!=INDEX_INVALID ?
+                supportStencils->GetSizes()[stencilIndex] : 0;
         }
 
         // copy the stencil weights into the supports
@@ -715,27 +722,28 @@ CharacteristicBuilder::FinalizeSupports() {
 
         for (int i=0, offset=0; i<numSupports; ++i) {
 
-            int stencilIndex = context.supportIndices[i];
+            int stencilIndex = context.supportIndices[i],
+                stencilSize = 0;
             if (stencilIndex==INDEX_INVALID) {
-                continue;
-            }
+                ch->_sizes[i] = stencilSize;
+                ch->_offsets[i] = offset;
+            } else {
 
-            Stencil stencil = supportStencils->GetStencil(stencilIndex-numCVs);
-            assert(stencil.GetSize()>0);
+                Stencil stencil = supportStencils->GetStencil(stencilIndex);
+                assert(stencil.GetSize()>0);
 
-            int size = stencil.GetSize();
-            ch->_sizes[i] = size;
-            ch->_offsets[i] = offset;
-            for (int k=0; k<size; ++k) {
-                ch->_indices[offset+k] =
-                neighborhood->Remap(stencil.GetVertexIndices()[k]);
-                ch->_weights[offset+k] = stencil.GetWeights()[k];
+                stencilSize = stencil.GetSize();
+                ch->_sizes[i] = stencilSize;
+                ch->_offsets[i] = offset;
+                for (int k=0; k<stencilSize; ++k) {
+                    ch->_indices[offset+k] =
+                        neighborhood->Remap(stencil.GetVertexIndices()[k]);
+                    ch->_weights[offset+k] = stencil.GetWeights()[k];
+                }
             }
-            offset += size;
+            offset += stencilSize;
         }
-        delete context.n;
     }
-
     delete supportStencils;
 }
 
@@ -802,9 +810,7 @@ CharacteristicBuilder::CharacteristicBuilder(
 }
 
 CharacteristicBuilder::~CharacteristicBuilder() {
-    for (int i=0; i<(int)_contexts.size(); ++i) {
-        delete _contexts[i];
-    }
+    clearContexts();
     delete _endcapBuilder;
 }
 

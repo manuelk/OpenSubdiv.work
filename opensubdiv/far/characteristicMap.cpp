@@ -46,13 +46,14 @@ CharacteristicMap::addCharacteristicToHash(
 
     for (int i=0; i<valence; ++i) {
 
-        Neighborhood const * n = neighborhoodBuilder.Create(level, faceIndex, i);
+        Neighborhood const * neighborhood =
+            neighborhoodBuilder.Create(level, faceIndex, i);
 
-        if (ch->FindEquivalentNeighborhood(*n)!=INDEX_INVALID) {
+        if (ch->FindEquivalentNeighborhood(*neighborhood)!=INDEX_INVALID) {
             continue;
         }
 
-        unsigned int hash = n->GetHash(),
+        unsigned int hash = neighborhood->GetHash(),
                      hashCount = (unsigned int)_characteristicsHash.size();
 
         for (unsigned int j=0; j<hashCount; ++j) {
@@ -72,7 +73,7 @@ CharacteristicMap::addCharacteristicToHash(
         // XXXX Wade says that startEdge reversing probably counters bug in
         // fastsubdiv code : we probably shouldn't be doing this...
         int startEdge = (valence-i) % valence;
-        ch->addNeighborhood(n, startEdge);
+        ch->addNeighborhood(neighborhood, startEdge);
 
         // XXXX if (macro patches) break;
     }
@@ -82,10 +83,10 @@ CharacteristicMap::addCharacteristicToHash(
 }
 
 Index
-CharacteristicMap::findCharacteristic(Neighborhood const & n,
-    int * rotation) const {
+CharacteristicMap::findCharacteristic(
+    Neighborhood const & neighborhood, int * rotation) const {
 
-    unsigned int hash = n.GetHash();
+    unsigned int hash = neighborhood.GetHash();
 
     int hashCount = (int)_characteristicsHash.size(),
         charIndex = INDEX_INVALID;
@@ -101,7 +102,7 @@ CharacteristicMap::findCharacteristic(Neighborhood const & n,
 
         Characteristic const * ch = _characteristics[charIndex];
         for (int j=0; j<ch->GetNumNeighborhoods(); ++j) {
-            if (n.IsEquivalent(*ch->GetNeighborhood(j))) {
+            if (neighborhood.IsEquivalent(*ch->GetNeighborhood(j))) {
                 if (rotation) {
                     *rotation = ch->GetStartingEdge(j);
                 }
@@ -114,15 +115,19 @@ CharacteristicMap::findCharacteristic(Neighborhood const & n,
 
 Index
 CharacteristicMap::findOrAddCharacteristic(
-    TopologyRefiner const & refiner, NeighborhoodBuilder & neighborhoodBuilder,
-        CharacteristicBuilder & charBuilder, int faceIndex) {
+    TopologyRefiner const & refiner,
+    NeighborhoodBuilder & neighborhoodBuilder,
+    CharacteristicBuilder & charBuilder,
+    int faceIndex,
+    Neighborhood const ** neighborhood) {
 
     TopologyLevel const & coarseLevel = refiner.GetLevel(0);
 
     // note : this neighborhood is deleted by the CharacteristicBuilder
     // build context after all the new characteristic supports have been
     // finalized (smart pointers would be nice here)
-    Neighborhood const * n = neighborhoodBuilder.Create(coarseLevel, faceIndex);
+    Neighborhood const * n =
+        neighborhoodBuilder.Create(coarseLevel, faceIndex);
 
     int rotation = 0;
     Index charIndex = findCharacteristic(*n, &rotation);
@@ -154,6 +159,9 @@ CharacteristicMap::findOrAddCharacteristic(
         addCharacteristicToHash(
             coarseLevel, neighborhoodBuilder, faceIndex, charIndex, valence);
     }
+    if (neighborhood) {
+        *neighborhood = n;
+    }
     return charIndex;
 }
 
@@ -167,6 +175,21 @@ CharacteristicMap::supportsEndCaps(EndCapType type) {
         return false;
     }
     return true;
+}
+
+CharacteristicMap::CharacteristicMap(Options options) : _options(options) {
+    _characteristicsHash.resize(_options.hashSize, INDEX_INVALID);
+}
+
+inline void
+appendPlanControlVertices(
+    Neighborhood const & neighborhood, std::vector<Index> & controls) {
+
+    // XXXX manuelk need to find a better way...
+    ConstIndexArray cvs = neighborhood.GetVertRemaps();
+    for (int i=0; i<cvs.size(); ++i) {
+        controls.push_back(cvs[i]);
+    }
 }
 
 SubdivisionPlanTable const *
@@ -183,7 +206,7 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
     int regFaceSize = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType());
 
     int nfaces = coarseLevel.GetNumFaces(),
-        nplans = SubdivisionPlanTable::countPlans(coarseLevel, regFaceSize),
+        nplans = SubdivisionPlanTable::countNumPlans(coarseLevel, regFaceSize),
         hashSize = _options.hashSize;
 
     SubdivisionPlanTable * plansTable = new SubdivisionPlanTable(*this);
@@ -192,13 +215,10 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
     plans.reserve(nplans);
 
     std::vector<Index> & controls = plansTable->_controlVertices;
-    controls.resize(nplans*20);
+    controls.reserve(nplans*20);
 
     // hash topology : faces with redundant topological configurations share
     // the same characteristic
-
-    _characteristicsHash.resize(hashSize, INDEX_INVALID);
-
     NeighborhoodBuilder neighborhoodBuilder;
 
     for (int face = 0, firstControl = 0; face < nfaces; ++face) {
@@ -208,20 +228,30 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
             continue;
         }
 
+        Neighborhood const * neighborhood = 0;
+
         Index charIndex = findOrAddCharacteristic(
-            refiner, neighborhoodBuilder, charBuilder, face);
+            refiner, neighborhoodBuilder, charBuilder, face, &neighborhood);
+        assert(neighborhood);
 
         int numControlVertices =
             GetCharacteristic(charIndex)->GetNumControlVertices();
 
         ConstIndexArray fverts = coarseLevel.GetFaceVertices(face);
         if (fverts.size()==regFaceSize) {
+
             plans.push_back(
                 SubdivisionPlan(numControlVertices, firstControl, charIndex));
+
+            appendPlanControlVertices(*neighborhood, controls);
         } else {
+
             for (int i=0; i<fverts.size(); ++i) {
+
                 plans.push_back(
                     SubdivisionPlan(numControlVertices, firstControl, charIndex+i));
+
+                appendPlanControlVertices(*neighborhood, controls);
             }
         }
         firstControl += numControlVertices;

@@ -28,6 +28,7 @@
 #include "../version.h"
 
 #include "../far/characteristicMap.h"
+#include "../far/types.h"
 
 #include <vector>
 
@@ -72,9 +73,31 @@ public:
 
     typedef CharacteristicMap::Options Options;
 
-    Characteristic const * GetCharacteristic(Index planIndex) const {
+    int GetNumPlans() const {
+        return (int)_plans.size();
+    }
+
+    SubdivisionPlan const & GetPlan(Index planIndex) const {
+        return _plans[planIndex];
+    }
+
+    Characteristic const * GetPlanCharacteristic(Index planIndex) const {
         Index charIndex = _plans[planIndex].charIndex;
         return _charmap.GetCharacteristic(charIndex);
+    }
+
+    Index GetMeshControlVertexIndex(Index planIndex, LocalIndex supportIndex) const {
+        return _controlVertices[_plans[planIndex].firstControl + supportIndex];
+    }
+
+    ConstIndexArray GetPlanControlVertices(Index planIndex) const {
+        SubdivisionPlan const & plan = _plans[planIndex];
+        return ConstIndexArray(
+            &_controlVertices[plan.firstControl], plan.numControls);
+    }
+
+    CharacteristicMap const & GetCharacteristicMap() const {
+        return _charmap;
     }
 
     int GetNumSubdivisionPlans() const {
@@ -85,8 +108,8 @@ public:
         return _plans;
     }
 
-    CharacteristicMap const & GetCharacteristicMap() const {
-        return _charmap;
+    std::vector<Index> const & GetControlVertices() const {
+        return _controlVertices;
     }
 
 private:
@@ -95,7 +118,7 @@ private:
 
     SubdivisionPlanTable(CharacteristicMap const & charmap);
 
-    static int countPlans(TopologyLevel const & coarseLevel, int regFaceSize);
+    static int countNumPlans(TopologyLevel const & coarseLevel, int regFaceSize);
 
 private:
 

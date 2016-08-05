@@ -37,7 +37,7 @@ SubdivisionPlanTable::SubdivisionPlanTable(
 }
 
 int
-SubdivisionPlanTable::countPlans(
+SubdivisionPlanTable::countNumPlans(
     TopologyLevel const & coarseLevel, int regFaceSize) {
 
     int nfaces = coarseLevel.GetNumFaces(),
