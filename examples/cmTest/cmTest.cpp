@@ -78,7 +78,7 @@ enum ShadingMode {
     SHADING_TREE_DEPTH,
 };
 
-int g_level = 2,
+int g_level = 3,
     g_shadingMode = SHADING_PATCH_TYPE,
     g_tessLevel = 10,
     g_tessLevelMin = 2,
@@ -340,7 +340,7 @@ printPatchTables(Far::TopologyRefiner const * refiner) {
 GLFont * g_font=0;
 
 //------------------------------------------------------------------------------
-int g_currentCharIndex = 0,
+int g_currentPlanIndex = 0,
     g_currentNodeIndex = -1;
 
 Far::Characteristic::Node g_currentNode;
@@ -381,62 +381,64 @@ createFaceNumbers(Far::TopologyRefiner const & refiner,
 }
 
 static void
-createNodeNumbers(Far::CharacteristicMap const & charmap,
-    std::vector<Vertex> const & vertexBuffer) {
+createNodeNumbers(Far::SubdivisionPlanTable const & plansTable,
+    int planIndex, std::vector<Vertex> const & vertexBuffer) {
 
-    g_currentCharIndex = std::max(0,
-        std::min(g_currentCharIndex, charmap.GetNumCharacteristics()-1));
+    Far::CharacteristicMap const & charmap = plansTable.GetCharacteristicMap();
+
+    g_currentPlanIndex = std::max(0,
+        std::min(g_currentPlanIndex, charmap.GetNumCharacteristics()-1));
 
     g_currentNodeIndex = std::max(-1, g_currentNodeIndex);
 
-    if (g_currentCharIndex>=0 && g_currentNodeIndex>=0) {
-
+    if (g_currentPlanIndex>=0 && g_currentNodeIndex>=0) {
         Far::Characteristic const * ch =
-            charmap.GetCharacteristic(g_currentCharIndex);
+            charmap.GetCharacteristic(g_currentPlanIndex);
 
         Far::Characteristic::Node node = ch->GetTreeNode(0);
 
         for (int count=0; node.GetTreeOffset()<ch->GetTreeSize(); ++node, ++count) {
 
             if (count==g_currentNodeIndex) {
-/*
-                g_currentNode = node;
 
-                Far::ConstIndexArray supports = node.GetSupportIndices();
+                g_currentNode = node;
 
                 Far::Characteristic::NodeDescriptor desc = node.GetDescriptor();
 
                 if (desc.GetType()==Far::Characteristic::NODE_TERMINAL) {
-                    Far::Index quadSupports[16];
 
-                    for (int quadrant=0; quadrant<4; ++quadrant) {
-                         printf("\nchar=%d node=%d quadrant=%d ev=%d",
-                             g_currentCharIndex, g_currentNodeIndex, quadrant, desc.GetEvIndex());
-                         for (int k=0; k<16; ++k) {
-                             quadSupports[k] = supports[remapTerminalIndices[quadrant][k]];
-                         }
-                         printIndices(quadSupports, 16);
-                    }
-                    printf("\n------------\n");
-                    fflush(stdout);
-                }
+                } else {
+                    int nsupports = node.GetNumSupports();
 
-                for (int k=0; k<supports.size(); ++k) {
+                    for (int j=0; j<nsupports; ++j) {
 
-                    Far::Index vertIndex = supports[k];
+                        // get the stencil for this support point
+                        Far::Characteristic::Support stencil = node.GetSupport(j, 0);
 
-                    if (vertIndex!=Far::INDEX_INVALID) {
-                        Vertex const & vert = vertexBuffer[vertIndex];
+                        Vertex support;
+                        support.Clear();
+                        for (short k=0; k<stencil.size; ++k) {
 
-                        float position[3] = { vert.point[0], vert.point[1], vert.point[2] + k*0.001f, };
+                            // remap the support stencil indices, which are local
+                            // to the characteristic's neighborhood, to the control
+                            // mesh topology.
+                            Far::Index vertIndex =
+                                plansTable.GetMeshControlVertexIndex(planIndex, stencil.indices[k]);
 
+                            assert(vertIndex!=Far::INDEX_INVALID);
+
+                            support.AddWithWeight(
+                                vertexBuffer[vertIndex], stencil.weights[k]);
+                        }
+                        float position[3] = { support.point[0],
+                                              support.point[1],
+                                              support.point[2], };
                         static char buf[16];
-                        snprintf(buf, 16, "%d", k);
+                        snprintf(buf, 16, "%d", j);
                         g_font->Print3D(position, buf, 2);
                     }
                 }
                 return;
-*/            
             }
         }
     }
@@ -644,7 +646,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     }
 
     // draw selected node data
-    //createNodeNumbers(charmap, supportsBuffer);
+    createNodeNumbers(*g_plansTable, g_currentPlanIndex, controlVerts);
 
 
     //
@@ -691,6 +693,9 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
                 Far::Characteristic::Node node =
                     ch->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant);
+
+                //Far::Characteristic::NodeType type = node.GetDescriptor().GetType();
+                
                 //
                 // evaluate supports from characteristic stencils
                 //
@@ -711,7 +716,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 for (int j=0; j<nsupports; ++j) {
                 
                     // get the stencil for this support point
-                    Far::Characteristic::Support stencil = node.GetSupport(j);
+                    Far::Characteristic::Support stencil = node.GetSupport(j,quadrant);
 
                     supports[j].Clear();
                     for (short k=0; k<stencil.size; ++k) {
@@ -770,7 +775,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 }
 
                 bool nodeSelected = false;
-                if (g_currentCharIndex>=0 &&
+                if (g_currentPlanIndex>=0 &&
                     g_currentNodeIndex>=0 &&
                     g_currentNode==node) {
                     nodeSelected = true;
@@ -929,7 +934,7 @@ display() {
         g_fpsTimer.Start();
 
         // display node data
-        if (g_plansTable && g_currentCharIndex>=0 && g_currentNodeIndex>=0) {
+        if (g_plansTable && g_currentPlanIndex>=0 && g_currentNodeIndex>=0) {
 
             static char * nodeTypes[4] =
                 { "NODE_REGULAR", "NODE_RECURSIVE", "NODE_TERMINAL", "NODE_END" };
@@ -945,23 +950,23 @@ display() {
                     float sharp = desc.SingleCrease() ? g_currentNode.GetSharpness() : 0.0f;
                     g_hud.DrawString(x, y,
                         "char=%d node=%d type=%s depth=%d nonquad=%d singleCrease=%d sharp=%f u=%d v=%d",
-                            g_currentCharIndex, g_currentNodeIndex, typeName,
+                            g_currentPlanIndex, g_currentNodeIndex, typeName,
                                desc.GetDepth(), desc.NonQuadRoot(), desc.SingleCrease(), sharp, desc.GetU(), desc.GetV());
                 } break;
                 case Far::Characteristic::NODE_END : {
                     g_hud.DrawString(x, y,
                         "char=%d node=%d type=%s depth=%d nonquad=%d u=%d v=%d",
-                            g_currentCharIndex, g_currentNodeIndex, typeName,
+                            g_currentPlanIndex, g_currentNodeIndex, typeName,
                                desc.GetDepth(), desc.NonQuadRoot(), desc.GetU(), desc.GetV());
                 } break;
                 case Far::Characteristic::NODE_RECURSIVE : {
                     g_hud.DrawString(x, y, "char=%d node=%d type=%s",
-                        g_currentCharIndex, g_currentNodeIndex, typeName);
+                        g_currentPlanIndex, g_currentNodeIndex, typeName);
                 } break;
                 case Far::Characteristic::NODE_TERMINAL : {
                     g_hud.DrawString(x, y,
                         "char=%d node=%d type=%s depth=%d nonquad=%d evIndex=%d u=%d v=%d",
-                            g_currentCharIndex, g_currentNodeIndex, typeName,
+                            g_currentPlanIndex, g_currentNodeIndex, typeName,
                                 desc.GetDepth(), desc.NonQuadRoot(), desc.GetEvIndex(), desc.GetU(), desc.GetV());
                 } break;
                 default:
@@ -1145,7 +1150,7 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int mods) {
         case 'F': fitFrame(); break;
 
         case 'D': writeDiagraph(g_plansTable->GetCharacteristicMap(),
-            mods==GLFW_MOD_SHIFT ? -1 : g_currentCharIndex);
+            mods==GLFW_MOD_SHIFT ? -1 : g_currentPlanIndex);
             break;
 
         case '=':  {
@@ -1159,7 +1164,7 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int mods) {
 
         case '[': {
             if (mods==GLFW_MOD_SHIFT) {
-                --g_currentCharIndex;
+                --g_currentPlanIndex;
                 g_currentNodeIndex=0;
             } else {
                 --g_currentNodeIndex;
@@ -1169,7 +1174,7 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int mods) {
 
         case ']': {
             if (mods==GLFW_MOD_SHIFT) {
-                ++g_currentCharIndex;
+                ++g_currentPlanIndex;
                 g_currentNodeIndex=0;
             } else {
                 ++g_currentNodeIndex;

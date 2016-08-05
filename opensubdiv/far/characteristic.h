@@ -288,7 +288,7 @@ public:
 
         /// \brief Returns the requested support at index
         /// (index is relative : in range [0, GetNumSupports()])
-        Characteristic::Support GetSupport(int supportIndex) const;
+        Characteristic::Support GetSupport(int supportIndex, int evIndex) const;
 
         /// \brief Returns the creased edge sharpness
         /// note : the value is undefined for any node other than REGULAR
@@ -302,7 +302,7 @@ public:
 
         /// \brief Returns the node's child at index
         /// note : 4 children for RECURSIVE nodes, 1 child for TERMINAL nodes
-        Node GetChildNode(int childIndex=0) const;
+        Node GetNodeChild(int childIndex=0) const;
 
         /// \brief Returns the node's relative offset in the tree (integer stride)
         int GetTreeOffset() const { return _treeOffset; }
@@ -521,8 +521,9 @@ Characteristic::NodeDescriptor::Normalize( float & u, float & v ) const {
 inline Characteristic::Support
 Characteristic::GetSupport(Index supportIndex) const {
     assert(!_offsets.empty() && supportIndex<_offsets.size());
+    int size = _sizes[supportIndex];
     Index offset = _offsets[supportIndex];
-    return Support(_sizes[offset], &_indices[offset], &_weights[offset]);
+    return Support(size, &_indices[offset], &_weights[offset]);
 }
 
 } // end namespace Far

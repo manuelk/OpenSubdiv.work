@@ -257,7 +257,7 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
         firstControl += numControlVertices;
     }
 
-    charBuilder.FinalizeSupports();
+    charBuilder.FinalizeSupportStencils();
 
     return plansTable;
 }

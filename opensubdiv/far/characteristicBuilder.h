@@ -58,7 +58,7 @@ public:
     // Creates a characteristic for the given level & face
     Characteristic const * Create(int levelIndex, int faceIndex, Neighborhood const * neighborhood);
 
-    void FinalizeSupports();
+    void FinalizeSupportStencils();
 
 private:
 

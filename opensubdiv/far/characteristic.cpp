@@ -106,18 +106,18 @@ Characteristic::Node::GetNumChildrenNodes() const {
 }
 
 Characteristic::Node
-Characteristic::Node::GetChildNode(int childIndex) const {
-
+Characteristic::Node::GetNodeChild(int childIndex) const {
     NodeDescriptor desc = GetDescriptor();
-
     switch (desc.GetType()) {
-        case Characteristic::NODE_TERMINAL:
+        case Characteristic::NODE_TERMINAL: {
             assert(childIndex==0);
+            int const * offsetPtr = getNodeData() + 2;
+            return Node(_characteristic, *offsetPtr);
+        }
         case Characteristic::NODE_RECURSIVE: {
-                int const * offsetPtr = getNodeData() +
-                    sizeof(NodeDescriptor)/sizeof(int) + childIndex;
-                return Node(_characteristic, *offsetPtr);
-            }
+            int const * offsetPtr = getNodeData() + 1 + childIndex;
+            return Node(_characteristic, *offsetPtr);
+        }
         default:
             assert(0);
     }
@@ -156,7 +156,8 @@ Characteristic::Node::getNodeSize() const {
 int
 Characteristic::Node::GetNumSupports() const {
     switch (GetDescriptor().GetType()) {
-        case Characteristic::NODE_REGULAR : return 16;
+        case Characteristic::NODE_REGULAR :
+        case Characteristic::NODE_TERMINAL : return 16;
         case Characteristic::NODE_END : {
             CharacteristicMap const & charmap =
                 GetCharacteristic()->GetCharacteristicMap();
@@ -174,7 +175,7 @@ Characteristic::Node::GetNumSupports() const {
 }
 
 Characteristic::Support
-Characteristic::Node::GetSupport(int supportIndex) const {
+Characteristic::Node::GetSupport(int supportIndex, int evIndex) const {
 
     Index firstSupport = getFirstSupportIndex();
 
@@ -191,7 +192,8 @@ Characteristic::Node::GetSupport(int supportIndex) const {
                 {5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 23},
                 {6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24},
             };
-            supportIndex = permuteTerminal[desc.GetEvIndex()][supportIndex];
+            assert(evIndex!=desc.GetEvIndex() && evIndex>=0 && evIndex<4);
+            supportIndex = permuteTerminal[evIndex][supportIndex];
             return GetCharacteristic()->GetSupport(supportIndex);
         }
         default:
@@ -228,13 +230,13 @@ Characteristic::GetTreeNode(float s, float t, unsigned char * quadrant) const {
         t *= 2.0f;
 
         if (ntype==NODE_RECURSIVE) {
-            // fetch next node
+            // fetch child node
             offset = _tree[offset + 1 + corner];
             desc = _tree[offset];
         } else if (ntype==NODE_TERMINAL) {
             if (corner==desc.GetEvIndex()) {
                 // traverse to end-cap patch
-                offset = _tree[offset + 1];
+                offset = _tree[offset + 2];
                 desc = _tree[offset];
             } else {
                 // regular sub-patch : exit
@@ -382,7 +384,7 @@ printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charInde
         case Characteristic::NODE_RECURSIVE : {
                 fprintf(fout, "  %zu [label=\"I\", shape=square, style=filled, color=dodgerblue]\n",nodeID );
                 for (int i=0; i<4; ++i) {
-                    Characteristic::Node child = node.GetChildNode(i);
+                    Characteristic::Node child = node.GetNodeChild(i);
                     printCharacteristicTreeNode(fout, child, charIndex, showIndices);
                     fprintf(fout, "  %zu -> %zu [label=\"%d\"]\n", nodeID, hashNodeID(charIndex, child), i);
                 }
@@ -395,7 +397,7 @@ printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charInde
             }
             fprintf(fout, "\"]\n");
 
-            Characteristic::Node child = node.GetChildNode();
+            Characteristic::Node child = node.GetNodeChild();
 
             printCharacteristicTreeNode(fout, child, charIndex, showIndices);
 

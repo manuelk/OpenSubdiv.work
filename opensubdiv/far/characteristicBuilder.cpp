@@ -655,21 +655,25 @@ generateStencilTable(
     options.generateOffsets = true;
     options.generateControlVerts = true;
     options.generateIntermediateLevels = true;
-    StencilTable const * regularStencils =
-        Far::StencilTableFactory::Create(refiner, options);
 
-    StencilTable const * localPointStencils =
-        endcapBuilder.FinalizeStencils();
+    StencilTable const * regularStencils = 0,
+                       * localPointStencils = 0,
+                       * result = 0;
 
-    // concatenate & factorize end-cap stencils
-    StencilTable const * supportStencils =
-        Far::StencilTableFactory::AppendLocalPointStencilTable(
+    regularStencils =  Far::StencilTableFactory::Create(refiner, options),
+
+    localPointStencils = endcapBuilder.FinalizeStencils();
+
+    if (regularStencils && localPointStencils) {
+        // concatenate & factorize end-cap stencils
+        result = Far::StencilTableFactory::AppendLocalPointStencilTable(
             refiner, regularStencils, localPointStencils);
-
-    delete regularStencils;
-    delete localPointStencils;
-
-    return supportStencils;
+        delete localPointStencils;
+        delete regularStencils;
+    } else {
+        result = regularStencils;
+    }
+    return result;
 }
 
 void
@@ -684,7 +688,7 @@ CharacteristicBuilder::clearContexts() {
 }
 
 void
-CharacteristicBuilder::FinalizeSupports() {
+CharacteristicBuilder::FinalizeSupportStencils() {
 
     // XXXX manuelk : need to switch this for a code path that only computes
     // the stencils needed for the neighborhoods not yet in the map instead of
@@ -692,6 +696,7 @@ CharacteristicBuilder::FinalizeSupports() {
 
     StencilTable const * supportStencils =
         generateStencilTable(_refiner, *_endcapBuilder);
+    assert(supportStencils);
 
     // iterate over all the characteristics that were created and populate
     // their supports
