@@ -82,7 +82,7 @@ int g_level = 3,
     g_shadingMode = SHADING_PATCH_TYPE,
     g_tessLevel = 10,
     g_tessLevelMin = 2,
-    g_currentShape = 8, //cube = 8 square = 12 pyramid = 45 torus = 49
+    g_currentShape = 12, //cube = 8 square = 12 pyramid = 45 torus = 49
     g_useTopologyHashing = false,
     g_useTerminalNodes = true;
 
@@ -340,8 +340,9 @@ printPatchTables(Far::TopologyRefiner const * refiner) {
 GLFont * g_font=0;
 
 //------------------------------------------------------------------------------
-int g_currentPlanIndex = 0,
-    g_currentNodeIndex = -1;
+int g_currentPlanIndex = -1,
+    g_currentNodeIndex = 0,
+    g_currentQuadrantIndex = 0;
 
 Far::Characteristic::Node g_currentNode;
 
@@ -382,67 +383,72 @@ createFaceNumbers(Far::TopologyRefiner const & refiner,
 
 static void
 createNodeNumbers(Far::SubdivisionPlanTable const & plansTable,
+    int planIndex, Far::Characteristic::Node node, int quadrant,
+        std::vector<Vertex> const & vertexBuffer) {
+
+    int nsupports = node.GetNumSupports();
+
+    for (int j=0; j<nsupports; ++j) {
+
+        // get the stencil for this support point
+        Far::Characteristic::Support stencil = node.GetSupport(j, quadrant);
+
+        Vertex support;
+        support.Clear();
+        for (short k=0; k<stencil.size; ++k) {
+
+            // remap the support stencil indices, which are local
+            // to the characteristic's neighborhood, to the control
+            // mesh topology.
+            Far::Index vertIndex =
+                plansTable.GetMeshControlVertexIndex(planIndex, stencil.indices[k]);
+
+            assert(vertIndex!=Far::INDEX_INVALID);
+
+            support.AddWithWeight(
+                vertexBuffer[vertIndex], stencil.weights[k]);
+        }
+        float position[3] = { support.point[0],
+                              support.point[1],
+                              support.point[2], };
+        static char buf[16];
+        snprintf(buf, 16, "%d", j);
+        g_font->Print3D(position, buf, 2);
+    }
+}
+
+static void
+createPlanNumbers(Far::SubdivisionPlanTable const & plansTable,
     int planIndex, std::vector<Vertex> const & vertexBuffer) {
 
-    Far::CharacteristicMap const & charmap = plansTable.GetCharacteristicMap();
+    if (g_currentNodeIndex<0) {
+        return;
+    }
 
-    g_currentPlanIndex = std::max(0,
-        std::min(g_currentPlanIndex, charmap.GetNumCharacteristics()-1));
+    Far::Characteristic const * ch =
+        plansTable.GetPlanCharacteristic(planIndex);
 
-    g_currentNodeIndex = std::max(-1, g_currentNodeIndex);
+    Far::Characteristic::Node node = ch->GetTreeNode(0);
 
-    if (g_currentPlanIndex>=0 && g_currentNodeIndex>=0) {
-        Far::Characteristic const * ch =
-            charmap.GetCharacteristic(g_currentPlanIndex);
+    for (int count=0; node.GetTreeOffset()<ch->GetTreeSize(); ++node, ++count) {
 
-        Far::Characteristic::Node node = ch->GetTreeNode(0);
+        if (count==g_currentNodeIndex) {
 
-        for (int count=0; node.GetTreeOffset()<ch->GetTreeSize(); ++node, ++count) {
+            g_currentNode = node;
 
-            if (count==g_currentNodeIndex) {
+            Far::Characteristic::NodeDescriptor desc = node.GetDescriptor();
 
-                g_currentNode = node;
-
-                Far::Characteristic::NodeDescriptor desc = node.GetDescriptor();
-
-                if (desc.GetType()==Far::Characteristic::NODE_TERMINAL) {
-
-                } else {
-                    int nsupports = node.GetNumSupports();
-
-                    for (int j=0; j<nsupports; ++j) {
-
-                        // get the stencil for this support point
-                        Far::Characteristic::Support stencil = node.GetSupport(j, 0);
-
-                        Vertex support;
-                        support.Clear();
-                        for (short k=0; k<stencil.size; ++k) {
-
-                            // remap the support stencil indices, which are local
-                            // to the characteristic's neighborhood, to the control
-                            // mesh topology.
-                            Far::Index vertIndex =
-                                plansTable.GetMeshControlVertexIndex(planIndex, stencil.indices[k]);
-
-                            assert(vertIndex!=Far::INDEX_INVALID);
-
-                            support.AddWithWeight(
-                                vertexBuffer[vertIndex], stencil.weights[k]);
-                        }
-                        float position[3] = { support.point[0],
-                                              support.point[1],
-                                              support.point[2], };
-                        static char buf[16];
-                        snprintf(buf, 16, "%d", j);
-                        g_font->Print3D(position, buf, 2);
-                    }
+            if (desc.GetType()==Far::Characteristic::NODE_TERMINAL) {
+                if (g_currentQuadrantIndex!=desc.GetEvIndex()) {
+                    createNodeNumbers(plansTable, planIndex, node, g_currentQuadrantIndex, vertexBuffer);
                 }
-                return;
+            } else {
+                createNodeNumbers(plansTable, planIndex, node, 0, vertexBuffer);
             }
+            return;
         }
     }
-    g_currentNodeIndex = -1;
+    g_currentNodeIndex=0;
 }
 
 //------------------------------------------------------------------------------
@@ -526,7 +532,7 @@ tessChar(int tessFactor, int charOffset,
 
 //#define DO_MULTI_THREAD
 static void
-createTessMesh(Far::SubdivisionPlanTable const & plansTable, int tessFactor,
+createTessMesh(Far::SubdivisionPlanTable const & plansTable, int nplans, int tessFactor,
     std::vector<float> & positions, std::vector<float> & normals, std::vector<float> & colors,
         bool createPointsMesh=false) {
 
@@ -540,8 +546,7 @@ createTessMesh(Far::SubdivisionPlanTable const & plansTable, int tessFactor,
         g_tessMesh = new GLMesh(topo, GLMesh::DRAW_POINTS);
     } else {
     
-        int nplans = plansTable.GetNumSubdivisionPlans(),
-            ntriangles = 2 * (tessFactor-1) * (tessFactor-1) * nplans;
+        int ntriangles = 2 * (tessFactor-1) * (tessFactor-1) * nplans;
 
         // create tess mesh
 
@@ -646,8 +651,13 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     }
 
     // draw selected node data
-    createNodeNumbers(*g_plansTable, g_currentPlanIndex, controlVerts);
-
+    {
+        g_currentPlanIndex = std::max(-1,
+            std::min(g_currentPlanIndex, g_plansTable->GetNumPlans()-1));
+        if (g_currentPlanIndex>=0) {
+            createPlanNumbers(*g_plansTable, g_currentPlanIndex, controlVerts);
+        }
+    }
 
     //
     // tessellate
@@ -775,8 +785,8 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 }
 
                 bool nodeSelected = false;
-                if (g_currentPlanIndex>=0 &&
-                    g_currentNodeIndex>=0 &&
+                if (g_currentPlanIndex>=0 && g_currentPlanIndex==planIndex &&
+                    g_currentNodeIndex>=0 && 
                     g_currentNode==node) {
                     nodeSelected = true;
                 }
@@ -795,16 +805,12 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                         col[1] *= 2.0f;
                         col[2] *= 2.0f;
                     }
-                } else {
                 }
-
-                //memcpy(pos, c, 3 * sizeof(float));
-                //memcpy(norm, n, 3 * sizeof(float));
             }
         }
     }
 
-    createTessMesh(*g_plansTable, tessFactor, positions, normals, colors);
+    createTessMesh(*g_plansTable, nplans, tessFactor, positions, normals, colors);
 
     delete refiner;
 }
@@ -900,12 +906,21 @@ display() {
        {{  { 0.5,  0.2f, 1.0f, 0.0f },
            { 0.1f, 0.1f, 0.1f, 1.0f },
            { 0.7f, 0.7f, 0.7f, 1.0f },
+//#define SPECULAR
+#ifdef SPECULAR           
            { 0.8f, 0.8f, 0.8f, 1.0f } },
+#else
+           { 0.0f, 0.0f, 0.0f, 1.0f } },
+#endif
 
          { { -0.8f, 0.4f, -1.0f, 0.0f },
            {  0.0f, 0.0f,  0.0f, 1.0f },
            {  0.5f, 0.5f,  0.5f, 1.0f },
+#ifdef SPECULAR           
            {  0.8f, 0.8f,  0.8f, 1.0f } }}
+#else
+           { 0.0f, 0.0f, 0.0f, 1.0f } }}
+#endif
     };
     if (! g_lightingUB) {
         glGenBuffers(1, &g_lightingUB);
@@ -949,24 +964,24 @@ display() {
                 case Far::Characteristic::NODE_REGULAR : {
                     float sharp = desc.SingleCrease() ? g_currentNode.GetSharpness() : 0.0f;
                     g_hud.DrawString(x, y,
-                        "char=%d node=%d type=%s depth=%d nonquad=%d singleCrease=%d sharp=%f u=%d v=%d",
+                        "plan=%d node=%d type=%s depth=%d nonquad=%d singleCrease=%d sharp=%f u=%d v=%d",
                             g_currentPlanIndex, g_currentNodeIndex, typeName,
                                desc.GetDepth(), desc.NonQuadRoot(), desc.SingleCrease(), sharp, desc.GetU(), desc.GetV());
                 } break;
                 case Far::Characteristic::NODE_END : {
                     g_hud.DrawString(x, y,
-                        "char=%d node=%d type=%s depth=%d nonquad=%d u=%d v=%d",
+                        "plan=%d node=%d type=%s depth=%d nonquad=%d u=%d v=%d",
                             g_currentPlanIndex, g_currentNodeIndex, typeName,
                                desc.GetDepth(), desc.NonQuadRoot(), desc.GetU(), desc.GetV());
                 } break;
                 case Far::Characteristic::NODE_RECURSIVE : {
-                    g_hud.DrawString(x, y, "char=%d node=%d type=%s",
+                    g_hud.DrawString(x, y, "plan=%d node=%d type=%s",
                         g_currentPlanIndex, g_currentNodeIndex, typeName);
                 } break;
                 case Far::Characteristic::NODE_TERMINAL : {
                     g_hud.DrawString(x, y,
-                        "char=%d node=%d type=%s depth=%d nonquad=%d evIndex=%d u=%d v=%d",
-                            g_currentPlanIndex, g_currentNodeIndex, typeName,
+                        "plan=%d node=%d quadrant=%d type=%s depth=%d nonquad=%d evIndex=%d u=%d v=%d",
+                            g_currentPlanIndex, g_currentNodeIndex, g_currentQuadrantIndex, typeName,
                                 desc.GetDepth(), desc.NonQuadRoot(), desc.GetEvIndex(), desc.GetU(), desc.GetV());
                 } break;
                 default:
@@ -1166,6 +1181,8 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int mods) {
             if (mods==GLFW_MOD_SHIFT) {
                 --g_currentPlanIndex;
                 g_currentNodeIndex=0;
+            } else if (mods==GLFW_MOD_CONTROL) {
+                g_currentQuadrantIndex = std::max(0, g_currentQuadrantIndex-1);
             } else {
                 --g_currentNodeIndex;
             }
@@ -1176,6 +1193,8 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int mods) {
             if (mods==GLFW_MOD_SHIFT) {
                 ++g_currentPlanIndex;
                 g_currentNodeIndex=0;
+            } else if (mods==GLFW_MOD_CONTROL) {
+                g_currentQuadrantIndex = std::min(3, g_currentQuadrantIndex+1);
             } else {
                 ++g_currentNodeIndex;
             }
