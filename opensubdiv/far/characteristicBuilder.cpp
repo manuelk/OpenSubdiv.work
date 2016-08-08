@@ -621,7 +621,7 @@ CharacteristicBuilder::populateRecursiveNode(
         _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
     assert(children.size()==4);
     for (int i=0; i<4; ++i) {
-        tree[i] = ctx->treeOffset;
+        tree[permuteWinding(i)] = ctx->treeOffset;
         populateNode(levelIndex+1, children[i], ctx);
     }
 }
