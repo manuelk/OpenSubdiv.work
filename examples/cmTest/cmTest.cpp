@@ -78,11 +78,11 @@ enum ShadingMode {
     SHADING_TREE_DEPTH,
 };
 
-int g_level = 3,
+int g_level = 2,
     g_shadingMode = SHADING_PATCH_TYPE,
     g_tessLevel = 10,
     g_tessLevelMin = 2,
-    g_currentShape = 12, //cube = 8 square = 12 pyramid = 45 torus = 49
+    g_currentShape = 8, //cube = 8 square = 12 pyramid = 45 torus = 49
     g_useTopologyHashing = false,
     g_useTerminalNodes = true;
 
@@ -906,7 +906,7 @@ display() {
        {{  { 0.5,  0.2f, 1.0f, 0.0f },
            { 0.1f, 0.1f, 0.1f, 1.0f },
            { 0.7f, 0.7f, 0.7f, 1.0f },
-//#define SPECULAR
+#define SPECULAR
 #ifdef SPECULAR           
            { 0.8f, 0.8f, 0.8f, 1.0f } },
 #else
@@ -1182,7 +1182,7 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int mods) {
                 --g_currentPlanIndex;
                 g_currentNodeIndex=0;
             } else if (mods==GLFW_MOD_CONTROL) {
-                g_currentQuadrantIndex = std::max(0, g_currentQuadrantIndex-1);
+                g_currentQuadrantIndex = (g_currentQuadrantIndex+3)%4;
             } else {
                 --g_currentNodeIndex;
             }
@@ -1194,7 +1194,7 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int mods) {
                 ++g_currentPlanIndex;
                 g_currentNodeIndex=0;
             } else if (mods==GLFW_MOD_CONTROL) {
-                g_currentQuadrantIndex = std::min(3, g_currentQuadrantIndex+1);
+                g_currentQuadrantIndex = (g_currentQuadrantIndex+1)%4;
             } else {
                 ++g_currentNodeIndex;
             }
