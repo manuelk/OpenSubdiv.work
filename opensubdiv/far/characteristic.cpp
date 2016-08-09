@@ -194,7 +194,7 @@ Characteristic::Node::GetSupport(int supportIndex, int evIndex) const {
             };
             assert(evIndex!=desc.GetEvIndex() && evIndex>=0 && evIndex<4);
             supportIndex = permuteTerminal[evIndex][supportIndex];
-            return GetCharacteristic()->GetSupport(supportIndex);
+            return GetCharacteristic()->GetSupport(firstSupport + supportIndex);
         }
         default:
             assert(0);

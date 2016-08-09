@@ -543,6 +543,7 @@ CharacteristicBuilder::populateTerminalNode(
     ConstIndexArray childFaceIndices =
         _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
 
+    // save locations before recursions
     int * tree = ctx->GetCurrentTreePtr(),
           nodeSize = Characteristic::Node::getTerminalNodeSize(),
           firstSupport = ctx->firstSupport,
@@ -558,8 +559,7 @@ CharacteristicBuilder::populateTerminalNode(
 
         int childFaceIndex = childFaceIndices[child];
 
-        PatchFaceTag const & patchTag =
-            _levelPatchTags[childLevelIndex][childFaceIndex];
+        PatchFaceTag const & patchTag = levelPatchTags[childFaceIndex];
 
         if (evIndex!=child) {
             // child is a regular patch : get the supports
@@ -745,8 +745,8 @@ CharacteristicBuilder::FinalizeSupportStencils() {
                         neighborhood->Remap(stencil.GetVertexIndices()[k]);
                     ch->_weights[offset+k] = stencil.GetWeights()[k];
                 }
+                offset += stencilSize;
             }
-            offset += stencilSize;
         }
     }
     delete supportStencils;
