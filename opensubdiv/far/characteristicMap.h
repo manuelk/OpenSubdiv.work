@@ -137,6 +137,7 @@ private:
         NeighborhoodBuilder & neighborhoodBuilder,
         CharacteristicBuilder & charBuilder,
         int faceIndex,
+        int * rotation,
         Neighborhood const ** neighborhood=0);
 
     std::vector<int> _characteristicsHash;

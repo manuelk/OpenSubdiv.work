@@ -119,7 +119,10 @@ CharacteristicMap::findOrAddCharacteristic(
     NeighborhoodBuilder & neighborhoodBuilder,
     CharacteristicBuilder & charBuilder,
     int faceIndex,
+    int * rotation,
     Neighborhood const ** neighborhood) {
+
+    assert(rotation);
 
     TopologyLevel const & coarseLevel = refiner.GetLevel(0);
 
@@ -129,8 +132,7 @@ CharacteristicMap::findOrAddCharacteristic(
     Neighborhood const * n =
         neighborhoodBuilder.Create(coarseLevel, faceIndex);
 
-    int rotation = 0;
-    Index charIndex = findCharacteristic(*n, &rotation);
+    Index charIndex = findCharacteristic(*n, rotation);
 
     if (charIndex==INDEX_INVALID) {
 
@@ -228,11 +230,18 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
             continue;
         }
 
+        int rotation=0;
         Neighborhood const * neighborhood = 0;
 
         Index charIndex = findOrAddCharacteristic(
-            refiner, neighborhoodBuilder, charBuilder, face, &neighborhood);
+            refiner, neighborhoodBuilder, charBuilder, face,
+                &rotation, &neighborhood);
         assert(neighborhood);
+
+        if (rotation) {
+            delete neighborhood;
+            neighborhood = neighborhoodBuilder.Create(coarseLevel, face, rotation);
+        }
 
         int numControlVertices =
             GetCharacteristic(charIndex)->GetNumControlVertices();
