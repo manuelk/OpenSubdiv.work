@@ -688,6 +688,10 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
     for (int planIndex=0; planIndex<nplans; ++planIndex) {
 
+        if (g_plansTable->PlanIsHole(planIndex)) {
+            continue;
+        }
+
         Far::Characteristic const * ch =
             g_plansTable->GetPlanCharacteristic(planIndex);
 

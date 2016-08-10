@@ -812,6 +812,10 @@ CharacteristicBuilder::CharacteristicBuilder(
             levelVertOffset += level.GetNumVertices();
         }
     }
+
+    // worse case : every face has a new unique topology - likely, most of
+    // these contexts will never be used
+    _contexts.reserve(_refiner.GetLevel(0).GetNumFaces());
 }
 
 CharacteristicBuilder::~CharacteristicBuilder() {

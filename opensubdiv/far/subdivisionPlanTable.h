@@ -77,13 +77,18 @@ public:
         return (int)_plans.size();
     }
 
+    bool PlanIsHole(Index planIndex) const {
+        return _plans[planIndex].charIndex == INDEX_INVALID;
+    }
+
     SubdivisionPlan const & GetPlan(Index planIndex) const {
         return _plans[planIndex];
     }
 
     Characteristic const * GetPlanCharacteristic(Index planIndex) const {
         Index charIndex = _plans[planIndex].charIndex;
-        return _charmap.GetCharacteristic(charIndex);
+        return charIndex!=INDEX_INVALID ?
+            _charmap.GetCharacteristic(charIndex) : 0;
     }
 
     Index GetMeshControlVertexIndex(Index planIndex, LocalIndex supportIndex) const {
