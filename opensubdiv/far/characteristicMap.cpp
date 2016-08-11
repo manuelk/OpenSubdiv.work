@@ -49,7 +49,7 @@ CharacteristicMap::addCharacteristicToHash(
         // XXXX manuelk we could probably save a few bytes by adding an option
         // to not generate the remaps for these neighborhoods
         Neighborhood const * neighborhood =
-            neighborhoodBuilder.Create(level, faceIndex, i, /*collect*/ false);
+            neighborhoodBuilder.Create(level, faceIndex, i);
 
         if (ch->FindEquivalentNeighborhood(*neighborhood)!=INDEX_INVALID) {
             continue;
@@ -115,60 +115,6 @@ CharacteristicMap::findCharacteristic(
     return charIndex;
 }
 
-Index
-CharacteristicMap::findOrAddCharacteristic(
-    TopologyRefiner const & refiner,
-    NeighborhoodBuilder & neighborhoodBuilder,
-    CharacteristicBuilder & charBuilder,
-    int faceIndex,
-    int * rotation,
-    Neighborhood const ** neighborhood) {
-
-    assert(rotation);
-
-    TopologyLevel const & coarseLevel = refiner.GetLevel(0);
-
-    // note : this neighborhood is deleted by the CharacteristicBuilder
-    // build context after all the new characteristic supports have been
-    // finalized (smart pointers would be nice here)
-    Neighborhood const * n =
-        neighborhoodBuilder.Create(coarseLevel, faceIndex);
-
-    Index charIndex = findCharacteristic(*n, rotation);
-
-    if (charIndex==INDEX_INVALID) {
-
-        // topological configuration does not exist in the map : create a new
-        // characteristic & add to the map
-
-        charIndex = GetNumCharacteristics();
-        assert(charIndex!=INDEX_INVALID);
-
-        int valence = n->GetValence(),
-            regValence = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType());
-
-        if (valence!=regValence) {
-            ConstIndexArray childFaces = coarseLevel.GetFaceChildFaces(faceIndex);
-            for (int i=0; i<valence; ++i) {
-                Characteristic const * ch =
-                    charBuilder.Create(1, childFaces[i], n);
-                _characteristics.push_back(ch);
-            }
-        } else {
-            Characteristic const * ch =
-                charBuilder.Create(0, faceIndex, n);
-            _characteristics.push_back(ch);
-        }
-
-        addCharacteristicToHash(
-            coarseLevel, neighborhoodBuilder, faceIndex, charIndex, valence);
-    }
-    if (neighborhood) {
-        *neighborhood = n;
-    }
-    return charIndex;
-}
-
 bool
 CharacteristicMap::supportsEndCaps(EndCapType type) {
 
@@ -211,7 +157,8 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
 
     int nfaces = coarseLevel.GetNumFaces(),
         maxValence = refiner.GetMaxValence(),
-        nplans = SubdivisionPlanTable::countNumPlans(coarseLevel, regFaceSize),        
+        nplans = SubdivisionPlanTable::countNumPlans(coarseLevel, regFaceSize),
+        regValence = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType()),
         hashSize = _options.hashSize;
 
     SubdivisionPlanTable * plansTable = new SubdivisionPlanTable(*this);
@@ -224,37 +171,62 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
 
     // hash topology : faces with redundant topological configurations share
     // the same characteristic
-    NeighborhoodBuilder neighborhoodBuilder(nplans, maxValence);
+    NeighborhoodBuilder neighborhoodBuilder(maxValence);
 
-    for (int face = 0, firstControl = 0; face < nfaces; ++face) {
+    std::vector<Neighborhood const *> neighborhoods;
+    neighborhoods.reserve(nplans);
 
-        if (coarseLevel.IsFaceHole(face)) {
+    for (int faceIndex=0, firstControl=0; faceIndex < nfaces; ++faceIndex) {
+
+        if (coarseLevel.IsFaceHole(faceIndex)) {
             plans.push_back(SubdivisionPlan(0, INDEX_INVALID, INDEX_INVALID));
             continue;
         }
 
+        Neighborhood const * neighborhood =
+            neighborhoodBuilder.Create(coarseLevel, faceIndex);
+
         int rotation=0;
-        // note : this neighborhood is needed to generate the list of control
-        // point indices when we generate the support stencils. However, it is
-        // not the one kept by the characteristic, so it will be
-        // garbage-collected when the builder is destroyed at the end of this
-        // function.
-        Neighborhood const * neighborhood = 0;
 
-        Index charIndex = findOrAddCharacteristic(
-            refiner, neighborhoodBuilder, charBuilder, face,
-                &rotation, &neighborhood);
-        assert(neighborhood);
+        Index charIndex = findCharacteristic(*neighborhood, &rotation);
 
-        if (rotation) {
-            delete neighborhood;
-            neighborhood = neighborhoodBuilder.Create(coarseLevel, face, rotation);
+        if (charIndex==INDEX_INVALID) {
+
+            // this topological configuration does not exist in the map :
+            // create a new characteristic & add it to the map
+            charIndex = GetNumCharacteristics();
+            assert(charIndex!=INDEX_INVALID);
+
+            int valence = neighborhood->GetValence();
+            if (valence!=regValence) {
+                ConstIndexArray childFaces =
+                    coarseLevel.GetFaceChildFaces(faceIndex);
+                for (int i=0; i<valence; ++i) {
+                    Characteristic const * ch =
+                        charBuilder.Create(1, childFaces[i], neighborhood);
+                    _characteristics.push_back(ch);
+                }
+            } else {
+                Characteristic const * ch =
+                    charBuilder.Create(0, faceIndex, neighborhood);
+                _characteristics.push_back(ch);
+            }
+
+            addCharacteristicToHash(
+                coarseLevel, neighborhoodBuilder, faceIndex, charIndex, valence);
+        } else {
+            if (rotation) {
+                free((void *)neighborhood);
+                neighborhood =
+                    neighborhoodBuilder.Create(coarseLevel, faceIndex, rotation);
+            }
+            neighborhoods.push_back(neighborhood);
         }
 
         int numControlVertices =
             GetCharacteristic(charIndex)->GetNumControlVertices();
 
-        ConstIndexArray fverts = coarseLevel.GetFaceVertices(face);
+        ConstIndexArray fverts = coarseLevel.GetFaceVertices(faceIndex);
         if (fverts.size()==regFaceSize) {
 
             plans.push_back(
@@ -277,6 +249,10 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
     }
 
     charBuilder.FinalizeSupportStencils();
+
+    for (int i=0; i<(int)neighborhoods.size(); ++i) {
+        free((void *)neighborhoods[i]);
+    }
 
     return plansTable;
 }

@@ -126,19 +126,8 @@ private:
     Index findCharacteristic(Neighborhood const & n, int * rotation=0) const;
 
     void addCharacteristicToHash(
-        TopologyLevel const & level,
-        NeighborhoodBuilder & neighborhoodBuilder,
-        int faceIndex,
-        int charIndex,
-        int valence);
-
-    Index findOrAddCharacteristic(
-        TopologyRefiner const & refiner,
-        NeighborhoodBuilder & neighborhoodBuilder,
-        CharacteristicBuilder & charBuilder,
-        int faceIndex,
-        int * rotation,
-        Neighborhood const ** neighborhood=0);
+        TopologyLevel const & level, NeighborhoodBuilder & neighborhoodBuilder,
+            int faceIndex, int charIndex, int valence);
 
     std::vector<int> _characteristicsHash;
 

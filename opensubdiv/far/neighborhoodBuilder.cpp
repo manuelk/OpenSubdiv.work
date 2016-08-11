@@ -30,27 +30,17 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Far {
 
-NeighborhoodBuilder::NeighborhoodBuilder(int numPlans, int maxValence) {
+NeighborhoodBuilder::NeighborhoodBuilder(int maxValence) {
     _faces.reserve(maxValence);
     _faceValences.reserve(maxValence);
     _faceVerts.reserve(maxValence);
     _tags.reserve(maxValence);
     _vertRemaps.reserve(maxValence);
-
-    _garbageCollector.reserve(numPlans);
-}
-
-NeighborhoodBuilder::~NeighborhoodBuilder() {
-    // delete temporary neighborhoods after support stencils
-    // have been finalized
-    for (int i=0; i<(int)_garbageCollector.size(); ++i) {
-        free(_garbageCollector[i]);
-    }
 }
 
 Neighborhood const *
 NeighborhoodBuilder::Create(
-    TopologyLevel const & level, int faceIndex, int startEdge, bool collect) {
+    TopologyLevel const & level, int faceIndex, int startEdge) {
 
     clear();
 
@@ -116,10 +106,6 @@ NeighborhoodBuilder::Create(
         memcpy(n->getTags(), &_tags[0], tcount*sizeof(Tag));
     }
     memcpy(n->getVertRemaps(), &_vertRemaps[0], rcount*sizeof(int));
-
-    if (collect) {
-        _garbageCollector.push_back(n);
-    }
 
     return n;
 }
