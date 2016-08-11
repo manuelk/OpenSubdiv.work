@@ -45,12 +45,31 @@ class NeighborhoodBuilder {
 
 public:
 
-    // Constructor
-    NeighborhoodBuilder(int maxValence=256);
+    /// \brief Constructor
+    ///
+    /// @param numNeighborhoods  The number of neighborhoods we expect
+    ///                          to generate.
+    ///
+    /// @param maxValence        The maximum valence of a face in the mesh
+    ///
+    NeighborhoodBuilder(int numNeighborhoods, int maxValence=256);
 
-    // Creates a neighborhood around a TopologyLevel face
-    Neighborhood const * Create(
-        TopologyLevel const & level, int faceIndex, int startEdge=0);
+    /// \brief Destructor
+    ~NeighborhoodBuilder();
+
+    /// Creates a topology neighborhood around a given patch
+    ///
+    /// @param level      The topology level containing the control face
+    ///
+    /// @param faceIndex  Index of the face in the topology level
+    ///
+    /// @param startEdge  Rotates the neighborhood around the face
+    ///
+    /// @param collect    Marks the neighborhood for garbage collection
+    ///                   when this builder is deleted
+    ///
+    Neighborhood const * Create(TopologyLevel const & level,
+        int faceIndex, int startEdge=0, bool collect=true);
 
 private:
 
@@ -79,6 +98,7 @@ private:
     typedef Neighborhood::Tag Tag;
     std::vector<Tag> _tags;
 
+    std::vector<Neighborhood *> _garbageCollector;
 };
 
 

@@ -46,8 +46,10 @@ CharacteristicMap::addCharacteristicToHash(
 
     for (int i=0; i<valence; ++i) {
 
+        // XXXX manuelk we could probably save a few bytes by adding an option
+        // to not generate the remaps for these neighborhoods
         Neighborhood const * neighborhood =
-            neighborhoodBuilder.Create(level, faceIndex, i);
+            neighborhoodBuilder.Create(level, faceIndex, i, /*collect*/ false);
 
         if (ch->FindEquivalentNeighborhood(*neighborhood)!=INDEX_INVALID) {
             continue;
@@ -208,7 +210,8 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
     int regFaceSize = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType());
 
     int nfaces = coarseLevel.GetNumFaces(),
-        nplans = SubdivisionPlanTable::countNumPlans(coarseLevel, regFaceSize),
+        maxValence = refiner.GetMaxValence(),
+        nplans = SubdivisionPlanTable::countNumPlans(coarseLevel, regFaceSize),        
         hashSize = _options.hashSize;
 
     SubdivisionPlanTable * plansTable = new SubdivisionPlanTable(*this);
@@ -221,7 +224,7 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
 
     // hash topology : faces with redundant topological configurations share
     // the same characteristic
-    NeighborhoodBuilder neighborhoodBuilder;
+    NeighborhoodBuilder neighborhoodBuilder(nplans, maxValence);
 
     for (int face = 0, firstControl = 0; face < nfaces; ++face) {
 
@@ -231,6 +234,11 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
         }
 
         int rotation=0;
+        // note : this neighborhood is needed to generate the list of control
+        // point indices when we generate the support stencils. However, it is
+        // not the one kept by the characteristic, so it will be
+        // garbage-collected when the builder is destroyed at the end of this
+        // function.
         Neighborhood const * neighborhood = 0;
 
         Index charIndex = findOrAddCharacteristic(
@@ -253,6 +261,8 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
                 SubdivisionPlan(numControlVertices, firstControl, charIndex));
 
             appendPlanControlVertices(*neighborhood, controls);
+
+            firstControl += numControlVertices;
         } else {
 
             for (int i=0; i<fverts.size(); ++i) {
@@ -261,9 +271,9 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
                     SubdivisionPlan(numControlVertices, firstControl, charIndex+i));
 
                 appendPlanControlVertices(*neighborhood, controls);
+                firstControl += numControlVertices;
             }
         }
-        firstControl += numControlVertices;
     }
 
     charBuilder.FinalizeSupportStencils();

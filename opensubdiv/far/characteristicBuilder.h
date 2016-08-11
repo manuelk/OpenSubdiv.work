@@ -64,8 +64,6 @@ private:
 
     struct Context;
 
-    void clearContexts();
-
     void identifyNode(int levelIndex, int faceIndex, Context * context);
 
 

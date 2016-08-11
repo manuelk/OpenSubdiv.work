@@ -677,17 +677,6 @@ generateStencilTable(
 }
 
 void
-CharacteristicBuilder::clearContexts() {
-    for (int i=0; i<(int)_contexts.size(); ++i) {
-        // delete the temporary "full" neighborhoods that were allocated by
-        // CharacteristicMap::findOrAddCharacteristic()
-        delete _contexts[i]->n;
-        delete _contexts[i];
-    }
-    _contexts.clear();
-}
-
-void
 CharacteristicBuilder::FinalizeSupportStencils() {
 
     // XXXX manuelk : need to switch this for a code path that only computes
@@ -819,7 +808,12 @@ CharacteristicBuilder::CharacteristicBuilder(
 }
 
 CharacteristicBuilder::~CharacteristicBuilder() {
-    clearContexts();
+
+    for (int i=0; i<(int)_contexts.size(); ++i) {
+        delete _contexts[i];
+    }
+    _contexts.clear();
+
     delete _endcapBuilder;
 }
 

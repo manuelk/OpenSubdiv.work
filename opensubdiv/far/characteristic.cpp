@@ -207,6 +207,8 @@ Characteristic::Node::GetSupport(int supportIndex, int evIndex) const {
 //
 
 Characteristic::~Characteristic() {
+    // characteristics own the lifespan of their neighborhoods : we need to
+    // delete them
     for (int i=0; i<(int)_neighborhoods.size(); ++i) {
         free((void *)_neighborhoods[i]);
     }
