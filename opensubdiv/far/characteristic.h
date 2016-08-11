@@ -105,6 +105,8 @@ public:
     /// \brief Destructor
     ~Characteristic();
 
+    bool IsNonQuadPatch() const { return _nonquad; }
+
     /// \brief Returns the map this characteristic belongs to
     CharacteristicMap const & GetCharacteristicMap() const { return _characteristicMap; }
 
@@ -416,6 +418,7 @@ private:
     int                     _numControlVertices;
 
     short                   _supportLevelCounts[10]; // XXX TODO
+
     std::vector<short>      _sizes;
     std::vector<LocalIndex> _indices;
     std::vector<Index>      _offsets;
@@ -469,8 +472,14 @@ private:
     friend class CharacteristicMap;
     friend class SubdivisionPlanTable;
 
-    Characteristic(CharacteristicMap const & charmap, int numControlVertices) :
-        _characteristicMap(charmap), _numControlVertices(numControlVertices) { }
+    Characteristic(CharacteristicMap const & charmap,
+                   int numControlVertices,
+                   bool nonquad) :
+        _characteristicMap(charmap),
+        _numControlVertices(numControlVertices),
+        _nonquad(nonquad) { }
+
+    bool _nonquad;
 
     CharacteristicMap const & _characteristicMap;
 };

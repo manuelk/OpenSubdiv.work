@@ -745,10 +745,10 @@ Characteristic const *
 CharacteristicBuilder::Create(
     int levelIndex, int faceIndex, Neighborhood const * neighborhood) {
 
-    Characteristic * ch =
-        new Characteristic(_charmap, neighborhood->GetNumVertices());
-
     bool nonquad = levelIndex!=0;
+
+    Characteristic * ch =
+        new Characteristic(_charmap, neighborhood->GetNumVertices(), nonquad);
 
     Context * context = new Context(faceIndex, nonquad, ch, neighborhood);
 

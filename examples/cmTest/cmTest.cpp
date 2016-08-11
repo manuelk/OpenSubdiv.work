@@ -80,9 +80,9 @@ enum ShadingMode {
 
 int g_level = 2,
     g_shadingMode = SHADING_PATCH_TYPE,
-    g_tessLevel = 10,
+    g_tessLevel = 5,
     g_tessLevelMin = 2,
-    g_currentShape = 8, //cube = 8 square = 12 pyramid = 45 torus = 49
+    g_currentShape = 0, //cube = 8 square = 12 pyramid = 45 torus = 49
     g_useTopologyHashing = false,
     g_useTerminalNodes = true;
 
@@ -554,7 +554,7 @@ createTessMesh(Far::SubdivisionPlanTable const & plansTable, int nplans, int tes
         topo.positions = new float[ntriangles * 3 * 3];
         topo.normals = new float[ntriangles * 3 * 3];
         topo.colors = new float[ntriangles * 3 * 3];
-        topo.nverts = ntriangles * 3;
+        topo.nverts = 0;
 
         float * pos = topo.positions,
               * norm = topo.normals,
@@ -569,12 +569,19 @@ createTessMesh(Far::SubdivisionPlanTable const & plansTable, int nplans, int tes
                 continue;
             }
 
-            tessChar(tessFactor, offset, positions, normals, colors, pos, norm, col);
-            int ofs = (tessFactor-1) * (tessFactor-1) * 18;
+            int tf = plansTable.GetPlanCharacteristic(i)->IsNonQuadPatch() ?
+                tessFactor / 2 + 1 : tessFactor;
+
+            tessChar(tf, offset, positions, normals, colors, pos, norm, col);
+
+            int ofs = (tf-1) * (tf-1) * 18;
             pos  += ofs;
             norm += ofs;
             col  += ofs;
-            offset += tessFactor * tessFactor;
+
+            offset += tf * tf;
+
+            topo.nverts += (tf-1) * (tf-1) * 2 * 3;
         }
 
         g_tessMesh = new GLMesh(topo);
@@ -663,15 +670,14 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     // tessellate
     //
 
-    int const tessFactor = g_tessLevel,
-              nplans = g_plansTable->GetNumPlans();
+    int const nplans = g_plansTable->GetNumPlans();
 
 //#define DEBUG_PRINT
 #ifdef DEBUG_PRINT
     printPatchTables(refiner);
 #endif
 
-    nverts = tessFactor * tessFactor * nplans;
+    nverts = g_tessLevel * g_tessLevel * nplans;
 
     std::vector<float> positions(3 * nverts),
                        normals(3 * nverts),
@@ -694,6 +700,8 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
         Far::Characteristic const * ch =
             g_plansTable->GetPlanCharacteristic(planIndex);
+
+        int const tessFactor = ch->IsNonQuadPatch() ? g_tessLevel / 2 + 1 : g_tessLevel;
 
         // interpolate vertices
         for (int y=0; y<tessFactor; ++y) {
@@ -814,7 +822,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         }
     }
 
-    createTessMesh(*g_plansTable, nplans, tessFactor, positions, normals, colors);
+    createTessMesh(*g_plansTable, nplans, g_tessLevel, positions, normals, colors);
 
     delete refiner;
 }
