@@ -69,8 +69,8 @@ class Neighborhood;
 ///     extraordinary vertex, but are otherwise "regular" (no boundaries,
 ///     no creases...) generate 3 regular sub-patches for each level of adaptive
 ///     isolation.
-///     Each of these sub-patches requires 18 supports, however many of the
-///     supports overlap, so that out of 54 supports, only 24 are not redundant.
+///     Each of these sub-patches requires 16 supports, however many of the
+///     supports overlap, so that out of 48 supports, only 24 are not redundant.
 ///     Terminal nodes store those supports more efficiently.
 ///
 /// Notes:
@@ -78,7 +78,7 @@ class Neighborhood;
 ///   * Domain winding
 ///     Sub-domain winding in topology trees does not follow the general
 ///     sequential winding order used elsewhere in OpenSubdiv. Instead, the
-///     domains of sub-patches are stored with a "^ bitwise" winding order.
+///     domains of sub-patches are stored with a "Z" winding order.
 ///     Winding patterns:
 ///       Sequential    ^ Bitwise
 ///       +---+---+     +---+---+
@@ -87,7 +87,8 @@ class Neighborhood;
 ///       | 0 | 1 |     | 0 | 1 |
 ///       +---+---+     +---+---+
 ///     This winding pattern allows for faster traversal by using simple
-///     bitwise operators.
+///     '^' bitwise operators.
+///
 ///  XXXX manuelk GPU-side gains may not be worth the complexity...
 ///
 ///  For more details, see:
@@ -105,14 +106,12 @@ public:
     /// \brief Destructor
     ~Characteristic();
 
+    /// \brief Returns true if this topology characteristic belongs to an
+    /// irregular (non-quad) face
     bool IsNonQuadPatch() const { return _nonquad; }
 
     /// \brief Returns the map this characteristic belongs to
     CharacteristicMap const & GetCharacteristicMap() const { return _characteristicMap; }
-
-    //@{
-    ///  @name Evaluation methods
-    ///
 
     /// \brief Evaluate basis functions for position and first derivatives at a
     /// given (s,t) parametric location of a patch.
@@ -131,8 +130,6 @@ public:
     ///
     Node EvaluateBasis(float s, float t,
         float wP[], float wDs[], float wDt[], unsigned char * quadrant=0) const;
-
-    //@}
 
 public:
 
@@ -290,7 +287,7 @@ public:
 
         /// \brief Returns the requested support at index
         /// (index is relative : in range [0, GetNumSupports()])
-        Characteristic::Support GetSupport(int supportIndex, int evIndex) const;
+        Support GetSupport(int supportIndex, int evIndex) const;
 
         /// \brief Returns the creased edge sharpness
         /// note : the value is undefined for any node other than REGULAR
@@ -391,6 +388,10 @@ public:
     // Supports
     //
 
+    //@{
+    ///  @name Sub-patch support stencils
+    ///
+
     struct Support {
 
         Support(int _size, LocalIndex const * _indices, float const * _weights) :
@@ -401,17 +402,31 @@ public:
         float const      * weights;
     };
 
-    // Returns the total number of supports for this characteristic
+    /// \brief Returns the total number of supports for this characteristic
     int GetNumSupportsTotal() const { return (int)_sizes.size(); }
 
-    // Returns the number of supports needing to be evaluated at a given level
+    /// \brief Returns the number of supports needing to be evaluated at a given level
     int GetNumSupports(int levelIndex) const { return _supportLevelCounts[levelIndex]; }
 
-    // Returns the support data for the support of given index
+    /// \brief Returns the support data for the support of given index
     Support GetSupport(Index supportIndex) const;
 
-    // Returns the number of control vertices in the characteristic neighborhood
+    /// \brief Returns a vector containing the size of each support
+    std::vector<short> const & GetSupportsSizes() const { return _sizes; }
+
+    /// \brief Returns a vector of supports control vertex indices
+    std::vector<LocalIndex> const & GetSupportIndices() const { return _indices; }
+
+    /// \brief Returns a vector of the supports stencil weights
+    std::vector<int> const & GetSupportWeights() const { return _offsets; }
+
+    /// \brief Returns a vector of the offsets to each support indices & weights
+    std::vector<int> const & GetSupportOffsets() const { return _offsets; }
+
+    /// \brief Returns the number of control vertices in the characteristic neighborhood
     short GetNumControlVertices() const { return _numControlVertices; }
+
+    //@}
 
 private:
 
@@ -421,7 +436,7 @@ private:
 
     std::vector<short>      _sizes;
     std::vector<LocalIndex> _indices;
-    std::vector<Index>      _offsets;
+    std::vector<int>        _offsets;
     std::vector<float>      _weights;
 
 public:

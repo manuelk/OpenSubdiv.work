@@ -269,9 +269,16 @@ CharacteristicMap::GetCharacteristicTreeSizeTotal() const {
 }
 
 void
-CharacteristicMap::WriteCharacteristicsDiagraphs(FILE * fout, bool showIndices) const {
+CharacteristicMap::WriteCharacteristicsDiagraphs(
+    FILE * fout, char const * title, bool showIndices) const {
 
-    fprintf(fout, "digraph {\n");
+    fprintf(fout, "digraph CharacteristicMap {\n");
+
+    if (title) {
+        fprintf(fout, "  label = \"%s\";\n", title);
+        fprintf(fout, "  labelloc = \"t\";\n");
+    }
+
     for (int charIndex=0; charIndex<GetNumCharacteristics(); ++charIndex) {
 
         Characteristic const * ch = GetCharacteristic(charIndex);

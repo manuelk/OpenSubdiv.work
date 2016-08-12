@@ -38,9 +38,9 @@ namespace Far {
 
 class TopologyLevel;
 
-// Topoloogy neighborhood descriptor : uniquely identifies topological
-// configurations of a mesh
-//
+///
+/// \brief Neighborhood build helper
+///
 class NeighborhoodBuilder {
 
 public:

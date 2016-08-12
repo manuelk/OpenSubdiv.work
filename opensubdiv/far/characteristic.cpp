@@ -60,26 +60,26 @@ namespace Far {
 //
 // Node Layouts :
 //
-//   Field      | size | Content
-//  ------------|:----:|----------------------------------------------------
-//  REGULAR     |      |
-//   descriptor | 1    | see NodeDescriptor
-//   sharpness  | 1    | crease sharpness (single crease nodes only)
-//   supports   | 16   | support indices
-//  ------------|:----:|----------------------------------------------------
-//  EMD         |      |
-//   descriptor | 1    | see NodeDescriptor
-//   supports   | 0-20 | support indices (depending on end-cap type)
-//  ------------|:----:|----------------------------------------------------
-//  Recursive   |      |
-//   descriptor | 1    | see NodeDescriptor
-//   offsets    | 4    | offsets to 4 children nodes
-//  ------------|:----:|----------------------------------------------------
-//  TERMINAL    |      |
-//   descriptor | 1    | see NodeDescriptor
-//   offsets    | 1    | offset to end-cap or terminal child node
-//   supports   | 25   | support indices
-//  ------------|:----:|----------------------------------------------------
+//   Field         | size | Content
+//  ---------------|:----:|----------------------------------------------------
+//  REGULAR        |      |
+//   descriptor    | 1    | see NodeDescriptor
+//   first support | 1    | local index of the first support stencil
+//   sharpness     | 1    | crease sharpness (single crease nodes only)
+//  ---------------|:----:|----------------------------------------------------
+//  EMD            |      |
+//   descriptor    | 1    | see NodeDescriptor
+//   first support | 1    | local index of the first support stencil
+//  ---------------|:----:|----------------------------------------------------
+//  Recursive      |      |
+//   descriptor    | 1    | see NodeDescriptor
+//   child nodes   | 4    | offsets to the 4 children nodes
+//  ---------------|:----:|----------------------------------------------------
+//  TERMINAL       |      |
+//   descriptor    | 1    | see NodeDescriptor
+//   first support | 1    | local index of the first support stencil
+//   child node    | 1    | offset to the child node (END or TERMINAL)
+//  ---------------|:----:|----------------------------------------------------
 //
 // Sizes are in 'integers' (4 bytes)
 //
@@ -198,7 +198,7 @@ Characteristic::Node::GetSupport(int supportIndex, int evIndex) const {
         }
         default:
             assert(0);
-            return Support(0, 0, 0);            
+            return Support(0, 0, 0);
     }
 }
 
@@ -258,6 +258,7 @@ Characteristic::EvaluateBasis(float s, float t,
     float wP[], float wDs[], float wDt[], unsigned char * subpatch) const {
 
     unsigned char quadrant = 0;
+
     Node n = GetTreeNode(s, t, &quadrant);
 
     NodeDescriptor desc = n.GetDescriptor();
@@ -331,16 +332,22 @@ Characteristic::EvaluateBasis(float s, float t,
 //
 
 static void
-printNodeIndices(FILE * fout, ConstIndexArray cvs) {
+printNodeIndices(FILE * fout, Characteristic::Node node) {
 
-    int stride = cvs.size()==16 ? 4 : 5;
+    Characteristic::NodeDescriptor desc = node.GetDescriptor();
 
-    for (int i=0; i<cvs.size(); ++i) {
+    int numSupports = node.GetNumSupports(),
+        stride = (numSupports==16) ? 4 : 5,
+        evIndex = desc.GetType()==Characteristic::NODE_TERMINAL ?
+            desc.GetEvIndex() : 0;
+
+    for (int i=0; i<numSupports; ++i) {
+        Characteristic::Support support = node.GetSupport(i, evIndex);
         if (i>0 && ((i%stride)!=0))
             fprintf(fout, " ");
         if ((i%stride)==0)
             fprintf(fout, "\\n");
-        fprintf(fout, "%*d", 4, cvs[i]);
+        fprintf(fout, "%*d", 4, 0);
     }
 }
 
@@ -368,9 +375,9 @@ printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charInde
                 if (desc.SingleCrease()) {
                     fprintf(fout, "\\n\\nsharp=%f", node.GetSharpness());
                 }
-                fprintf(fout, "\" ");
+                fprintf(fout, "\"");
                 if (desc.SingleCrease()) {
-                    fprintf(fout, " , style=filled, color=darksalmon");
+                    fprintf(fout, ", style=filled, color=darksalmon");
                 }
                 fprintf(fout, ", shape=box]\n");
             } break;
@@ -413,8 +420,10 @@ printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charInde
 void
 Characteristic::WriteTreeDiagraph(FILE * fout,
     int charIndex, bool showIndices, bool isSubgraph) const {
+
     if (isSubgraph) {
-        fprintf(fout, "subgraph {\n");
+        fprintf(fout, "subgraph cluster_%d {\n", charIndex);
+        fprintf(fout, "  label = \"Characteristic %d\"; style=filled; color=lightgrey;\n", charIndex);
     } else {
         fprintf(fout, "digraph {\n");
     }

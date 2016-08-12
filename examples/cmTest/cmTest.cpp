@@ -44,6 +44,7 @@ GLFWmonitor* g_primary=0;
 
 #include <osd/glVertexBuffer.h>
 
+#include <far/neighborhood.h>
 #include <far/patchFaceTag.h>
 #include <far/patchTableFactory.h>
 #include <far/stencilTable.h>
@@ -344,6 +345,9 @@ int g_currentPlanIndex = -1,
     g_currentNodeIndex = 0,
     g_currentQuadrantIndex = 0;
 
+size_t g_currentCharmapSize = 0,
+       g_currentPlansTableSize = 0;
+
 Far::Characteristic::Node g_currentNode;
 
 static void
@@ -464,6 +468,8 @@ writeDiagraph(Far::CharacteristicMap const & charmap, int charIndex) {
         fprintf(stderr, "Could not open %s\n", fname);
     }
 
+    char const * shapename = g_shapes[g_currentShape].name.c_str();
+
     if (charIndex>=0 && charIndex<charmap.GetNumCharacteristics()) {
 
         Far::Characteristic const * ch = charmap.GetCharacteristic(charIndex);
@@ -473,11 +479,42 @@ writeDiagraph(Far::CharacteristicMap const & charmap, int charIndex) {
         ch->WriteTreeDiagraph(fout, charIndex, showIndices, isSubgraph);
     } else {
         bool showIndices = true;
-        charmap.WriteCharacteristicsDiagraphs(fout, showIndices);
+        charmap.WriteCharacteristicsDiagraphs(fout, shapename, showIndices);
     }
     fclose(fout);
     fprintf(stdout, "Saved %s\n", fname);
     fflush(stdout);
+}
+
+//------------------------------------------------------------------------------
+static size_t
+computeCharacteristicMapSize(Far::CharacteristicMap const & charmap) {
+    size_t result=0;
+    for (int charIndex=0; charIndex<charmap.GetNumCharacteristics(); ++charIndex) {
+
+        Far::Characteristic const * ch = charmap.GetCharacteristic(charIndex);
+        
+        result += ch->GetTreeSize() * sizeof(int);
+        
+        result += ch->GetSupportsSizes().size() * sizeof(short);
+        result += ch->GetSupportIndices().size() * sizeof(Far::LocalIndex);
+        result += ch->GetSupportWeights().size() * sizeof(float);
+        result += ch->GetSupportOffsets().size() * sizeof(int);
+
+        for (int nIndex=0; nIndex<ch->GetNumNeighborhoods(); ++nIndex) {
+            Far::Neighborhood const * n = ch->GetNeighborhood(nIndex);
+            result += n->GetSizeWithRemap();
+        }
+    }
+    return result;
+}
+
+static size_t
+computePlansTableSize(Far::SubdivisionPlanTable const & plansTable) {
+    size_t result = 0;
+    result += plansTable.GetSubdivisionPlans().size() * sizeof(Far::SubdivisionPlan);
+    result += plansTable.GetControlVertices().size() * sizeof(Far::Index);
+    return result;   
 }
 
 //------------------------------------------------------------------------------
@@ -631,15 +668,18 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     g_controlMeshVerts->UpdateData(&shape->verts[0], 0, nverts);
     g_controlMeshDisplay.SetTopology(refiner->GetLevel(0));
 
-    // build characteristics map
-    delete g_plansTable;
+    // build characteristics map 
     Far::CharacteristicMap::Options options;
     options.endCapType = g_endCap;
     options.useTerminalNode = g_useTerminalNodes;
     options.hashSize = 5000;
     Far::CharacteristicMap * charmap = new Far::CharacteristicMap(options);
 
+    delete g_plansTable;
     g_plansTable = charmap->HashTopology(*refiner);
+
+    g_currentCharmapSize = computeCharacteristicMapSize(*charmap);
+    g_currentPlansTableSize = computePlansTableSize(*g_plansTable);
 
     // copy coarse vertices positions
     std::vector<Vertex> controlVerts(shape->GetNumVertices());
@@ -1008,8 +1048,34 @@ display() {
         g_hud.DrawString(10, -40,  "Triangles  : %d", g_tessMesh ? g_tessMesh->GetNumTriangles() : -1);
         g_hud.DrawString(10, -20,  "FPS        : %3.1f", fps);
 
-        g_hud.DrawString(-280, -120, "Chars : %d", g_plansTable ? g_plansTable->GetCharacteristicMap().GetNumCharacteristics() : -1);
-        g_hud.DrawString(-280, -100, "Plans : %d", g_plansTable ? (int)g_plansTable->GetSubdivisionPlans().size() : 0);
+        static char const * sizeSfxs[4] = { "b", "Kb", "Mb", "Gb" };
+
+        float size = 0;
+        int sizeSfx = 0;
+
+        if (g_currentCharmapSize > 1024*1024*1024) {
+            size =  g_currentCharmapSize / (1024.f*1024.f*1024.f); sizeSfx=3;
+        } else if (g_currentCharmapSize > 1024*1024) {
+            size =  g_currentCharmapSize / (1024.f*1024.f); sizeSfx=2;
+        } else if (g_currentCharmapSize > 1024) {
+            size =  g_currentCharmapSize / 1024.f; sizeSfx=1;
+        } else {
+            size =  (float)g_currentCharmapSize; sizeSfx=0;
+        }
+        g_hud.DrawString(-280, -120, "Chars : %d (%.3f %s)",
+            g_plansTable ? g_plansTable->GetCharacteristicMap().GetNumCharacteristics() : -1, size, sizeSfxs[sizeSfx]);
+
+        if (g_currentPlansTableSize > 1024*1024*1024) {
+            size =  g_currentPlansTableSize / (1024.f*1024.f*1024.f); sizeSfx=3;
+        } else if (g_currentPlansTableSize > 1024*1024) {
+            size =  g_currentPlansTableSize / (1024.f*1024.f); sizeSfx=2;
+        } else if (g_currentPlansTableSize > 1024) {
+            size =  g_currentPlansTableSize / 1024.f; sizeSfx=1;
+        } else {
+            size =  (float)g_currentPlansTableSize; sizeSfx=0;
+        }
+        g_hud.DrawString(-280, -100, "Plans : %d (%.3f Kb)",
+            g_plansTable ? (int)g_plansTable->GetSubdivisionPlans().size() : 0, size, sizeSfxs[sizeSfx]);
 
         g_hud.Flush();
     }

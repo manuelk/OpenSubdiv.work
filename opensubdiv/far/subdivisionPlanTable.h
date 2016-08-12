@@ -55,13 +55,13 @@ typedef std::vector<SubdivisionPlan> SubdivisionPlanVector;
 ///  \brief Stores subdivision plans
 ///
 /// The subdivision plan is a data structure that represents a feature-adaptive
-/// subdivisionhierarchy for the face, down to some fixed, maximum depth.
+/// subdivision hierarchy for the face, down to some fixed, maximum depth.
 /// Specifically, it comprises:
-///   - an optimized quadtree representing the adaptive subdivision hierarchy
-///     of the face.
-///   - anordered list of stencils for support control points: those required
-///     to evaluate limit samples within each subdivided face. Each stencil
-///     represents a weighted sum over base vertices
+///   - an index to a topology characteristic containing:
+///     - an optimized quadtree representing the adaptive subdivision hierarchy
+///       of the face.
+///     - an ordered list of stencils for support control points
+///   - an ordered list of base control vertices
 /// The plan for a face depends only on the configuration of elements that can
 /// exert an influence on the limit surface within its local domain. This
 /// includes the topology of the face and its 1-ring, sharpness tags for
@@ -71,48 +71,53 @@ class SubdivisionPlanTable {
 
 public:
 
-    typedef CharacteristicMap::Options Options;
-
+    /// \brief Returns the number of plans in the table
     int GetNumPlans() const {
         return (int)_plans.size();
     }
 
+    /// \brief Returns true if the the plan has no surface (hole)
     bool PlanIsHole(Index planIndex) const {
         return _plans[planIndex].charIndex == INDEX_INVALID;
     }
 
+    /// \brief Returns the plan at index
     SubdivisionPlan const & GetPlan(Index planIndex) const {
         return _plans[planIndex];
     }
 
+    /// \brief Returns the Characteristic associated with the plan
     Characteristic const * GetPlanCharacteristic(Index planIndex) const {
         Index charIndex = _plans[planIndex].charIndex;
         return charIndex!=INDEX_INVALID ?
             _charmap.GetCharacteristic(charIndex) : 0;
     }
 
+    /// \brief Returns the index of the vertex in the control mesh corresponding
+    /// to the support supportIndex of plan planIndex
     Index GetMeshControlVertexIndex(Index planIndex, LocalIndex supportIndex) const {
         return _controlVertices[_plans[planIndex].firstControl + supportIndex];
     }
 
+    /// \brief Returns the array of control vertex indices for the plan planIndex
     ConstIndexArray GetPlanControlVertices(Index planIndex) const {
         SubdivisionPlan const & plan = _plans[planIndex];
         return ConstIndexArray(
             &_controlVertices[plan.firstControl], plan.numControls);
     }
 
+    /// \brief Returns the CharacteristicMap associated with the plans in the table
     CharacteristicMap const & GetCharacteristicMap() const {
         return _charmap;
     }
 
-    int GetNumSubdivisionPlans() const {
-        return (int)_plans.size();
-    }
-
+    /// \brief Returns a vector with all the plans in the table
     SubdivisionPlanVector const & GetSubdivisionPlans() const {
         return _plans;
     }
 
+    /// \brief Returns a vector with all the base control vertex neighborhoods
+    /// of each plan
     std::vector<Index> const & GetControlVertices() const {
         return _controlVertices;
     }
