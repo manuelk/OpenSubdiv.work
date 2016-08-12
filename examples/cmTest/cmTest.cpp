@@ -822,6 +822,25 @@ rebuildMeshes() {
     createMesh(g_shapes[g_currentShape], g_level);
 }
 
+
+static char const *
+formatMemorySize(size_t memSize) {
+
+    static char _buf[20];
+
+    if (memSize > 1024*1024*1024) {
+        snprintf(_buf, 20, "%.3g %s", memSize / (1024.f*1024.f*1024.f), "Gb");
+    } else if (memSize > 1024*1024) {
+        snprintf(_buf, 20, "%.3g %s", memSize / (1024.f*1024.f), "Mb");
+    } else if (memSize > 1024) {
+        snprintf(_buf, 20, "%.3g %s", memSize / (1024.f), "Kb");
+    } else {
+        snprintf(_buf, 20, "%.3g %s", (float)memSize, "b");
+    }
+    return _buf;
+}
+
+
 //------------------------------------------------------------------------------
 static void
 display() {
@@ -978,34 +997,11 @@ display() {
         g_hud.DrawString(10, -40,  "Triangles  : %d", g_tessMesh ? g_tessMesh->GetNumTriangles() : -1);
         g_hud.DrawString(10, -20,  "FPS        : %3.1f", fps);
 
-        static char const * sizeSfxs[4] = { "b", "Kb", "Mb", "Gb" };
+        g_hud.DrawString(-280, -120, "Chars : %d (%s)",
+            g_plansTable ? g_plansTable->GetCharacteristicMap().GetNumCharacteristics() : -1, formatMemorySize(g_currentCharmapSize));
 
-        float size = 0;
-        int sizeSfx = 0;
-
-        if (g_currentCharmapSize > 1024*1024*1024) {
-            size =  g_currentCharmapSize / (1024.f*1024.f*1024.f); sizeSfx=3;
-        } else if (g_currentCharmapSize > 1024*1024) {
-            size =  g_currentCharmapSize / (1024.f*1024.f); sizeSfx=2;
-        } else if (g_currentCharmapSize > 1024) {
-            size =  g_currentCharmapSize / 1024.f; sizeSfx=1;
-        } else {
-            size =  (float)g_currentCharmapSize; sizeSfx=0;
-        }
-        g_hud.DrawString(-280, -120, "Chars : %d (%.3f %s)",
-            g_plansTable ? g_plansTable->GetCharacteristicMap().GetNumCharacteristics() : -1, size, sizeSfxs[sizeSfx]);
-
-        if (g_currentPlansTableSize > 1024*1024*1024) {
-            size =  g_currentPlansTableSize / (1024.f*1024.f*1024.f); sizeSfx=3;
-        } else if (g_currentPlansTableSize > 1024*1024) {
-            size =  g_currentPlansTableSize / (1024.f*1024.f); sizeSfx=2;
-        } else if (g_currentPlansTableSize > 1024) {
-            size =  g_currentPlansTableSize / 1024.f; sizeSfx=1;
-        } else {
-            size =  (float)g_currentPlansTableSize; sizeSfx=0;
-        }
-        g_hud.DrawString(-280, -100, "Plans : %d (%.3f Kb)",
-            g_plansTable ? (int)g_plansTable->GetSubdivisionPlans().size() : 0, size, sizeSfxs[sizeSfx]);
+        g_hud.DrawString(-280, -100, "Plans : %d (%s)",
+            g_plansTable ? (int)g_plansTable->GetSubdivisionPlans().size() : 0, formatMemorySize(g_currentPlansTableSize));
 
         g_hud.Flush();
     }
