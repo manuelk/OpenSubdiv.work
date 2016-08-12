@@ -46,7 +46,7 @@ include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 _stringify("${SHADER_FILES}" INC_FILES)
 
-add_executable(cmTest
+_add_glfw_executable(cmTest "examples"
     cmTest.cpp
     glMesh.cpp
     glFontUtils.cpp
