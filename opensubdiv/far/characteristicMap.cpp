@@ -149,7 +149,7 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
         return 0;
     }
 
-    CharacteristicBuilder charBuilder(refiner, *this);
+    internal::CharacteristicBuilder charBuilder(refiner, *this);
 
     TopologyLevel const & coarseLevel = refiner.GetLevel(0);
 

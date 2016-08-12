@@ -36,13 +36,16 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Far {
 
-struct EndCapBuilder;
 class Neighborhood;
 struct PatchFaceTag;
 class StencilTable;
 class TopologyRefiner;
 class Characteristic;
 class CharacteristicMap;
+
+namespace internal {
+
+struct EndCapBuilder;
 
 // A specialized builder for subdivision plan hierarchies
 class CharacteristicBuilder {
@@ -53,11 +56,14 @@ public:
     CharacteristicBuilder(
         TopologyRefiner const & refiner, CharacteristicMap const & charmap);
 
+    // Destructor
     ~CharacteristicBuilder();
 
     // Creates a characteristic for the given level & face
     Characteristic const * Create(int levelIndex, int faceIndex, Neighborhood const * neighborhood);
 
+    // Populates support point stencils (must be called after all
+    // characteristics have been created)
     void FinalizeSupportStencils();
 
 private:
@@ -115,11 +121,9 @@ private:
     std::vector<Index> _levelVertOffsets;
 };
 
-
+} // end namespace internal
 } // end namespace Far
-
 } // end namespace OPENSUBDIV_VERSION
-using namespace OPENSUBDIV_VERSION;
 } // end namespace OpenSubdiv
 
 #endif /* OPENSUBDIV3_FAR_CHARACTERISTIC_TREE_BUILDER_H */

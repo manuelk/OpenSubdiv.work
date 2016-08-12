@@ -41,6 +41,10 @@ namespace Vtr { namespace internal { class SparseSelector; } }
 
 namespace Far {
 
+namespace internal {
+    class CharacteristicBuilder;
+}
+
 template <class MESH> class TopologyRefinerFactory;
 
 ///
@@ -187,7 +191,7 @@ protected:
     friend struct PatchFaceTag;
     friend class PtexIndices;
     friend class PrimvarRefiner;
-    friend class CharacteristicBuilder;
+    friend class internal::CharacteristicBuilder;
 
     Vtr::internal::Level & getLevel(int l) { return *_levels[l]; }
     Vtr::internal::Level const & getLevel(int l) const { return *_levels[l]; }

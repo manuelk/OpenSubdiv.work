@@ -84,9 +84,8 @@ public:
 
     /// \brief Identifies patch types in a Refiner that has been adaptively
     /// refined.
-    static void IdentifyAdaptivePatches(
-        TopologyRefiner const & refiner, std::vector<PatchFaceTag> & patchTags,
-            int maxIsolationLevel, bool useSingleCreasePatch);
+    static void IdentifyAdaptivePatches(TopologyRefiner const & refiner,
+        int maxIsolationLevel, bool useSingleCreasePatch, std::vector<PatchFaceTag> & patchTags);
 
     // debug print
     void Print() const;

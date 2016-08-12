@@ -38,7 +38,10 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Far {
 
-class CharacteristicBuilder;
+namespace internal {
+    class CharacteristicBuilder;
+}
+
 class Neighborhood;
 class NeighborhoodBuilder;
 class StencilTable;

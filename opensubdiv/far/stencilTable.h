@@ -39,6 +39,10 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Far {
 
+namespace internal {
+    struct EndCapBuilder;
+}
+
 /// \brief Vertex stencil descriptor
 ///
 /// Allows access and manipulation of a single stencil in a StencilTable.
@@ -220,7 +224,7 @@ protected:
         : _numControlVertices(numControlVerts)
     { }
 
-    friend struct EndCapBuilder;
+    friend struct internal::EndCapBuilder;
     friend class StencilTableFactory;
     friend class PatchTableFactory;
     // XXX: temporarily, GregoryBasis class will go away.

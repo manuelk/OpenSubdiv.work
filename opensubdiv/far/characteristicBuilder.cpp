@@ -39,6 +39,8 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Far {
 
+namespace internal {
+
 //
 // Helper class to keep track of end-cap stencils
 //
@@ -771,8 +773,10 @@ CharacteristicBuilder::CharacteristicBuilder(
 
     // identify patch types
     bool useSingleCrease = refiner.GetAdaptiveOptions().useSingleCreasePatch;
-    Far::PatchFaceTag::IdentifyAdaptivePatches(
-        _refiner, _patchTags, _refiner.GetNumLevels(), useSingleCrease);
+
+    int numLevels = _refiner.GetNumLevels();
+
+    Far::PatchFaceTag::IdentifyAdaptivePatches(_refiner, numLevels, useSingleCrease, _patchTags);
 
     {
         CharacteristicMap::Options options = _charmap.GetOptions();
@@ -782,14 +786,13 @@ CharacteristicBuilder::CharacteristicBuilder(
     // gather starting offsets for patch tags & vertex indices for each
     // subdivision level
     {
-        int nlevels = _refiner.GetNumLevels(),
-            levelFaceOffset = 0,
+        int levelFaceOffset = 0,
             levelVertOffset = 0;
 
-        _levelPatchTags.resize(nlevels, 0);
-        _levelVertOffsets.resize(nlevels,0);
+        _levelPatchTags.resize(numLevels, 0);
+        _levelVertOffsets.resize(numLevels,0);
 
-        for (int i=0; i<nlevels; ++i) {
+        for (int i=0; i<numLevels; ++i) {
 
             TopologyLevel const & level = _refiner.GetLevel(i);
 
@@ -816,6 +819,7 @@ CharacteristicBuilder::~CharacteristicBuilder() {
     delete _endcapBuilder;
 }
 
+} // end namespace internal
 } // end namespace Far
 } // end namespace OPENSUBDIV_VERSION
 } // end namespace OpenSubdiv

@@ -349,9 +349,8 @@ PatchFaceTag::ComputeTags(
 }
 
 void
-PatchFaceTag::IdentifyAdaptivePatches(
-    Far::TopologyRefiner const & refiner, PatchFaceTagVector & patchTags,
-        int maxIsolationLevel, bool useSingleCreasePatch) {
+PatchFaceTag::IdentifyAdaptivePatches(Far::TopologyRefiner const & refiner,
+    int maxIsolationLevel, bool useSingleCreasePatch, PatchFaceTagVector & patchTags) {
 
     //
     //  Iterate through the levels of refinement to inspect and tag components with information

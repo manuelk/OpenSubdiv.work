@@ -35,8 +35,11 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Far {
 
+namespace internal {
+    class CharacteristicBuilder;
+}
+
 class CharacteristicMap;
-class CharacteristicBuilder;
 class Neighborhood;
 
 ///
@@ -332,7 +335,7 @@ public:
         int getNodeSize() const;
 
         friend class Characteristic;
-        friend class CharacteristicBuilder;
+        friend class internal::CharacteristicBuilder;
 
         Node(Characteristic const * ch, int treeOffset) :
             _characteristic(ch), _treeOffset(treeOffset) { }
@@ -375,7 +378,7 @@ public:
 
 private:
 
-    friend class CharacteristicBuilder;
+    friend class internal::CharacteristicBuilder;
 
     // The sub-patch "tree" is stored as a linear buffer of integers for
     // efficient look-up & traversal on a GPU. Use the Node class to traverse
