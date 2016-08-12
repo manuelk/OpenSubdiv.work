@@ -376,9 +376,7 @@ printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charInde
                     fprintf(fout, "\\n\\nsharp=%f", node.GetSharpness());
                 }
                 fprintf(fout, "\"");
-                if (desc.SingleCrease()) {
-                    fprintf(fout, ", style=filled, color=darksalmon");
-                }
+                fprintf(fout, ", style=filled, color=%s", desc.SingleCrease() ? "darksalmon" : "white");
                 fprintf(fout, ", shape=box]\n");
             } break;
 
