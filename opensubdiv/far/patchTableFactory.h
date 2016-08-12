@@ -108,11 +108,6 @@ private:
     //  High-level methods for identifying and populating patches associated with faces:
     //
 
-    static bool computePatchTag(BuilderContext & context,
-                                Index const levelIndex,
-                                Index const faceIndex,
-                                PatchFaceTag &patchTag);
-
     static void identifyAdaptivePatches(BuilderContext & context);
 
     static void populateAdaptivePatches(BuilderContext & context,

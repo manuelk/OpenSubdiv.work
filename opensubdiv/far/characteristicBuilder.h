@@ -64,21 +64,23 @@ private:
 
     struct Context;
 
-    void identifyNode(int levelIndex, int faceIndex, Context * context);
+    struct BuilderContext;
+
+    void identifyNode(int levelIndex, int faceIndex, BuilderContext * context);
 
 
-    void populateNode(int levelIndex, int faceIndex, Context * context);
+    void populateNode(int levelIndex, int faceIndex, BuilderContext * context);
 
-    void populateRegularNode(int levelIndex, int faceIndex, Context * context);
+    void populateRegularNode(int levelIndex, int faceIndex, BuilderContext * context);
 
-    void populateEndCapNode(int levelIndex, int faceIndex, Context * context);
+    void populateEndCapNode(int levelIndex, int faceIndex, BuilderContext * context);
 
-    void populateTerminalNode(int levelIndex, int faceIndex, int evIndex, Context * context);
+    void populateTerminalNode(int levelIndex, int faceIndex, int evIndex, BuilderContext * context);
 
-    void populateRecursiveNode(int levelIndex, int faceIndex, Context * context);
+    void populateRecursiveNode(int levelIndex, int faceIndex, BuilderContext * context);
 
 
-    void populateSupports(Context const & context, Neighborhood const & neighborhood, Characteristic * ch);
+    void populateSupports(BuilderContext const & context, Neighborhood const & neighborhood, Characteristic * ch);
 
 
     bool nodeIsTerminal(int levelIndex, int faceIndex, int * evIndex=0) const;
@@ -97,7 +99,7 @@ private:
 
     std::vector<PatchFaceTag> _patchTags;
 
-    std::vector<Context *> _contexts;
+    std::vector<BuilderContext *> _contexts;
 
     //
     // End-cap stencils

@@ -27,6 +27,8 @@
 
 #include "../version.h"
 
+#include "../far/types.h"
+
 #include <vector>
 
 namespace OpenSubdiv {
@@ -74,6 +76,11 @@ public:
     void AssignTransitionPropertiesFromEdgeMask(int mask) {
         transitionMask = mask;
     }
+
+    bool ComputeTags(Far::TopologyRefiner const & refiner,
+        Index const levelIndex, Index const faceIndex,
+            int maxIsolationLevel, bool useSingleCreasePatch);
+
 
     /// \brief Identifies patch types in a Refiner that has been adaptively
     /// refined.

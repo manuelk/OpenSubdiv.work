@@ -311,9 +311,9 @@ CharacteristicBuilder::nodeIsTerminal(
 // Builder context
 //
 
-struct CharacteristicBuilder::Context {
+struct CharacteristicBuilder::BuilderContext {
 
-    Context(Index _faceIndex, bool _nonquad,
+    BuilderContext(Index _faceIndex, bool _nonquad,
         Characteristic * _ch, Neighborhood const * _n) :
             faceIndex(_faceIndex), nonquad(_nonquad), ch(_ch), n(_n),
                 numSupports(0), firstSupport(0), treeSize(0), treeOffset(0) { }
@@ -363,7 +363,7 @@ getTerminalNumSupports(int nlevels, EndCapType type) {
 }
 
 void
-CharacteristicBuilder::identifyNode(int levelIndex, int faceIndex, Context * c) {
+CharacteristicBuilder::identifyNode(int levelIndex, int faceIndex, BuilderContext * c) {
 
     typedef Characteristic::Node Node;
 
@@ -399,7 +399,7 @@ CharacteristicBuilder::identifyNode(int levelIndex, int faceIndex, Context * c) 
 
 void
 CharacteristicBuilder::populateRegularNode(
-    int levelIndex, int faceIndex, Context * ctx) {
+    int levelIndex, int faceIndex, BuilderContext * ctx) {
 
     PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
 
@@ -475,7 +475,7 @@ CharacteristicBuilder::populateRegularNode(
 
 void
 CharacteristicBuilder::populateEndCapNode(
-    int levelIndex, int faceIndex, Context * ctx) {
+    int levelIndex, int faceIndex, BuilderContext * ctx) {
 
     assert(_endcapBuilder);
 
@@ -521,7 +521,7 @@ CharacteristicBuilder::populateEndCapNode(
 
 void
 CharacteristicBuilder::populateTerminalNode(
-    int levelIndex, int faceIndex, int evIndex, Context * ctx) {
+    int levelIndex, int faceIndex, int evIndex, BuilderContext * ctx) {
 
     // xxxx manuelk right now terminal nodes are recursive : paper suggests
     // a single node packing 25 * level supports. Might be doable but this code
@@ -608,7 +608,7 @@ CharacteristicBuilder::populateTerminalNode(
 
 void
 CharacteristicBuilder::populateRecursiveNode(
-    int levelIndex, int faceIndex, Context * ctx) {
+    int levelIndex, int faceIndex, BuilderContext * ctx) {
 
     int * tree = ctx->GetCurrentTreePtr();
     ((NodeDescriptor *)tree)->SetRecursive(levelIndex);
@@ -627,7 +627,7 @@ CharacteristicBuilder::populateRecursiveNode(
 
 void
 CharacteristicBuilder::populateNode(
-    int levelIndex, int faceIndex, Context * ctx) {
+    int levelIndex, int faceIndex, BuilderContext * ctx) {
 
     PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
     if (patchTag.hasPatch) {
@@ -690,7 +690,7 @@ CharacteristicBuilder::FinalizeSupportStencils() {
     // their supports
     for (int ctxIndex=0; ctxIndex<(int)_contexts.size(); ++ctxIndex) {
 
-        Context & context = *_contexts[ctxIndex];
+        BuilderContext & context = *_contexts[ctxIndex];
 
         Characteristic * ch = context.ch;
 
@@ -749,7 +749,7 @@ CharacteristicBuilder::Create(
     Characteristic * ch =
         new Characteristic(_charmap, neighborhood->GetNumVertices(), nonquad);
 
-    Context * context = new Context(faceIndex, nonquad, ch, neighborhood);
+    BuilderContext * context = new BuilderContext(faceIndex, nonquad, ch, neighborhood);
 
     identifyNode(levelIndex, faceIndex, context);
 
