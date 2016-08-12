@@ -23,6 +23,7 @@
 //
 #include "../far/patchTableFactory.h"
 #include "../far/error.h"
+#include "../far/patchFaceTag.h"
 #include "../far/ptexIndices.h"
 #include "../far/topologyRefiner.h"
 #include "../vtr/level.h"
@@ -58,84 +59,6 @@ inline bool isSharpnessEqual(float s1, float s2) { return (s1 == s2); }
 
 
 namespace Far {
-
-void
-PatchTableFactory::PatchFaceTag::clear() {
-    std::memset(this, 0, sizeof(*this));
-}
-
-void
-PatchTableFactory::PatchFaceTag::assignBoundaryPropertiesFromEdgeMask(int boundaryEdgeMask) {
-    //
-    //  The number of rotations to apply for boundary or corner patches varies on both
-    //  where the boundary/corner occurs and whether boundary or corner -- so using a
-    //  4-bit mask should be sufficient to quickly determine all cases:
-    //
-    //  Note that we currently expect patches with multiple boundaries to have already
-    //  been isolated, so asserts are applied for such unexpected cases.
-    //
-    //  Is the compiler going to build the 16-entry lookup table here, or should we do
-    //  it ourselves?
-    //
-    _hasBoundaryEdge = true;
-    _boundaryMask = boundaryEdgeMask;
-
-    switch (boundaryEdgeMask) {
-    case 0x0:  _boundaryCount = 0, _boundaryIndex = 0, _hasBoundaryEdge = false;  break;  // no boundaries
-
-    case 0x1:  _boundaryCount = 1, _boundaryIndex = 0;  break;  // boundary edge 0
-    case 0x2:  _boundaryCount = 1, _boundaryIndex = 1;  break;  // boundary edge 1
-    case 0x3:  _boundaryCount = 2, _boundaryIndex = 1;  break;  // corner/crease vertex 1
-    case 0x4:  _boundaryCount = 1, _boundaryIndex = 2;  break;  // boundary edge 2
-    case 0x5:  assert(false);                           break;  // N/A - opposite boundary edges
-    case 0x6:  _boundaryCount = 2, _boundaryIndex = 2;  break;  // corner/crease vertex 2
-    case 0x7:  assert(false);                           break;  // N/A - three boundary edges
-    case 0x8:  _boundaryCount = 1, _boundaryIndex = 3;  break;  // boundary edge 3
-    case 0x9:  _boundaryCount = 2, _boundaryIndex = 0;  break;  // corner/crease vertex 0
-    case 0xa:  assert(false);                           break;  // N/A - opposite boundary edges
-    case 0xb:  assert(false);                           break;  // N/A - three boundary edges
-    case 0xc:  _boundaryCount = 2, _boundaryIndex = 3;  break;  // corner/crease vertex 3
-    case 0xd:  assert(false);                           break;  // N/A - three boundary edges
-    case 0xe:  assert(false);                           break;  // N/A - three boundary edges
-    case 0xf:  assert(false);                           break;  // N/A - all boundaries
-    default:   assert(false);                           break;
-    }
-}
-
-void
-PatchTableFactory::PatchFaceTag::assignBoundaryPropertiesFromVertexMask(int boundaryVertexMask) {
-    //
-    //  This is strictly needed for the irregular case when a vertex is a boundary in
-    //  the presence of no boundary edges -- an extra-ordinary face with only one corner
-    //  on the boundary.
-    //
-    //  Its unclear at this point if patches with more than one such vertex are supported
-    //  (if so, how do we deal with rotations) so for now we only allow one such vertex
-    //  and assert for all other cases.
-    //
-    assert(_hasBoundaryEdge == false);
-    _boundaryMask = boundaryVertexMask;
-
-    switch (boundaryVertexMask) {
-    case 0x0:  _boundaryCount = 0;                      break;  // no boundaries
-    case 0x1:  _boundaryCount = 1, _boundaryIndex = 0;  break;  // boundary vertex 0
-    case 0x2:  _boundaryCount = 1, _boundaryIndex = 1;  break;  // boundary vertex 1
-    case 0x3:  assert(false);                           break;
-    case 0x4:  _boundaryCount = 1, _boundaryIndex = 2;  break;  // boundary vertex 2
-    case 0x5:  assert(false);                           break;
-    case 0x6:  assert(false);                           break;
-    case 0x7:  assert(false);                           break;
-    case 0x8:  _boundaryCount = 1, _boundaryIndex = 3;  break;  // boundary vertex 3
-    case 0x9:  assert(false);                           break;
-    case 0xa:  assert(false);                           break;
-    case 0xb:  assert(false);                           break;
-    case 0xc:  assert(false);                           break;
-    case 0xd:  assert(false);                           break;
-    case 0xe:  assert(false);                           break;
-    case 0xf:  assert(false);                           break;
-    default:   assert(false);                           break;
-    }
-}
 
 //
 //  Trivial anonymous helper functions:
@@ -295,17 +218,17 @@ PatchTableFactory::BuilderContext::gatherRegularPatchPoints(
 
     Index patchVerts[16];
 
-    int bIndex = patch.tag._boundaryIndex;
+    int bIndex = patch.tag.boundaryIndex;
 
     int const * permutation = 0;
 
-    if (patch.tag._boundaryCount == 0) {
+    if (patch.tag.boundaryCount == 0) {
         static int const permuteRegular[16] =
             { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
         permutation = permuteRegular;
         level->gatherQuadRegularInteriorPatchPoints(
                 patch.faceIndex, patchVerts, /*rotation=*/0, refinerChannel);
-    } else if (patch.tag._boundaryCount == 1) {
+    } else if (patch.tag.boundaryCount == 1) {
         // Expand boundary patch vertices and rotate to
         // restore correct orientation.
         static int const permuteBoundary[4][16] = {
@@ -316,7 +239,7 @@ PatchTableFactory::BuilderContext::gatherRegularPatchPoints(
         permutation = permuteBoundary[bIndex];
         level->gatherQuadRegularBoundaryPatchPoints(
                 patch.faceIndex, patchVerts, bIndex, refinerChannel);
-    } else if (patch.tag._boundaryCount == 2) {
+    } else if (patch.tag.boundaryCount == 2) {
         // Expand corner patch vertices and rotate to
         // restore correct orientation.
         static int const permuteCorner[4][16] = {
@@ -328,7 +251,7 @@ PatchTableFactory::BuilderContext::gatherRegularPatchPoints(
         level->gatherQuadRegularCornerPatchPoints(
                 patch.faceIndex, patchVerts, bIndex, refinerChannel);
     } else {
-        assert(patch.tag._boundaryCount <= 2);
+        assert(patch.tag.boundaryCount <= 2);
     }
 
     offsetAndPermuteIndices(
@@ -367,7 +290,7 @@ bool
 PatchTableFactory::computePatchTag(
         BuilderContext & context,
         Index const levelIndex, Index const faceIndex,
-        PatchTableFactory::PatchFaceTag &patchTag) {
+        PatchFaceTag &patchTag) {
 
     TopologyRefiner const & refiner = context.refiner;
 
@@ -452,7 +375,7 @@ PatchTableFactory::computePatchTag(
     bool hasNonManifoldVertex = compFaceVertTag._nonManifold;
     bool hasXOrdinaryVertex   = compFaceVertTag._xordinary;
 
-    patchTag._isRegular = ! hasXOrdinaryVertex || hasNonManifoldVertex;
+    patchTag.isRegular = ! hasXOrdinaryVertex || hasNonManifoldVertex;
 
     // single crease patch optimization
     if (context.options.useSingleCreasePatch &&
@@ -470,8 +393,8 @@ PatchTableFactory::computePatchTag(
                 float cappedSharpness =
                         std::min(sharpness, (float)(context.options.maxIsolationLevel - levelIndex));
                 if (cappedSharpness > 0) {
-                    patchTag._isSingleCrease = true;
-                    patchTag._boundaryIndex = rotation;
+                    patchTag.isSingleCrease = true;
+                    patchTag.boundaryIndex = rotation;
                 }
             }
         }
@@ -519,7 +442,7 @@ PatchTableFactory::computePatchTag(
         }
 
         if (boundaryEdgeMask) {
-            patchTag.assignBoundaryPropertiesFromEdgeMask(boundaryEdgeMask);
+            patchTag.AssignBoundaryPropertiesFromEdgeMask(boundaryEdgeMask);
         } else {
             int boundaryVertMask = ((level->getVertexTag(fVerts[0])._boundary) << 0) |
                                    ((level->getVertexTag(fVerts[1])._boundary) << 1) |
@@ -533,7 +456,7 @@ PatchTableFactory::computePatchTag(
                                      ((level->getVertexTag(fVerts[3])._nonManifold) << 3);
                 boundaryVertMask |= nonManVertMask;
             }
-            patchTag.assignBoundaryPropertiesFromVertexMask(boundaryVertMask);
+            patchTag.AssignBoundaryPropertiesFromVertexMask(boundaryVertMask);
         }
     }
 
@@ -551,12 +474,12 @@ PatchTableFactory::computePatchTag(
     bool approxSmoothCornerWithRegularPatch = true;
 
     if (approxSmoothCornerWithRegularPatch) {
-        if (!patchTag._isRegular && (patchTag._boundaryCount == 2)) {
+        if (!patchTag.isRegular && (patchTag.boundaryCount == 2)) {
             //  We may have a sharp corner opposite/adjacent an xordinary vertex --
             //  need to make sure there is only one xordinary vertex and that it
             //  is the corner vertex.
             if (levelIndex > 1) {
-                patchTag._isRegular = true;
+                patchTag.isRegular = true;
             } else {
                 int xordVertex = 0;
                 int xordCount = 0;
@@ -568,7 +491,7 @@ PatchTableFactory::computePatchTag(
                 if (xordCount == 1) {
                     //  We require the vertex opposite the xordinary vertex be interior:
                     if (! level->getVertexTag(fVerts[(xordVertex + 2) % 4])._boundary) {
-                        patchTag._isRegular = true;
+                        patchTag.isRegular = true;
                     }
                 }
             }
@@ -582,7 +505,7 @@ PatchTableFactory::computePatchTag(
     //  Identify and increment counts for regular patches (both non-transitional and
     //  transitional) and extra-ordinary patches (always non-transitional):
     //
-    patchTag._transitionMask = refinedFaceTag._transitional;
+    patchTag.transitionMask = refinedFaceTag._transitional;
 
     return true;
 }
@@ -649,7 +572,7 @@ PatchTableFactory::allocateFVarChannels(
 PatchParam
 PatchTableFactory::computePatchParam(
     BuilderContext const & context,
-    int depth, Vtr::Index faceIndex, int boundaryMask, 
+    int depth, Vtr::Index faceIndex, int boundaryMask,
     int transitionMask) {
 
     TopologyRefiner const & refiner = context.refiner;
@@ -967,7 +890,7 @@ PatchTableFactory::identifyAdaptivePatches(BuilderContext & context) {
         for (int faceIndex = 0; faceIndex < level->getNumFaces(); ++faceIndex) {
 
             PatchFaceTag patchTag;
-            patchTag.clear();
+            patchTag.Clear();
 
             if (! computePatchTag(context, levelIndex, faceIndex, patchTag)) {
                 continue;
@@ -977,13 +900,13 @@ PatchTableFactory::identifyAdaptivePatches(BuilderContext & context) {
                 BuilderContext::PatchTuple(patchTag, faceIndex, levelIndex));
 
             // Count the patches here to simplify subsequent allocation.
-            if (patchTag._isRegular) {
+            if (patchTag.isRegular) {
                 ++context.numRegularPatches;
             } else {
                 ++context.numIrregularPatches;
                 // For legacy gregory patches we need to know how many
                 // irregular patches are also boundary patches.
-                if (patchTag._boundaryCount > 0) {
+                if (patchTag.boundaryCount > 0) {
                     ++context.numIrregularBoundaryPatches;
                 }
             }
@@ -1032,39 +955,39 @@ PatchTableFactory::populateAdaptivePatches(
     int numPatchArrays = (arrayBuilders[R].numPatches > 0);
 
     switch(context.options.GetEndCapType()) {
-    case Options::ENDCAP_BSPLINE_BASIS:
-        // Irregular patches are converted to bspline basis and
-        // will be packed into the same patch array as regular patches
-        IR = IRB = R;
-        arrayBuilders[R].numPatches += context.numIrregularPatches;
-        // Make sure we've counted this array even when
-        // there are no regular patches.
-        numPatchArrays = (arrayBuilders[R].numPatches > 0);
-        break;
-    case Options::ENDCAP_GREGORY_BASIS:
-        // Irregular patches (both interior and boundary) are converted
-        // to Gregory basis and will be packed into an additional patch array
-        IR = IRB = numPatchArrays;
-        arrayBuilders[IR].patchType = PatchDescriptor::GREGORY_BASIS;
-        arrayBuilders[IR].numPatches += context.numIrregularPatches;
-        numPatchArrays += (arrayBuilders[IR].numPatches > 0);
-        break;
-    case Options::ENDCAP_LEGACY_GREGORY:
-        // Irregular interior and irregular boundary patches each will be
-        // packed into separate additional patch arrays.
-        IR = numPatchArrays;
-        arrayBuilders[IR].patchType = PatchDescriptor::GREGORY;
-        arrayBuilders[IR].numPatches = context.numIrregularPatches
-                                     - context.numIrregularBoundaryPatches;
-        numPatchArrays += (arrayBuilders[IR].numPatches > 0);
+        case ENDCAP_BSPLINE_BASIS:
+            // Irregular patches are converted to bspline basis and
+            // will be packed into the same patch array as regular patches
+            IR = IRB = R;
+            arrayBuilders[R].numPatches += context.numIrregularPatches;
+            // Make sure we've counted this array even when
+            // there are no regular patches.
+            numPatchArrays = (arrayBuilders[R].numPatches > 0);
+            break;
+        case ENDCAP_GREGORY_BASIS:
+            // Irregular patches (both interior and boundary) are converted
+            // to Gregory basis and will be packed into an additional patch array
+            IR = IRB = numPatchArrays;
+            arrayBuilders[IR].patchType = PatchDescriptor::GREGORY_BASIS;
+            arrayBuilders[IR].numPatches += context.numIrregularPatches;
+            numPatchArrays += (arrayBuilders[IR].numPatches > 0);
+            break;
+        case ENDCAP_LEGACY_GREGORY:
+            // Irregular interior and irregular boundary patches each will be
+            // packed into separate additional patch arrays.
+            IR = numPatchArrays;
+            arrayBuilders[IR].patchType = PatchDescriptor::GREGORY;
+            arrayBuilders[IR].numPatches = context.numIrregularPatches
+                                         - context.numIrregularBoundaryPatches;
+            numPatchArrays += (arrayBuilders[IR].numPatches > 0);
 
-        IRB = numPatchArrays;
-        arrayBuilders[IRB].patchType = PatchDescriptor::GREGORY_BOUNDARY;
-        arrayBuilders[IRB].numPatches = context.numIrregularBoundaryPatches;
-        numPatchArrays += (arrayBuilders[IRB].numPatches > 0);
-        break;
-    default:
-        break;
+            IRB = numPatchArrays;
+            arrayBuilders[IRB].patchType = PatchDescriptor::GREGORY_BOUNDARY;
+            arrayBuilders[IRB].numPatches = context.numIrregularBoundaryPatches;
+            numPatchArrays += (arrayBuilders[IRB].numPatches > 0);
+            break;
+        default:
+            break;
     }
 
     // Create patch arrays
@@ -1117,41 +1040,41 @@ PatchTableFactory::populateAdaptivePatches(
     StencilTable *localPointVaryingStencils = NULL;
 
     switch(context.options.GetEndCapType()) {
-    case Options::ENDCAP_GREGORY_BASIS:
-        localPointStencils = new StencilTable(0);
-        localPointVaryingStencils = new StencilTable(0);
-        endCapGregoryBasis = new EndCapGregoryBasisPatchFactory(
-            refiner,
-            localPointStencils,
-            localPointVaryingStencils,
-            context.options.shareEndCapPatchPoints);
-        break;
-    case Options::ENDCAP_BSPLINE_BASIS:
-        localPointStencils = new StencilTable(0);
-        localPointVaryingStencils = new StencilTable(0);
-        endCapBSpline = new EndCapBSplineBasisPatchFactory(
-            refiner,
-            localPointStencils,
-            localPointVaryingStencils);
-        break;
-    case Options::ENDCAP_LEGACY_GREGORY:
-        endCapLegacyGregory = new EndCapLegacyGregoryPatchFactory(refiner);
-        break;
-    default:
-        break;
+        case ENDCAP_GREGORY_BASIS:
+            localPointStencils = new StencilTable(0);
+            localPointVaryingStencils = new StencilTable(0);
+            endCapGregoryBasis = new EndCapGregoryBasisPatchFactory(
+                refiner,
+                localPointStencils,
+                localPointVaryingStencils,
+                context.options.shareEndCapPatchPoints);
+            break;
+        case ENDCAP_BSPLINE_BASIS:
+            localPointStencils = new StencilTable(0);
+            localPointVaryingStencils = new StencilTable(0);
+            endCapBSpline = new EndCapBSplineBasisPatchFactory(
+                refiner,
+                localPointStencils,
+                localPointVaryingStencils);
+            break;
+        case ENDCAP_LEGACY_GREGORY:
+            endCapLegacyGregory = new EndCapLegacyGregoryPatchFactory(refiner);
+            break;
+        default:
+            break;
     }
 
     // Populate patch data buffers
     for (int patchIndex=0; patchIndex<(int)context.patches.size(); ++patchIndex) {
 
         BuilderContext::PatchTuple const & patch = context.patches[patchIndex];
-        int boundaryMask = patch.tag._boundaryMask;
-        int transitionMask = patch.tag._transitionMask;
+        int boundaryMask = patch.tag.boundaryMask;
+        int transitionMask = patch.tag.transitionMask;
 
         float sharpness = 0;
-        if (hasSharpness && patch.tag._isSingleCrease) {
+        if (hasSharpness && patch.tag.isSingleCrease) {
             Vtr::internal::Level const & level = refiner.getLevel(patch.levelIndex);
-            int bIndex = patch.tag._boundaryIndex;
+            int bIndex = patch.tag.boundaryIndex;
                         boundaryMask = (1<<bIndex);
             sharpness = level.getEdgeSharpness(
                 (level.getFaceEdges(patch.faceIndex)[bIndex]));
@@ -1162,7 +1085,7 @@ PatchTableFactory::populateAdaptivePatches(
         // Most patches will be packed into the regular patch array
         PatchArrayBuilder * arrayBuilder = &arrayBuilders[R];
 
-        if (patch.tag._isRegular) {
+        if (patch.tag.isRegular) {
             arrayBuilder->iptr +=
                 context.gatherRegularPatchPoints(arrayBuilder->iptr, patch);
 
@@ -1175,37 +1098,37 @@ PatchTableFactory::populateAdaptivePatches(
 
             // switch endcap patchtype by option
             switch(context.options.GetEndCapType()) {
-            case Options::ENDCAP_GREGORY_BASIS:
-                arrayBuilder->iptr +=
-                    context.gatherEndCapPatchPoints(
-                        endCapGregoryBasis, arrayBuilder->iptr, patch);
-                break;
-            case Options::ENDCAP_BSPLINE_BASIS:
-                arrayBuilder->iptr +=
-                    context.gatherEndCapPatchPoints(
-                        endCapBSpline, arrayBuilder->iptr, patch);
-                break;
-            case Options::ENDCAP_LEGACY_GREGORY:
-                // For legacy gregory patches we may need to switch to
-                // the irregular boundary patch array.
-                if (patch.tag._boundaryCount == 0) {
+                case ENDCAP_GREGORY_BASIS:
                     arrayBuilder->iptr +=
                         context.gatherEndCapPatchPoints(
-                            endCapLegacyGregory, arrayBuilder->iptr, patch);
-                } else {
-                    arrayBuilder = &arrayBuilders[IRB];
+                            endCapGregoryBasis, arrayBuilder->iptr, patch);
+                    break;
+                case ENDCAP_BSPLINE_BASIS:
                     arrayBuilder->iptr +=
                         context.gatherEndCapPatchPoints(
-                            endCapLegacyGregory, arrayBuilder->iptr, patch);
-                }
-                break;
-            case Options::ENDCAP_BILINEAR_BASIS:
-                // not implemented yet
-                assert(false);
-                break;
-            default:
-                // no endcap
-                break;
+                            endCapBSpline, arrayBuilder->iptr, patch);
+                    break;
+                case ENDCAP_LEGACY_GREGORY:
+                    // For legacy gregory patches we may need to switch to
+                    // the irregular boundary patch array.
+                    if (patch.tag.boundaryCount == 0) {
+                        arrayBuilder->iptr +=
+                            context.gatherEndCapPatchPoints(
+                                endCapLegacyGregory, arrayBuilder->iptr, patch);
+                    } else {
+                        arrayBuilder = &arrayBuilders[IRB];
+                        arrayBuilder->iptr +=
+                            context.gatherEndCapPatchPoints(
+                                endCapLegacyGregory, arrayBuilder->iptr, patch);
+                    }
+                    break;
+                case ENDCAP_BILINEAR_BASIS:
+                    // not implemented yet
+                    assert(false);
+                    break;
+                default:
+                    // no endcap
+                    break;
             }
         }
 
@@ -1247,25 +1170,25 @@ PatchTableFactory::populateAdaptivePatches(
     }
 
     switch(context.options.GetEndCapType()) {
-    case Options::ENDCAP_GREGORY_BASIS:
-        table->_localPointStencils = localPointStencils;
-        table->_localPointVaryingStencils = localPointVaryingStencils;
-        delete endCapGregoryBasis;
-        break;
-    case Options::ENDCAP_BSPLINE_BASIS:
-        table->_localPointStencils = localPointStencils;
-        table->_localPointVaryingStencils = localPointVaryingStencils;
-        delete endCapBSpline;
-        break;
-    case Options::ENDCAP_LEGACY_GREGORY:
-        endCapLegacyGregory->Finalize(
-            table->GetMaxValence(),
-            &table->_quadOffsetsTable,
-            &table->_vertexValenceTable);
-        delete endCapLegacyGregory;
-        break;
-    default:
-        break;
+        case ENDCAP_GREGORY_BASIS:
+            table->_localPointStencils = localPointStencils;
+            table->_localPointVaryingStencils = localPointVaryingStencils;
+            delete endCapGregoryBasis;
+            break;
+        case ENDCAP_BSPLINE_BASIS:
+            table->_localPointStencils = localPointStencils;
+            table->_localPointVaryingStencils = localPointVaryingStencils;
+            delete endCapBSpline;
+            break;
+        case ENDCAP_LEGACY_GREGORY:
+            endCapLegacyGregory->Finalize(
+                table->GetMaxValence(),
+                &table->_quadOffsetsTable,
+                &table->_vertexValenceTable);
+            delete endCapLegacyGregory;
+            break;
+        default:
+            break;
     }
 }
 

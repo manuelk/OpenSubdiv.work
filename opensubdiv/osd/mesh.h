@@ -514,17 +514,14 @@ private:
         poptions.useSingleCreasePatch = bits.test(MeshUseSingleCreasePatch);
 
         if (bits.test(MeshEndCapBSplineBasis)) {
-            poptions.SetEndCapType(
-                Far::PatchTableFactory::Options::ENDCAP_BSPLINE_BASIS);
+            poptions.SetEndCapType(Far::ENDCAP_BSPLINE_BASIS);
         } else if (bits.test(MeshEndCapGregoryBasis)) {
-            poptions.SetEndCapType(
-                Far::PatchTableFactory::Options::ENDCAP_GREGORY_BASIS);
+            poptions.SetEndCapType(Far::ENDCAP_GREGORY_BASIS);
             // points on gregory basis endcap boundary can be shared among
             // adjacent patches to save some stencils.
             poptions.shareEndCapPatchPoints = true;
         } else if (bits.test(MeshEndCapLegacyGregory)) {
-            poptions.SetEndCapType(
-                Far::PatchTableFactory::Options::ENDCAP_LEGACY_GREGORY);
+            poptions.SetEndCapType(Far::ENDCAP_LEGACY_GREGORY);
         }
 
         _farPatchTable = Far::PatchTableFactory::Create(*_refiner, poptions);

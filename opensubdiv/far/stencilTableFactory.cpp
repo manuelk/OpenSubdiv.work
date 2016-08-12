@@ -397,8 +397,7 @@ LimitStencilTableFactory::Create(TopologyRefiner const & refiner,
         // patch table.
 
         PatchTableFactory::Options options;
-        options.SetEndCapType(
-            Far::PatchTableFactory::Options::ENDCAP_GREGORY_BASIS);
+        options.SetEndCapType(ENDCAP_GREGORY_BASIS);
 
         patchtable = PatchTableFactory::Create(refiner, options);
 

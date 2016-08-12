@@ -134,7 +134,7 @@ class StencilTable {
 public:
 
     virtual ~StencilTable() {};
-    
+
     /// \brief Returns the number of stencils in the table
     int GetNumStencils() const {
         return (int)_sizes.size();
@@ -217,9 +217,10 @@ protected:
 protected:
     StencilTable() : _numControlVertices(0) {}
     StencilTable(int numControlVerts)
-        : _numControlVertices(numControlVerts) 
+        : _numControlVertices(numControlVerts)
     { }
 
+    friend struct EndCapBuilder;
     friend class StencilTableFactory;
     friend class PatchTableFactory;
     // XXX: temporarily, GregoryBasis class will go away.

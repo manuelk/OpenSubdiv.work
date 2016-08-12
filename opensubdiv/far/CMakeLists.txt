@@ -25,13 +25,19 @@
 #-------------------------------------------------------------------------------
 # source & headers
 set(SOURCE_FILES
+    characteristic.cpp
+    characteristicMap.cpp
+    characteristicBuilder.cpp
     error.cpp
     endCapBSplineBasisPatchFactory.cpp
     endCapGregoryBasisPatchFactory.cpp
     endCapLegacyGregoryPatchFactory.cpp
     gregoryBasis.cpp
+    neighborhood.cpp
+    neighborhoodBuilder.cpp
     patchBasis.cpp
     patchDescriptor.cpp
+    patchFaceTag.cpp
     patchMap.cpp
     patchTable.cpp
     patchTableFactory.cpp
@@ -39,23 +45,30 @@ set(SOURCE_FILES
     stencilTable.cpp
     stencilTableFactory.cpp
     stencilBuilder.cpp
+    subdivisionPlanTable.cpp
     topologyDescriptor.cpp
     topologyRefiner.cpp
     topologyRefinerFactory.cpp
 )
 
 set(PRIVATE_HEADER_FILES
-    gregoryBasis.h
+    characteristicBuilder.h
     endCapBSplineBasisPatchFactory.h
     endCapGregoryBasisPatchFactory.h
     endCapLegacyGregoryPatchFactory.h
+    gregoryBasis.h
+    neighborhoodBuilder.h
     patchBasis.h
     stencilBuilder.h
 )
 
 set(PUBLIC_HEADER_FILES
+    characteristic.h
+    characteristicMap.h
     error.h
+    neighborhood.h
     patchDescriptor.h
+    patchFaceTag.h
     patchParam.h
     patchMap.h
     patchTable.h
@@ -64,6 +77,7 @@ set(PUBLIC_HEADER_FILES
     ptexIndices.h
     stencilTable.h
     stencilTableFactory.h
+    subdivisionPlanTable.h
     topologyDescriptor.h
     topologyLevel.h
     topologyRefiner.h
