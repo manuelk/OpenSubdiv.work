@@ -108,7 +108,7 @@ public:
     EndCapType GetEndCapType() const { return EndCapType(_options.endCapType); }
 
     /// \brief Writes a GraphViz 'dot' diagraph of all the characteristic trees
-    void WriteCharacteristicsDiagraphs(FILE * fout, char const * title, bool showIndices=true) const;
+    void WriteCharacteristicsDigraphs(FILE * fout, char const * title, bool showIndices=true) const;
 
 private:
 

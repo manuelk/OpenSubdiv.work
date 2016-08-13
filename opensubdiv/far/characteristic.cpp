@@ -416,7 +416,7 @@ printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charInde
 }
 
 void
-Characteristic::WriteTreeDiagraph(FILE * fout,
+Characteristic::WriteTreeDigraph(FILE * fout,
     int charIndex, bool showIndices, bool isSubgraph) const {
 
     if (isSubgraph) {

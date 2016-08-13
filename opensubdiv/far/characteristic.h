@@ -371,8 +371,8 @@ public:
         return -1;
     }
 
-    /// \brief Writes a GraphViz 'dot' diagraph of the tree
-    void WriteTreeDiagraph(FILE * fout,
+    /// \brief Writes a GraphViz 'dot' digraph of the tree
+    void WriteTreeDigraph(FILE * fout,
         int charIndex=0, bool showIndices=true, bool isSubgraph=false) const;
     //@}
 

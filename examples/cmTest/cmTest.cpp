@@ -392,11 +392,11 @@ createPlanNumbers(Far::SubdivisionPlanTable const & plansTable,
 
 //------------------------------------------------------------------------------
 static void
-writeDiagraph(Far::CharacteristicMap const & charmap, int charIndex) {
+writeDigraph(Far::CharacteristicMap const & charmap, int charIndex) {
 
     static int counter=0;
     char fname[64];
-    snprintf(fname, 64, "diagraph.%d.dot", counter++);
+    snprintf(fname, 64, "digraph.%d.dot", counter++);
 
     FILE * fout = fopen(fname, "w");
     if (!fout) {
@@ -411,10 +411,10 @@ writeDiagraph(Far::CharacteristicMap const & charmap, int charIndex) {
 
         bool showIndices = true,
              isSubgraph = false;
-        ch->WriteTreeDiagraph(fout, charIndex, showIndices, isSubgraph);
+        ch->WriteTreeDigraph(fout, charIndex, showIndices, isSubgraph);
     } else {
         bool showIndices = true;
-        charmap.WriteCharacteristicsDiagraphs(fout, shapename, showIndices);
+        charmap.WriteCharacteristicsDigraphs(fout, shapename, showIndices);
     }
     fclose(fout);
     fprintf(stdout, "Saved %s\n", fname);
@@ -1168,7 +1168,7 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int mods) {
         case 'Q': g_running = 0; break;
         case 'F': fitFrame(); break;
 
-        case 'D': writeDiagraph(g_plansTable->GetCharacteristicMap(),
+        case 'D': writeDigraph(g_plansTable->GetCharacteristicMap(),
             mods==GLFW_MOD_SHIFT ? -1 : g_currentPlanIndex);
             break;
 

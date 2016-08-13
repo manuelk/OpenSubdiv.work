@@ -269,7 +269,7 @@ CharacteristicMap::GetCharacteristicTreeSizeTotal() const {
 }
 
 void
-CharacteristicMap::WriteCharacteristicsDiagraphs(
+CharacteristicMap::WriteCharacteristicsDigraphs(
     FILE * fout, char const * title, bool showIndices) const {
 
     fprintf(fout, "digraph CharacteristicMap {\n");
@@ -283,7 +283,7 @@ CharacteristicMap::WriteCharacteristicsDiagraphs(
 
         Characteristic const * ch = GetCharacteristic(charIndex);
         if (ch) {
-            ch->WriteTreeDiagraph(fout, charIndex, showIndices, /*isSubgraph*/ true);
+            ch->WriteTreeDigraph(fout, charIndex, showIndices, /*isSubgraph*/ true);
         }
     }
     fprintf(fout, "}\n");
