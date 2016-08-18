@@ -496,8 +496,8 @@ CharacteristicBuilder::computeNodeOffsets(
 
             numSupports += getNumSupports(nodeType, getEndCapType());
         }
-        numSupportsOut[level] = numSupports;
         numSupportsTotal += numSupports;
+        numSupportsOut[level] = numSupportsTotal;
     }
     *treeSizeOut = treeSize;
     *numSupportsTotalOut = numSupportsTotal;
