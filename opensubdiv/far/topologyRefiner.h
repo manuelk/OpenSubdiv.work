@@ -188,7 +188,7 @@ protected:
     friend class PatchTableFactory;
     friend class EndCapGregoryBasisPatchFactory;
     friend class EndCapLegacyGregoryPatchFactory;
-    friend struct PatchFaceTag;
+    friend class PatchFaceTag;
     friend class PtexIndices;
     friend class PrimvarRefiner;
     friend class internal::CharacteristicBuilder;

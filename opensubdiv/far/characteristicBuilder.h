@@ -27,6 +27,9 @@
 
 #include "../version.h"
 
+#include "../far/characteristicMap.h"
+#include "../far/patchFaceTag.h"
+#include "../far/topologyRefiner.h"
 #include "../far/types.h"
 
 #include <vector>
@@ -37,17 +40,30 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 class Neighborhood;
-struct PatchFaceTag;
 class StencilTable;
-class TopologyRefiner;
 class Characteristic;
-class CharacteristicMap;
 
 namespace internal {
 
 struct EndCapBuilder;
 
+//
 // A specialized builder for subdivision plan hierarchies
+//
+// The builder API is currently constrained by 2 problems:
+//   - stencil table factories cannot operate on a localized neighborhood
+//     of the source mesh
+//   - the end-cap builders similarly need to first gather all end-caps
+//     on the mesh before executing a "finalize" process
+// Because of these limitations, we are forced to generate many redundant
+// stencils for a given mesh. We also have to keep a list of all the
+// characteristics that a mesh adds to the characteristic map, so that we can
+// apply the "finalize" step and release transient resources.
+//
+// With more agile stencil and end-cap builders we will be able to remove
+// the FinalizeSupportStencils() call from this API, along with the attending
+// garbage collection.
+//
 class CharacteristicBuilder {
 
 public:
@@ -59,65 +75,131 @@ public:
     // Destructor
     ~CharacteristicBuilder();
 
-    // Creates a characteristic for the given level & face
-    Characteristic const * Create(int levelIndex, int faceIndex, Neighborhood const * neighborhood);
+    // Returns a new characteristic for the given topological neighborhood
+    // note : the characteristic will not be functional until 
+    //        FinalizeSupportStencils() has been called
+    Characteristic const * Create(
+        Index levelIndex, Index faceIndex, Neighborhood const * neighborhood);
 
-    // Populates support point stencils (must be called after all
-    // characteristics have been created)
+    // Finalizes the characteristics created by this builder
     void FinalizeSupportStencils();
 
 private:
 
-    struct Context;
+    //
+    // Proto Nodes
+    //
 
-    struct BuilderContext;
+    struct ProtoNode {
 
-    void identifyNode(int levelIndex, int faceIndex, BuilderContext * context);
+        Index faceIndex;       // index of face in Vtr::level
 
+        PatchFaceTag patchTag; // patch tags for the face
 
-    void populateNode(int levelIndex, int faceIndex, BuilderContext * context);
+        int treeOffset,        // linear node offset in characteristic tree
+            firstSupport;      // index of first support point for the node
 
-    void populateRegularNode(int levelIndex, int faceIndex, BuilderContext * context);
+        unsigned int active      : 1,  // skip inactive nodes
+                     levelIndex  : 4,  // index of Vtr::level
+                     nodeType    : 2,  // Characteristic::NodeType
+                     hasPatch    : 1,  // true if tree-leaf
+                     evIndex     : 2,  // index of xordinary vertex for terminal nodes
+                     numChildren : 3;  // number of children linked to the node
 
-    void populateEndCapNode(int levelIndex, int faceIndex, BuilderContext * context);
+        int children[4];       // indices of child nodes in the node-store
+    };
 
-    void populateTerminalNode(int levelIndex, int faceIndex, int evIndex, BuilderContext * context);
+    typedef std::vector<ProtoNode> ProtoNodeVector ;
 
-    void populateRecursiveNode(int levelIndex, int faceIndex, BuilderContext * context);
+    // store of Proto Nodes sorted by level
+    static int const numLevelMax = 11;
+    ProtoNodeVector _nodeStore[numLevelMax]; 
 
+    // reset the store before starting a new characteristic tree
+    void resetNodeStore();
 
-    void populateSupports(BuilderContext const & context, Neighborhood const & neighborhood, Characteristic * ch);
+    // returns a child of the node (undetermined if child does not exist !)
+    ProtoNode & getNodeChild(ProtoNode const & node, short childIndex);
 
+    // returns a const child of the node (undetermined if child does not exist !)
+    ProtoNode const & getNodeChild(ProtoNode const & node, short childIndex) const;
 
-    bool nodeIsTerminal(int levelIndex, int faceIndex, int * evIndex=0) const;
+    // recursively traverses the children of a refiner face & adds ProtoNodes to the store
+    int identifyNode(int levelIndex, Index faceIndex);
+
+    // returns true if a ProtoNode can be converted to a Terminal node
+    bool nodeIsTerminal(ProtoNode const & pn, int * evIndex) const;
+
+    // optimizes the node store by converting Recursive nodes into Terminal nodes
+    void identifyTerminalNodes();
+
+    // sequentially assigns final value to proto-nodes treeOffset & firstSupport
+    void computeNodeOffsets(int * treeSizeOut, int * numSupportsOut);
+
+    // populates the serialized tree & supports indices buffers
+    void populateNodes(int * treePtr, Index * supportsPtr) const;
+
+    // serializes a Regular proto-node
+    void populateRegularNode(ProtoNode const & pn, int * treePtr, Index * supportsPtr) const;
+
+    // serializes an End proto-node
+    void populateEndCapNode(ProtoNode const & pn, int * treePtr, Index * supportsPtr) const;
+
+    // serializes a terminal proto-node
+    void populateTerminalNode(ProtoNode const & pn, int * treePtr, Index * supportsPtr) const;
+
+    // serializes a recursive proto-node
+    void populateRecursiveNode(ProtoNode const & pn, int * treePtr, Index * supportsPtr) const;
+
+private:
+
+    //
+    // End Caps
+    //
+
+    EndCapBuilder * _endcapBuilder;
+
+    EndCapType getEndCapType() const { return _charmap.GetOptions().GetEndCapType(); }
+
+private:
+
+    //
+    // Build Contexts
+    //
+
+    struct BuildContext {
+
+        Characteristic * characteristic;
+
+        Neighborhood const * neighborhood;
+
+        int levelIndex,
+            faceIndex,
+            numSupports;
+
+        std::vector<Index> supportIndices;
+    };
+
+    std::vector<BuildContext *> _buildContexts;
+
+private:
+    
+    // misc. helpers
+    
+    short getMaxIsolationLevel() const { return _refiner.GetAdaptiveOptions().isolationLevel; }
+
+    bool useTerminalNodes() const { return _charmap.GetOptions().useTerminalNode; }
+
+    bool useSingleCreasePatches() const { return _refiner.GetAdaptiveOptions().useSingleCreasePatch; }
 
     bool computeSubPatchDomain(int levelIndex, Index faceIndex, short * s, short * t) const;
 
 private:
 
-    //
-    // General state
-    //
-
     TopologyRefiner const & _refiner;
 
     CharacteristicMap const & _charmap;
 
-    std::vector<PatchFaceTag> _patchTags;
-
-    std::vector<BuilderContext *> _contexts;
-
-    //
-    // End-cap stencils
-    //
-
-    EndCapBuilder * _endcapBuilder;
-
-    //
-    // Misc. subdivision level offsets
-    //
-
-    std::vector<PatchFaceTag const *> _levelPatchTags;
     std::vector<Index> _levelVertOffsets;
 };
 

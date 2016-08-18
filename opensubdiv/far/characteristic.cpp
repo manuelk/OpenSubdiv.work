@@ -136,24 +136,6 @@ Characteristic::Node::getFirstSupportIndex() const {
 }
 
 int
-Characteristic::Node::getNodeSize() const {
-    NodeDescriptor desc = GetDescriptor();
-    switch (desc.GetType()) {
-        case Characteristic::NODE_RECURSIVE:
-            return getRecursiveNodeSize();
-        case Characteristic::NODE_REGULAR :
-            return getRegularNodeSize(desc.SingleCrease());
-        case Characteristic::NODE_END:
-            return getEndCapNodeSize();
-        case Characteristic::NODE_TERMINAL:
-            return getTerminalNodeSize();
-        default:
-            assert(0);
-    }
-    return 0;
-}
-
-int
 Characteristic::Node::GetNumSupports() const {
     switch (GetDescriptor().GetType()) {
         case Characteristic::NODE_REGULAR :

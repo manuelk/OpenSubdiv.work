@@ -54,7 +54,7 @@ class TopologyRefiner;
 //  for the 4 bits) to quickly determine was is needed, rather than iteration and
 //  branching on the edges or vertices.
 //
-struct PatchFaceTag {
+class PatchFaceTag {
 
 public:
     unsigned int hasPatch        : 1,
@@ -69,26 +69,24 @@ public:
     /// \brief Clears all tags
     void Clear();
 
-    void AssignBoundaryPropertiesFromEdgeMask(int boundaryEdgeMask);
-
-    void AssignBoundaryPropertiesFromVertexMask(int boundaryVertexMask);
-
-    void AssignTransitionPropertiesFromEdgeMask(int mask) {
-        transitionMask = mask;
-    }
-
+    /// \brief Computes the patch tags for the given face
     bool ComputeTags(Far::TopologyRefiner const & refiner,
         Index const levelIndex, Index const faceIndex,
             int maxIsolationLevel, bool useSingleCreasePatch);
 
-
-    /// \brief Identifies patch types in a Refiner that has been adaptively
-    /// refined.
-    static void IdentifyAdaptivePatches(TopologyRefiner const & refiner,
-        int maxIsolationLevel, bool useSingleCreasePatch, std::vector<PatchFaceTag> & patchTags);
-
     // debug print
     void Print() const;
+
+private:
+
+    void assignBoundaryPropertiesFromEdgeMask(int boundaryEdgeMask);
+
+    void assignBoundaryPropertiesFromVertexMask(int boundaryVertexMask);
+
+    void assignTransitionPropertiesFromEdgeMask(int mask) {
+        transitionMask = mask;
+    }
+
 };
 
 typedef std::vector<PatchFaceTag> PatchFaceTagVector;

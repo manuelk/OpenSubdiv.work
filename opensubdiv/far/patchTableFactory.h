@@ -35,7 +35,7 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 //  Forward declarations (for internal implementation purposes):
-struct PatchFaceTag;
+class PatchFaceTag;
 class PtexIndices;
 class TopologyRefiner;
 

@@ -208,7 +208,92 @@ copyColIndices(int evIndex, Index const * src, Index * dst) {
     }
 }
 
+inline int
+getEndCapNumSupports(EndCapType type) {
+    switch (type) {
+        case ENDCAP_BSPLINE_BASIS: return 16;
+        case ENDCAP_GREGORY_BASIS: return 20;
+        default:
+            assert(0);
+    }
+    return 0;
+}
+
+inline int
+getNumSupports(Characteristic::NodeType nodeType, EndCapType endcaptype) {
+    switch (nodeType) {
+        case Characteristic::NODE_REGULAR  : return 16;
+        case Characteristic::NODE_END      : return getEndCapNumSupports(endcaptype);
+        case Characteristic::NODE_TERMINAL : return 25;
+        case Characteristic::NODE_RECURSIVE: return 0;
+    }
+    assert(0);
+    return 0;
+}
+
+static StencilTable const *
+generateStencilTable(
+    TopologyRefiner const & refiner, EndCapBuilder & endcapBuilder) {
+
+    StencilTableFactory::Options options;
+    options.generateOffsets = true;
+    options.generateControlVerts = true;
+    options.generateIntermediateLevels = true;
+
+    StencilTable const * regularStencils = 0,
+                       * localPointStencils = 0,
+                       * result = 0;
+
+    regularStencils =  StencilTableFactory::Create(refiner, options),
+
+    localPointStencils = endcapBuilder.FinalizeStencils();
+
+    if (regularStencils && localPointStencils) {
+        // concatenate & factorize end-cap stencils
+        result = StencilTableFactory::AppendLocalPointStencilTable(
+            refiner, regularStencils, localPointStencils);
+        delete localPointStencils;
+        delete regularStencils;
+    } else {
+        result = regularStencils;
+    }
+    return result;
+}
+
+//
+// Node builder
+//
+
 typedef Characteristic::NodeDescriptor NodeDescriptor;
+
+CharacteristicBuilder::CharacteristicBuilder(TopologyRefiner const & refiner,
+    CharacteristicMap const & charmap) :
+        _refiner(refiner),
+        _charmap(charmap) {
+        //_endcapBuilder(refiner, getEndCapType()) {
+
+    static int const levelSizes[numLevelMax] =
+        { 1, 4, 16, 64, 128, 128, 128, 128, 128, 128, 128 };
+
+    _levelVertOffsets.resize(_refiner.GetNumLevels(),0);
+
+    int numLevels = refiner.GetNumLevels();
+
+    for (int level=0, levelVertOffset = 0; level<numLevels; ++level) {
+
+        _nodeStore[level].reserve(levelSizes[level]);
+
+        _levelVertOffsets[level] = levelVertOffset;
+
+        levelVertOffset += _refiner.GetLevel(level).GetNumVertices();
+    }
+
+    // worse case : every face has a new unique topology - likely, most of
+    // these contexts will never be used
+    _buildContexts.reserve(_refiner.GetLevel(0).GetNumFaces());
+
+    _endcapBuilder = new EndCapBuilder(refiner, getEndCapType());
+}
 
 bool
 CharacteristicBuilder::computeSubPatchDomain(
@@ -250,186 +335,179 @@ CharacteristicBuilder::computeSubPatchDomain(
     return nonquad;
 }
 
-bool
-CharacteristicBuilder::nodeIsTerminal(
-    int levelIndex, int faceIndex, int * evIndex) const {
 
-    if (_charmap.GetOptions().useTerminalNode) {
+CharacteristicBuilder::~CharacteristicBuilder() {
+    delete _endcapBuilder;
+}
 
-        PatchFaceTag const * levelPatchTags = _levelPatchTags[levelIndex+1];
+void
+CharacteristicBuilder::resetNodeStore() {
+    for (short level=0; level<numLevelMax; ++level) {
+        _nodeStore[level].clear();
+    }
+}
 
+int
+CharacteristicBuilder::identifyNode(int levelIndex, Index faceIndex) {
+
+    ProtoNode node;
+
+    node.active = true;
+    node.levelIndex = levelIndex;
+    node.faceIndex = faceIndex;
+
+    node.patchTag.Clear();
+    node.hasPatch = node.patchTag.ComputeTags(_refiner,
+        levelIndex, faceIndex, getMaxIsolationLevel(), useSingleCreasePatches());
+
+    if (node.hasPatch) {
+        node.nodeType = node.patchTag.isRegular ?
+            Characteristic::NODE_REGULAR : Characteristic::NODE_END;
+        node.numChildren = 0;
+    } else {
         ConstIndexArray children =
             _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
-
-        if (children.size()!=4) {
-            return false;
-        }
-
-        int regular = 0, irregular = 0;
         for (int i=0; i<children.size(); ++i) {
+            node.children[i] = identifyNode(levelIndex+1, children[i]);
+        }
+        node.nodeType = Characteristic::NODE_RECURSIVE;
+        node.numChildren = (int)children.size();
+    }
 
-            Index child = children[i];
-            if (child==INDEX_INVALID) {
+    _nodeStore[levelIndex].push_back(node);
+    return (int)_nodeStore[levelIndex].size()-1;
+}
+
+inline CharacteristicBuilder::ProtoNode const &
+CharacteristicBuilder::getNodeChild(ProtoNode const & pn, short childIndex) const {
+    return const_cast<CharacteristicBuilder *>(this)->getNodeChild(pn, childIndex);
+}
+
+inline CharacteristicBuilder::ProtoNode &
+CharacteristicBuilder::getNodeChild(ProtoNode const & pn, short childIndex) {
+    return _nodeStore[pn.levelIndex+1][pn.children[childIndex]];
+}
+
+bool
+CharacteristicBuilder::nodeIsTerminal(ProtoNode const & pn, int * evIndex) const {
+
+    if (pn.numChildren!=4) {
+        return false;
+    }
+
+    int regular = 0, irregular = 0;
+    for (int i=0; i<(int)pn.numChildren; ++i) {
+
+        ProtoNode const & child = getNodeChild(pn, i);
+        if (child.patchTag.isRegular) {
+            assert(child.hasPatch);
+            ++regular;
+        } else {
+            // trivial rejection for boundaries or creases
+            if ((child.patchTag.boundaryCount>0) ||
+                 child.patchTag.isSingleCrease) {
+                 return false;
+            }
+            // complete check
+            Vtr::internal::Level const * level = &_refiner.getLevel(pn.levelIndex);
+            Vtr::ConstIndexArray fverts = level->getFaceVertices(pn.faceIndex);
+            assert(fverts.size() == 4);
+            Vtr::internal::Level::VTag vt = level->getFaceCompositeVTag(fverts);
+            if (vt._semiSharp || vt._semiSharpEdges || vt._rule!=Sdc::Crease::RULE_SMOOTH) {
                 return false;
             }
-
-            PatchFaceTag const & patchTag = levelPatchTags[child];
-
-            if (patchTag.isRegular) {
-                assert(patchTag.hasPatch);
-                ++regular;
-            } else {
-
-                // trivial rejection for boundaries or creases
-                if ((patchTag.boundaryCount>0) || patchTag.isSingleCrease) {
-                    return false;
-                }
-
-                // complete check
-                Vtr::internal::Level const * level = &_refiner.getLevel(levelIndex);
-
-                Vtr::ConstIndexArray fVerts = level->getFaceVertices(faceIndex);
-                assert(fVerts.size() == 4);
-
-                Vtr::internal::Level::VTag vt = level->getFaceCompositeVTag(fVerts);
-                if (vt._semiSharp || vt._semiSharpEdges || vt._rule!=Sdc::Crease::RULE_SMOOTH) {
-                    return false;
-                }
-
-                irregular = i;
-            }
+            irregular = i;
         }
-        if (regular==3) {
-            if (evIndex) {
-                *evIndex = irregular;
-            }
-            return true;
-        }
+    }
+    if (regular==3) {
+        assert(evIndex);
+        *evIndex = irregular;
+        return true;
     }
     return false;
 }
 
-//
-// Builder context
-//
-
-struct CharacteristicBuilder::BuilderContext {
-
-    BuilderContext(Index _faceIndex, bool _nonquad,
-        Characteristic * _ch, Neighborhood const * _n) :
-            faceIndex(_faceIndex), nonquad(_nonquad), ch(_ch), n(_n),
-                numSupports(0), firstSupport(0), treeSize(0), treeOffset(0) { }
-
-    int * GetCurrentTreePtr() {
-        return &ch->_tree[treeOffset];
-    }
-
-    int * GetCurrentSupportIndicesPtr() {
-        return &supportIndices[firstSupport];
-    }
-
-    Characteristic * ch;
-
-    Neighborhood const * n;
-
-    bool nonquad;
-
-    Index faceIndex;
-
-    int numSupports,
-        firstSupport,
-        treeSize,
-        treeOffset;
-
-    std::vector<int> supportIndices;
-};
-
-//
-// XXXX tree : [ descriptor ][ firstSupport ]
-//
-
-inline int
-getEndCapNumSupports(EndCapType type) {
-    switch (type) {
-        case ENDCAP_BSPLINE_BASIS: return 16;
-        case ENDCAP_GREGORY_BASIS: return 20;
-        default:
-            assert(0);
-    }
-    return 0;
-}
-
-inline int
-getTerminalNumSupports(int nlevels, EndCapType type) {
-    return getEndCapNumSupports(type) + 25 * nlevels;
-}
-
 void
-CharacteristicBuilder::identifyNode(int levelIndex, int faceIndex, BuilderContext * c) {
+CharacteristicBuilder::identifyTerminalNodes() {
 
-    typedef Characteristic::Node Node;
-
-    PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
-    if (patchTag.hasPatch) {
-        if (patchTag.isRegular) {
-            c->numSupports += 16;
-            c->treeSize += Node::getRegularNodeSize(patchTag.isSingleCrease);
-        } else {
-            c->numSupports += getEndCapNumSupports(_endcapBuilder->type);
-            c->treeSize += Node::getEndCapNodeSize();
-        }
-    } else {
-        int evIndex = INDEX_INVALID;
-        if (nodeIsTerminal(levelIndex, faceIndex, &evIndex)) {
-            // we don't need to recurse here : we know that there will always be
-            // one terminal node + one end-cap node for each level of isolation left
-            EndCapType type = _endcapBuilder->type;
-            int nlevels = _refiner.GetMaxLevel() - levelIndex;
-            c->numSupports += getTerminalNumSupports(nlevels, type);
-            c->treeSize += Node::getEndCapNodeSize() + nlevels*Node::getTerminalNodeSize();
-        } else {
-            // recurse through children to accumulate
-            c->treeSize += Node::getRecursiveNodeSize();
-            ConstIndexArray children =
-                _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
-            for (int i=0; i<children.size(); ++i) {
-                identifyNode(levelIndex+1, children[i], c);
+    for (short level=0; level<getMaxIsolationLevel(); ++level) {
+        for (int pnIndex=0; pnIndex<(int)_nodeStore[level].size(); ++pnIndex) {
+            ProtoNode & pn = _nodeStore[level][pnIndex];
+            int evIndex=INDEX_INVALID;
+            if (nodeIsTerminal(pn, &evIndex)) {
+                assert(evIndex!=INDEX_INVALID);
+                for (int i=0; i<(int)pn.numChildren; ++i) {
+                    // de-activate regular child nodes that the terminal node replaces
+                    ProtoNode & child = getNodeChild(pn, i);
+                    child.active = (i==evIndex) ? true : false;
+                }
+                pn.evIndex = evIndex;
+                pn.nodeType = Characteristic::NODE_TERMINAL;
             }
         }
     }
 }
 
 void
+CharacteristicBuilder::computeNodeOffsets(int * treeSizeOut, int * numSupportsOut) {
+
+    typedef Characteristic::NodeType NodeType;
+
+    int treeSize = 0, numSupports = 0;
+    for (short level=0; level<_refiner.GetNumLevels(); ++level) {
+
+        for (int pnIndex=0; pnIndex<(int)_nodeStore[level].size(); ++pnIndex) {
+
+            ProtoNode & pn = _nodeStore[level][pnIndex];
+
+            if (!pn.active) {
+                continue;
+            }
+
+            pn.treeOffset = treeSize;
+            pn.firstSupport = numSupports;
+
+            NodeType nodeType = (NodeType)pn.nodeType;
+
+            treeSize += Characteristic::Node::getNodeSize(
+                nodeType, (bool)pn.patchTag.isSingleCrease);
+
+            numSupports += getNumSupports(nodeType, getEndCapType());
+        }
+    }
+    *treeSizeOut = treeSize;
+    *numSupportsOut = numSupports;
+}
+
+void
 CharacteristicBuilder::populateRegularNode(
-    int levelIndex, int faceIndex, BuilderContext * ctx) {
+    ProtoNode const & pn, int * treePtr, Index * supportsPtr) const {
 
-    PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
-
-    Vtr::internal::Level const & level = _refiner.getLevel(levelIndex);
+    Vtr::internal::Level const & level = _refiner.getLevel(pn.levelIndex);
 
     Index patchVerts[16];
 
-    int bIndex = patchTag.boundaryIndex,
-        boundaryMask = patchTag.boundaryMask,
-        transitionMask = patchTag.transitionMask,
-        levelVertOffset = _levelVertOffsets[levelIndex];
+    int bIndex = pn.patchTag.boundaryIndex,
+        boundaryMask = pn.patchTag.boundaryMask,
+        transitionMask = pn.patchTag.transitionMask,
+        levelVertOffset = _levelVertOffsets[pn.levelIndex];
 
     int const * permutation = 0;
     bool singleCrease = false;
     float sharpness = 0.f;
 
-    if (patchTag.boundaryCount == 0) {
+    if (pn.patchTag.boundaryCount == 0) {
         static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
         permutation = permuteRegular;
-        level.gatherQuadRegularInteriorPatchPoints(faceIndex, patchVerts, 0);
-        if (patchTag.isSingleCrease) {
+        level.gatherQuadRegularInteriorPatchPoints(pn.faceIndex, patchVerts, 0);
+        if (pn.patchTag.isSingleCrease) {
             int maxIsolation = _refiner.GetAdaptiveOptions().isolationLevel;
             singleCrease = true;
             boundaryMask = (1<<bIndex);
-            sharpness = level.getEdgeSharpness((level.getFaceEdges(faceIndex)[bIndex]));
-            sharpness = std::min(sharpness, (float)(maxIsolation-levelIndex));
+            sharpness = level.getEdgeSharpness((level.getFaceEdges(pn.faceIndex)[bIndex]));
+            sharpness = std::min(sharpness, (float)(maxIsolation-pn.levelIndex));
         }
-    } else if (patchTag.boundaryCount == 1) {
+    } else if (pn.patchTag.boundaryCount == 1) {
         // Expand boundary patch vertices and rotate to restore correct orientation.
         static int const permuteBoundary[4][16] = {
             { -1, -1, -1, -1, 11, 3, 0, 4, 10, 2, 1, 5, 9, 8, 7, 6 },
@@ -437,8 +515,8 @@ CharacteristicBuilder::populateRegularNode(
             { 6, 7, 8, 9, 5, 1, 2, 10, 4, 0, 3, 11, -1, -1, -1, -1 },
             { -1, 4, 5, 6, -1, 0, 1, 7, -1, 3, 2, 8, -1, 11, 10, 9 } };
         permutation = permuteBoundary[bIndex];
-        level.gatherQuadRegularBoundaryPatchPoints(faceIndex, patchVerts, bIndex);
-    } else if (patchTag.boundaryCount == 2) {
+        level.gatherQuadRegularBoundaryPatchPoints(pn.faceIndex, patchVerts, bIndex);
+    } else if (pn.patchTag.boundaryCount == 2) {
         // Expand corner patch vertices and rotate to restore correct orientation.
         static int const permuteCorner[4][16] = {
             { -1, -1, -1, -1, -1, 0, 1, 4, -1, 3, 2, 5, -1, 8, 7, 6 },
@@ -446,235 +524,231 @@ CharacteristicBuilder::populateRegularNode(
             { 6, 7, 8, -1, 5, 2, 3, -1, 4, 1, 0, -1, -1, -1, -1, -1 },
             { -1, 4, 5, 6, -1, 1, 2, 7, -1, 0, 3, 8, -1, -1, -1, -1 } };
         permutation = permuteCorner[bIndex];
-        level.gatherQuadRegularCornerPatchPoints(faceIndex, patchVerts, bIndex);
+        level.gatherQuadRegularCornerPatchPoints(pn.faceIndex, patchVerts, bIndex);
     } else {
-        assert(patchTag.boundaryCount <= 2);
+        assert(pn.patchTag.boundaryCount <= 2);
     }
 
     short u, v;
-    bool nonquad = computeSubPatchDomain(levelIndex, faceIndex, &u, &v);
+    bool nonquad = computeSubPatchDomain(pn.levelIndex, pn.faceIndex, &u, &v);
+
+    offsetAndPermuteIndices(patchVerts,
+        16, levelVertOffset, permutation, supportsPtr + pn.firstSupport);
 
     // copy to buffers
-    int * tree = ctx->GetCurrentTreePtr();
+    treePtr += pn.treeOffset;
+    ((NodeDescriptor *)treePtr)->SetPatch(Characteristic::NODE_REGULAR,
+        nonquad, singleCrease, pn.levelIndex, boundaryMask, u, v);
+    ++treePtr;
 
-    ((NodeDescriptor *)tree)->SetPatch(Characteristic::NODE_REGULAR,
-        nonquad, singleCrease, levelIndex, boundaryMask, u, v);
-    ++tree;
-
-    *tree = ctx->firstSupport;
-    ++tree;
+    *treePtr = pn.firstSupport;
+    ++treePtr;
 
     if (singleCrease) {
-        *(float *)tree = sharpness;
+        *(float *)treePtr = sharpness;
     }
 
-    offsetAndPermuteIndices(
-        patchVerts, 16, levelVertOffset, permutation, ctx->GetCurrentSupportIndicesPtr());
-
-    ctx->firstSupport += 16;
-    ctx->treeOffset += Characteristic::Node::getRegularNodeSize(singleCrease);
 }
+
 
 void
 CharacteristicBuilder::populateEndCapNode(
-    int levelIndex, int faceIndex, BuilderContext * ctx) {
+    ProtoNode const & pn, int * treePtr, Index * supportsPtr) const {
 
-    assert(_endcapBuilder);
+    Vtr::internal::Level const & level = _refiner.getLevel((int)pn.levelIndex);
 
-    Vtr::internal::Level const & level = _refiner.getLevel(levelIndex);
-
-    Index levelVertOffset = _levelVertOffsets[levelIndex];
+    Index levelVertOffset = _levelVertOffsets[pn.levelIndex];
 
     ConstIndexArray cvs;
     Vtr::internal::Level::VSpan cornerSpans[4];
+
     switch (_endcapBuilder->type) {
         case ENDCAP_BILINEAR_BASIS:
             assert(0);
             break;
         case ENDCAP_BSPLINE_BASIS:
             cvs = _endcapBuilder->bsplineBasis->GetPatchPoints(
-                &level, faceIndex, cornerSpans, levelVertOffset);
+                &level, pn.faceIndex, cornerSpans, levelVertOffset);
             break;
         case ENDCAP_GREGORY_BASIS:
             cvs = _endcapBuilder->gregoryBasis->GetPatchPoints(
-                &level, faceIndex, cornerSpans, levelVertOffset);
+                &level, pn.faceIndex, cornerSpans, levelVertOffset);
             break;
         default:
             assert(0);
     }
 
+    memcpy(supportsPtr + pn.firstSupport, cvs.begin(), cvs.size()*sizeof(Index));
+
     short u, v;
-    bool nonquad = computeSubPatchDomain(levelIndex, faceIndex, &u, &v);
+    bool nonquad = computeSubPatchDomain(pn.levelIndex, pn.faceIndex, &u, &v);
 
-    // copy to buffers
-    int * tree = ctx->GetCurrentTreePtr();
-    ((NodeDescriptor *)tree)->SetPatch(Characteristic::NODE_END,
-        nonquad, false, levelIndex, 0, u, v);
-    ++tree;
+    treePtr += pn.treeOffset;
+    ((NodeDescriptor *)treePtr)->SetPatch(Characteristic::NODE_END,
+        nonquad, false, pn.levelIndex, 0, u, v);
+    ++treePtr;
 
-    *tree = ctx->firstSupport;
-    ++tree;
-
-    memcpy(ctx->GetCurrentSupportIndicesPtr(), cvs.begin(), cvs.size()*sizeof(Index));
-
-    ctx->firstSupport += cvs.size();
-    ctx->treeOffset += Characteristic::Node::getEndCapNodeSize();
+    *treePtr = pn.firstSupport;
+    ++treePtr;
 }
 
 void
 CharacteristicBuilder::populateTerminalNode(
-    int levelIndex, int faceIndex, int evIndex, BuilderContext * ctx) {
+    ProtoNode const & pn, int * treePtr, Index * supportsPtr) const {
 
     // xxxx manuelk right now terminal nodes are recursive : paper suggests
-    // a single node packing 25 * level supports. Might be doable but this code
-    // will have to be modified along with descriptor layout
+    // a single node packing 25 * level supports. Considering memory gains
+    // insignificant against code readability - if we want to change this,
+    // we will have to change the descriptor layout.
 
-    assert(evIndex!=INDEX_INVALID);
+    assert(pn.evIndex!=INDEX_INVALID);
 
-    int childLevelIndex = levelIndex + 1,
-        childNodeOffset = 0,
+    int childLevelIndex = pn.levelIndex + 1,
         levelVertOffset = _levelVertOffsets[childLevelIndex];
 
-    PatchFaceTag const * levelPatchTags =
-        _levelPatchTags[childLevelIndex];
+    Vtr::internal::Level const & childLevel = _refiner.getLevel(childLevelIndex);
 
-    Vtr::internal::Level const & childLevel =
-        _refiner.getLevel(childLevelIndex);
+    Index * firstSupport = supportsPtr + pn.firstSupport;
 
-    ConstIndexArray childFaceIndices =
-        _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
+    for (int i=0; i<(int)pn.numChildren; ++i) {
 
-    // save locations before recursions
-    int * tree = ctx->GetCurrentTreePtr(),
-          nodeSize = Characteristic::Node::getTerminalNodeSize(),
-          firstSupport = ctx->firstSupport,
-          childOffset = ctx->treeOffset + nodeSize;
-
-    Index * supportIndices = ctx->GetCurrentSupportIndicesPtr();
-
-    ctx->treeOffset += nodeSize;
-    ctx->firstSupport += 25;
-
-    for (int child=0; child<childFaceIndices.size(); ++child) {
         // gather support indices for the 3 sub-patches
 
-        int childFaceIndex = childFaceIndices[child];
+        ProtoNode const & child = getNodeChild(pn, i);
 
-        PatchFaceTag const & patchTag = levelPatchTags[childFaceIndex];
+        if (pn.evIndex!=i) {
 
-        if (evIndex!=child) {
             // child is a regular patch : get the supports
             Index localVerts[16], patchVerts[16];
-            childLevel.gatherQuadRegularInteriorPatchPoints(childFaceIndex, localVerts, 0);
+            childLevel.gatherQuadRegularInteriorPatchPoints(child.faceIndex, localVerts, 0);
             static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
             offsetAndPermuteIndices(localVerts, 16, levelVertOffset, permuteRegular, patchVerts);
 
             // copy non-overlapping indices into the node
-                   if (child == ((evIndex+2)%4)) {
-                copyDiagonalIndices(evIndex, patchVerts, supportIndices);
-            } else if (child == (5-evIndex)%4) {
-                copyRowIndices(evIndex, patchVerts, supportIndices);
-            } else if (child == (3-evIndex)%4) {
-                copyColIndices(evIndex, patchVerts, supportIndices);
+                   if (i == ((pn.evIndex+2)%4)) {
+                copyDiagonalIndices(pn.evIndex, patchVerts, firstSupport);
+            } else if (i == (5-pn.evIndex)%4) {
+                copyRowIndices(pn.evIndex, patchVerts, firstSupport);
+            } else if (i == (3-pn.evIndex)%4) {
+                copyColIndices(pn.evIndex, patchVerts, firstSupport);
             } else {
                 assert(0);
             }
         } else {
-            // child contains the EV
-            assert(evIndex==child);
 
-            if (patchTag.hasPatch) {
+            // child contains the EV
+            int nodeSize = Characteristic::Node::getTerminalNodeSize();
+            if (child.patchTag.hasPatch) {
                 // we have reached the maximum isolation : end-cap node
-                populateEndCapNode(childLevelIndex, childFaceIndex, ctx);
+                populateEndCapNode(child, treePtr, supportsPtr);
             } else {
-                populateTerminalNode(childLevelIndex, childFaceIndex, evIndex, ctx);
+                populateTerminalNode(child, treePtr, supportsPtr);
             }
         }
     }
+
     // set support index for the EV to INVALID
     static int emptyIndices[4] = {0, 4, 24, 20 };
-    supportIndices[emptyIndices[evIndex]] = INDEX_INVALID;
+    firstSupport[emptyIndices[pn.evIndex]] = INDEX_INVALID;
 
     short u, v;
-    bool nonquad = computeSubPatchDomain(childLevelIndex, childFaceIndices[0], &u, &v);
+    bool nonquad = computeSubPatchDomain(childLevelIndex, getNodeChild(pn, 0).faceIndex, &u, &v);
 
-    ((NodeDescriptor *)tree)->SetTerminal(nonquad, levelIndex, permuteWinding(evIndex), u, v);
-    ++tree;
+    treePtr += pn.treeOffset;
+    ((NodeDescriptor *)treePtr)->SetTerminal(nonquad, pn.levelIndex, permuteWinding(pn.evIndex), u, v);
+    ++treePtr;
 
-    *tree = firstSupport;
-    ++tree;
+    *treePtr = pn.firstSupport;
+    ++treePtr;
 
-    *tree = childOffset;
-    ++tree;
+    *treePtr = getNodeChild(pn, pn.evIndex).treeOffset;
+    ++treePtr;
 }
 
 void
 CharacteristicBuilder::populateRecursiveNode(
-    int levelIndex, int faceIndex, BuilderContext * ctx) {
+    ProtoNode const & pn, int * treePtr, Index * supportsPtr) const {
 
-    int * tree = ctx->GetCurrentTreePtr();
-    ((NodeDescriptor *)tree)->SetRecursive(levelIndex);
-    ++tree;
+    treePtr += pn.treeOffset;
+    ((NodeDescriptor *)treePtr)->SetRecursive(pn.levelIndex);
+    ++treePtr;
 
-    ctx->treeOffset += Characteristic::Node::getRecursiveNodeSize();
-
-    ConstIndexArray children =
-        _refiner.GetLevel(levelIndex).GetFaceChildFaces(faceIndex);
-    assert(children.size()==4);
-    for (int i=0; i<4; ++i) {
-        tree[permuteWinding(i)] = ctx->treeOffset;
-        populateNode(levelIndex+1, children[i], ctx);
+    assert((int)pn.numChildren==4);
+    for (int i=0; i<(int)pn.numChildren; ++i) {
+        treePtr[permuteWinding(i)] = getNodeChild(pn, i).treeOffset;
     }
 }
 
 void
-CharacteristicBuilder::populateNode(
-    int levelIndex, int faceIndex, BuilderContext * ctx) {
+CharacteristicBuilder::populateNodes(int * treePtr, Index * supportsPtr) const {
 
-    PatchFaceTag const & patchTag = _levelPatchTags[levelIndex][faceIndex];
-    if (patchTag.hasPatch) {
-        if (patchTag.isRegular) {
-            populateRegularNode(levelIndex, faceIndex, ctx);
-        } else {
-            populateEndCapNode(levelIndex, faceIndex, ctx);
-        }
-    } else {
-        int evIndex = INDEX_INVALID;
-        if (nodeIsTerminal(levelIndex, faceIndex, &evIndex)) {
-            populateTerminalNode(levelIndex, faceIndex, evIndex, ctx);
-        } else {
-            populateRecursiveNode(levelIndex, faceIndex, ctx);
+    // populate tree & support indices
+    for (short level=0; level<_refiner.GetNumLevels(); ++level) {
+
+        for (int pnIndex=0; pnIndex<(int)_nodeStore[level].size(); ++pnIndex) {
+
+            ProtoNode const & pn = _nodeStore[level][pnIndex];
+
+            if (!pn.active) {
+                continue;
+            }
+
+            switch ((Characteristic::NodeType)pn.nodeType) {
+                case Characteristic::NODE_REGULAR:
+                    populateRegularNode(pn, treePtr, supportsPtr); break;
+                case Characteristic::NODE_END:
+                    populateEndCapNode(pn, treePtr, supportsPtr); break;
+                case Characteristic::NODE_TERMINAL:
+                    populateTerminalNode(pn, treePtr, supportsPtr); break;
+                case Characteristic::NODE_RECURSIVE:
+                    populateRecursiveNode(pn, treePtr, supportsPtr); break;
+            }
         }
     }
 }
 
-static Far::StencilTable const *
-generateStencilTable(
-    Far::TopologyRefiner const & refiner, EndCapBuilder & endcapBuilder) {
+Characteristic const *
+CharacteristicBuilder::Create(Index levelIndex, Index faceIndex, Neighborhood const * neighborhood) {
 
-    Far::StencilTableFactory::Options options;
-    options.generateOffsets = true;
-    options.generateControlVerts = true;
-    options.generateIntermediateLevels = true;
+    assert(neighborhood);
 
-    StencilTable const * regularStencils = 0,
-                       * localPointStencils = 0,
-                       * result = 0;
+    //
+    // traverse topology & generate proto-nodes
+    //
 
-    regularStencils =  Far::StencilTableFactory::Create(refiner, options),
+    resetNodeStore();
 
-    localPointStencils = endcapBuilder.FinalizeStencils();
+    identifyNode(levelIndex, faceIndex);
 
-    if (regularStencils && localPointStencils) {
-        // concatenate & factorize end-cap stencils
-        result = Far::StencilTableFactory::AppendLocalPointStencilTable(
-            refiner, regularStencils, localPointStencils);
-        delete localPointStencils;
-        delete regularStencils;
-    } else {
-        result = regularStencils;
+    if (useTerminalNodes()) {
+        identifyTerminalNodes();
     }
-    return result;
+
+    bool nonquad = levelIndex!=0;
+    Characteristic * ch =
+        new Characteristic(_charmap, neighborhood->GetNumVertices(), nonquad);
+
+    int treeSize = 0, numSupports = 0;
+    computeNodeOffsets(&treeSize, &numSupports);
+
+    ch->_tree.resize(treeSize);
+    int * treePtr = &ch->_tree[0];
+
+    BuildContext * context = new BuildContext;
+    context->characteristic = ch;
+    context->neighborhood = neighborhood;
+    context->levelIndex = levelIndex;
+    context->faceIndex = faceIndex;
+    context->numSupports = numSupports;
+    context->supportIndices.resize(numSupports);
+
+    Index * supportsPtr = &context->supportIndices[0];
+
+    populateNodes(treePtr, supportsPtr);
+
+    _buildContexts.push_back(context);
+
+    return ch;
 }
 
 void
@@ -683,41 +757,36 @@ CharacteristicBuilder::FinalizeSupportStencils() {
     // XXXX manuelk : need to switch this for a code path that only computes
     // the stencils needed for the neighborhoods not yet in the map instead of
     // factorizing the entire mesh, including all redundant topologies
-
     StencilTable const * supportStencils =
         generateStencilTable(_refiner, *_endcapBuilder);
     assert(supportStencils);
 
-    // iterate over all the characteristics that were created and populate
-    // their supports
-    for (int ctxIndex=0; ctxIndex<(int)_contexts.size(); ++ctxIndex) {
+    for (int i=0; i<(int)_buildContexts.size(); ++i) {
 
-        BuilderContext & context = *_contexts[ctxIndex];
+        BuildContext const * context = _buildContexts[i];
 
-        Characteristic * ch = context.ch;
+        Characteristic * ch = context->characteristic;
 
-        // count the total number of influence weights & indices
-        // for all the supports
-        int numSupports = (int)context.supportIndices.size(),
+        // count the total number of influence weights & indices for the supports
+        int numSupports = context->numSupports,
             numWeights = 0;
         for (int i=0; i<numSupports; ++i) {
-            int stencilIndex = context.supportIndices[i];
+            int stencilIndex = context->supportIndices[i];
             numWeights += stencilIndex!=INDEX_INVALID ?
                 supportStencils->GetSizes()[stencilIndex] : 0;
         }
 
-        // copy the stencil weights into the supports
+        // generate the support stencils
         ch->_sizes.resize(numSupports);
         ch->_offsets.resize(numSupports);
         ch->_indices.resize(numWeights);
         ch->_weights.resize(numWeights);
 
-        Neighborhood const * neighborhood = context.n;
-        assert(neighborhood);
+        Neighborhood const * neighborhood = context->neighborhood;
 
         for (int i=0, offset=0; i<numSupports; ++i) {
 
-            int stencilIndex = context.supportIndices[i],
+            int stencilIndex = context->supportIndices[i],
                 stencilSize = 0;
             if (stencilIndex==INDEX_INVALID) {
                 ch->_sizes[i] = stencilSize;
@@ -738,85 +807,10 @@ CharacteristicBuilder::FinalizeSupportStencils() {
                 offset += stencilSize;
             }
         }
-    }
-    delete supportStencils;
-}
-
-Characteristic const *
-CharacteristicBuilder::Create(
-    int levelIndex, int faceIndex, Neighborhood const * neighborhood) {
-
-    bool nonquad = levelIndex!=0;
-
-    Characteristic * ch =
-        new Characteristic(_charmap, neighborhood->GetNumVertices(), nonquad);
-
-    BuilderContext * context = new BuilderContext(faceIndex, nonquad, ch, neighborhood);
-
-    identifyNode(levelIndex, faceIndex, context);
-
-    ch->_tree.resize(context->treeSize);
-
-    context->supportIndices.resize(context->numSupports);
-
-    populateNode(levelIndex, faceIndex, context);
-
-    _contexts.push_back(context);
-
-    return ch;
-}
-
-// constructor
-CharacteristicBuilder::CharacteristicBuilder(
-    TopologyRefiner const & refiner, CharacteristicMap const & charmap) :
-        _refiner(refiner), _charmap(charmap) {
-
-    // identify patch types
-    bool useSingleCrease = refiner.GetAdaptiveOptions().useSingleCreasePatch;
-
-    int numLevels = _refiner.GetNumLevels();
-
-    Far::PatchFaceTag::IdentifyAdaptivePatches(_refiner, numLevels, useSingleCrease, _patchTags);
-
-    {
-        CharacteristicMap::Options options = _charmap.GetOptions();
-        _endcapBuilder = new EndCapBuilder(refiner, options.GetEndCapType());
+        delete context;
     }
 
-    // gather starting offsets for patch tags & vertex indices for each
-    // subdivision level
-    {
-        int levelFaceOffset = 0,
-            levelVertOffset = 0;
-
-        _levelPatchTags.resize(numLevels, 0);
-        _levelVertOffsets.resize(numLevels,0);
-
-        for (int i=0; i<numLevels; ++i) {
-
-            TopologyLevel const & level = _refiner.GetLevel(i);
-
-            _levelPatchTags[i] = & _patchTags[levelFaceOffset];
-            _levelVertOffsets[i] = levelVertOffset;
-
-            levelFaceOffset += level.GetNumFaces();
-            levelVertOffset += level.GetNumVertices();
-        }
-    }
-
-    // worse case : every face has a new unique topology - likely, most of
-    // these contexts will never be used
-    _contexts.reserve(_refiner.GetLevel(0).GetNumFaces());
-}
-
-CharacteristicBuilder::~CharacteristicBuilder() {
-
-    for (int i=0; i<(int)_contexts.size(); ++i) {
-        delete _contexts[i];
-    }
-    _contexts.clear();
-
-    delete _endcapBuilder;
+    _buildContexts.clear();
 }
 
 } // end namespace internal

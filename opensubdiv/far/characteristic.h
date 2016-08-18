@@ -330,6 +330,8 @@ public:
 
         static int getRecursiveNodeSize() { return 5; }
 
+        static int getNodeSize(NodeType nodeType, bool isSingleCrease);
+
         Index getFirstSupportIndex() const;
 
         int getNodeSize() const;
@@ -486,7 +488,7 @@ private:
 
 private:
 
-    friend class CharacteristicBuilder;
+    friend class internal::CharacteristicBuilder;
     friend class CharacteristicMap;
     friend class SubdivisionPlanTable;
 
@@ -506,6 +508,25 @@ private:
 //
 // Inline implementation
 //
+
+inline int
+Characteristic::Node::getNodeSize(
+    Characteristic::NodeType nodeType, bool isSingleCrease) {
+    switch (nodeType) {
+        case Characteristic::NODE_REGULAR  : return getRegularNodeSize(isSingleCrease);
+        case Characteristic::NODE_END      : return getEndCapNodeSize();
+        case Characteristic::NODE_TERMINAL : return getTerminalNodeSize();
+        case Characteristic::NODE_RECURSIVE: return getRecursiveNodeSize();
+    }
+    assert(0);
+    return 0;
+}
+
+inline int
+Characteristic::Node::getNodeSize() const {
+    NodeDescriptor desc = GetDescriptor();
+    return getNodeSize(desc.GetType(), desc.SingleCrease());
+}
 
 inline Characteristic::Node
 Characteristic::Node::operator ++ () {
