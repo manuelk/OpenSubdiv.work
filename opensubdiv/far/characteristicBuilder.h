@@ -22,8 +22,8 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
-#ifndef OPENSUBDIV3_FAR_CHARACTERISTIC_TREE_BUILDER_H
-#define OPENSUBDIV3_FAR_CHARACTERISTIC_TREE_BUILDER_H
+#ifndef OPENSUBDIV3_FAR_CHARACTERISTIC_BUILDER_H
+#define OPENSUBDIV3_FAR_CHARACTERISTIC_BUILDER_H
 
 #include "../version.h"
 
@@ -76,7 +76,7 @@ public:
     ~CharacteristicBuilder();
 
     // Returns a new characteristic for the given topological neighborhood
-    // note : the characteristic will not be functional until 
+    // note : the characteristic will not be functional until
     //        FinalizeSupportStencils() has been called
     Characteristic const * Create(
         Index levelIndex, Index faceIndex, Neighborhood const * neighborhood);
@@ -113,7 +113,7 @@ private:
 
     // store of Proto Nodes sorted by level
     static int const numLevelMax = 11;
-    ProtoNodeVector _nodeStore[numLevelMax]; 
+    ProtoNodeVector _nodeStore[numLevelMax];
 
     // reset the store before starting a new characteristic tree
     void resetNodeStore();
@@ -134,7 +134,7 @@ private:
     void identifyTerminalNodes();
 
     // sequentially assigns final value to proto-nodes treeOffset & firstSupport
-    void computeNodeOffsets(int * treeSizeOut, int * numSupportsOut);
+    void computeNodeOffsets(int * treeSizeOut, short * numSupportsOut, int * numSupportsTotalOut);
 
     // populates the serialized tree & supports indices buffers
     void populateNodes(int * treePtr, Index * supportsPtr) const;
@@ -167,25 +167,27 @@ private:
     // Build Contexts
     //
 
+    // The BuildContext collects information between the call to Create() and
+    // FinalizeSupportStencils(), where it is destroyed.
     struct BuildContext {
 
-        Characteristic * characteristic;
+        Characteristic * characteristic;   // characteristic created by the builder
 
-        Neighborhood const * neighborhood;
+        Neighborhood const * neighborhood; // remaps control verts indices
 
-        int levelIndex,
-            faceIndex,
-            numSupports;
+        int levelIndex,       // level of control face (0 for regular, 1 for non-quad)
+            faceIndex,        // Vtr::level index of control face 
+            numSupportsTotal; // total number of supports for the characteristic
 
-        std::vector<Index> supportIndices;
+        std::vector<Index> supportIndices;  //  stencil indices of supports
     };
 
     std::vector<BuildContext *> _buildContexts;
 
 private:
-    
+
     // misc. helpers
-    
+
     short getMaxIsolationLevel() const { return _refiner.GetAdaptiveOptions().isolationLevel; }
 
     bool useTerminalNodes() const { return _charmap.GetOptions().useTerminalNode; }
@@ -208,5 +210,5 @@ private:
 } // end namespace OPENSUBDIV_VERSION
 } // end namespace OpenSubdiv
 
-#endif /* OPENSUBDIV3_FAR_CHARACTERISTIC_TREE_BUILDER_H */
+#endif /* OPENSUBDIV3_FAR_CHARACTERISTIC_BUILDER_H */
 

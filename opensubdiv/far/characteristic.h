@@ -411,7 +411,7 @@ public:
     int GetNumSupportsTotal() const { return (int)_sizes.size(); }
 
     /// \brief Returns the number of supports needing to be evaluated at a given level
-    int GetNumSupports(int levelIndex) const { return _supportLevelCounts[levelIndex]; }
+    int GetNumSupports(int levelIndex) const { return _numSupports[levelIndex]; }
 
     /// \brief Returns the support data for the support of given index
     Support GetSupport(Index supportIndex) const;
@@ -437,7 +437,7 @@ private:
 
     int                     _numControlVertices;
 
-    short                   _supportLevelCounts[10]; // XXX TODO
+    short                   _numSupports[11];
 
     std::vector<short>      _sizes;
     std::vector<LocalIndex> _indices;

@@ -83,6 +83,28 @@ struct EndCapBuilder {
         }
     }
 
+    ConstIndexArray GatherPatchPoints(Vtr::internal::Level const & level,
+        Index faceIndex, int levelVertOffset) {
+        ConstIndexArray cvs;
+        Vtr::internal::Level::VSpan cornerSpans[4];
+        switch (type) {
+            case ENDCAP_BILINEAR_BASIS:
+                assert(0); // XXXX TODO
+                break;
+            case ENDCAP_BSPLINE_BASIS:
+                cvs = bsplineBasis->GetPatchPoints(
+                    &level, faceIndex, cornerSpans, levelVertOffset);
+                break;
+            case ENDCAP_GREGORY_BASIS:
+                cvs = gregoryBasis->GetPatchPoints(
+                    &level, faceIndex, cornerSpans, levelVertOffset);
+                break;
+            default:
+                assert(0);
+        }
+        return cvs;
+    }
+
     StencilTable const * FinalizeStencils() {
         if (endcapStencils && (endcapStencils->GetNumStencils() > 0)) {
             endcapStencils->finalize();
@@ -261,16 +283,25 @@ generateStencilTable(
 }
 
 //
-// Node builder
+// Characteristic builder implementation
 //
 
 typedef Characteristic::NodeDescriptor NodeDescriptor;
+
+inline CharacteristicBuilder::ProtoNode const &
+CharacteristicBuilder::getNodeChild(ProtoNode const & pn, short childIndex) const {
+    return const_cast<CharacteristicBuilder *>(this)->getNodeChild(pn, childIndex);
+}
+
+inline CharacteristicBuilder::ProtoNode &
+CharacteristicBuilder::getNodeChild(ProtoNode const & pn, short childIndex) {
+    return _nodeStore[pn.levelIndex+1][pn.children[childIndex]];
+}
 
 CharacteristicBuilder::CharacteristicBuilder(TopologyRefiner const & refiner,
     CharacteristicMap const & charmap) :
         _refiner(refiner),
         _charmap(charmap) {
-        //_endcapBuilder(refiner, getEndCapType()) {
 
     static int const levelSizes[numLevelMax] =
         { 1, 4, 16, 64, 128, 128, 128, 128, 128, 128, 128 };
@@ -293,6 +324,10 @@ CharacteristicBuilder::CharacteristicBuilder(TopologyRefiner const & refiner,
     _buildContexts.reserve(_refiner.GetLevel(0).GetNumFaces());
 
     _endcapBuilder = new EndCapBuilder(refiner, getEndCapType());
+}
+
+CharacteristicBuilder::~CharacteristicBuilder() {
+    delete _endcapBuilder;
 }
 
 bool
@@ -336,10 +371,6 @@ CharacteristicBuilder::computeSubPatchDomain(
 }
 
 
-CharacteristicBuilder::~CharacteristicBuilder() {
-    delete _endcapBuilder;
-}
-
 void
 CharacteristicBuilder::resetNodeStore() {
     for (short level=0; level<numLevelMax; ++level) {
@@ -376,16 +407,6 @@ CharacteristicBuilder::identifyNode(int levelIndex, Index faceIndex) {
 
     _nodeStore[levelIndex].push_back(node);
     return (int)_nodeStore[levelIndex].size()-1;
-}
-
-inline CharacteristicBuilder::ProtoNode const &
-CharacteristicBuilder::getNodeChild(ProtoNode const & pn, short childIndex) const {
-    return const_cast<CharacteristicBuilder *>(this)->getNodeChild(pn, childIndex);
-}
-
-inline CharacteristicBuilder::ProtoNode &
-CharacteristicBuilder::getNodeChild(ProtoNode const & pn, short childIndex) {
-    return _nodeStore[pn.levelIndex+1][pn.children[childIndex]];
 }
 
 bool
@@ -449,12 +470,13 @@ CharacteristicBuilder::identifyTerminalNodes() {
 }
 
 void
-CharacteristicBuilder::computeNodeOffsets(int * treeSizeOut, int * numSupportsOut) {
+CharacteristicBuilder::computeNodeOffsets(
+    int * treeSizeOut, short * numSupportsOut, int * numSupportsTotalOut) {
 
     typedef Characteristic::NodeType NodeType;
 
-    int treeSize = 0, numSupports = 0;
-    for (short level=0; level<_refiner.GetNumLevels(); ++level) {
+    int treeSize = 0, numSupportsTotal = 0;
+    for (short level=0, numSupports = 0; level<_refiner.GetNumLevels(); ++level) {
 
         for (int pnIndex=0; pnIndex<(int)_nodeStore[level].size(); ++pnIndex) {
 
@@ -474,9 +496,11 @@ CharacteristicBuilder::computeNodeOffsets(int * treeSizeOut, int * numSupportsOu
 
             numSupports += getNumSupports(nodeType, getEndCapType());
         }
+        numSupportsOut[level] = numSupports;
+        numSupportsTotal += numSupports;
     }
     *treeSizeOut = treeSize;
-    *numSupportsOut = numSupports;
+    *numSupportsTotalOut = numSupportsTotal;
 }
 
 void
@@ -537,15 +561,14 @@ CharacteristicBuilder::populateRegularNode(
 
     // copy to buffers
     treePtr += pn.treeOffset;
+
     ((NodeDescriptor *)treePtr)->SetPatch(Characteristic::NODE_REGULAR,
         nonquad, singleCrease, pn.levelIndex, boundaryMask, u, v);
-    ++treePtr;
 
-    *treePtr = pn.firstSupport;
-    ++treePtr;
+    treePtr[1] = pn.firstSupport;
 
     if (singleCrease) {
-        *(float *)treePtr = sharpness;
+        *((float *)&treePtr[2]) = sharpness;
     }
 
 }
@@ -555,28 +578,14 @@ void
 CharacteristicBuilder::populateEndCapNode(
     ProtoNode const & pn, int * treePtr, Index * supportsPtr) const {
 
+    // use the end-cap builder to generate support stencils for the end-cap
+    // patches (bilinear, b-spline, gregory...)
     Vtr::internal::Level const & level = _refiner.getLevel((int)pn.levelIndex);
 
     Index levelVertOffset = _levelVertOffsets[pn.levelIndex];
 
-    ConstIndexArray cvs;
-    Vtr::internal::Level::VSpan cornerSpans[4];
-
-    switch (_endcapBuilder->type) {
-        case ENDCAP_BILINEAR_BASIS:
-            assert(0);
-            break;
-        case ENDCAP_BSPLINE_BASIS:
-            cvs = _endcapBuilder->bsplineBasis->GetPatchPoints(
-                &level, pn.faceIndex, cornerSpans, levelVertOffset);
-            break;
-        case ENDCAP_GREGORY_BASIS:
-            cvs = _endcapBuilder->gregoryBasis->GetPatchPoints(
-                &level, pn.faceIndex, cornerSpans, levelVertOffset);
-            break;
-        default:
-            assert(0);
-    }
+    ConstIndexArray cvs =
+        _endcapBuilder->GatherPatchPoints(level, pn.faceIndex, levelVertOffset);
 
     memcpy(supportsPtr + pn.firstSupport, cvs.begin(), cvs.size()*sizeof(Index));
 
@@ -584,12 +593,10 @@ CharacteristicBuilder::populateEndCapNode(
     bool nonquad = computeSubPatchDomain(pn.levelIndex, pn.faceIndex, &u, &v);
 
     treePtr += pn.treeOffset;
-    ((NodeDescriptor *)treePtr)->SetPatch(Characteristic::NODE_END,
-        nonquad, false, pn.levelIndex, 0, u, v);
-    ++treePtr;
 
-    *treePtr = pn.firstSupport;
-    ++treePtr;
+    ((NodeDescriptor *)treePtr)->SetPatch(Characteristic::NODE_END, nonquad, false, pn.levelIndex, 0, u, v);
+
+    treePtr[1] = pn.firstSupport;
 }
 
 void
@@ -612,19 +619,23 @@ CharacteristicBuilder::populateTerminalNode(
 
     for (int i=0; i<(int)pn.numChildren; ++i) {
 
-        // gather support indices for the 3 sub-patches
+        // gather support indices for the 3 regular sub-patches
 
         ProtoNode const & child = getNodeChild(pn, i);
 
         if (pn.evIndex!=i) {
 
-            // child is a regular patch : get the supports
+            // regular patch children nodes should have been de-activated when
+            // this node was identified as Terminal
+            assert(child.active==false);
+
+            // collect the support stencil indices
             Index localVerts[16], patchVerts[16];
             childLevel.gatherQuadRegularInteriorPatchPoints(child.faceIndex, localVerts, 0);
             static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
             offsetAndPermuteIndices(localVerts, 16, levelVertOffset, permuteRegular, patchVerts);
 
-            // copy non-overlapping indices into the node
+            // merge non-overlapping indices into a 5x5 array
                    if (i == ((pn.evIndex+2)%4)) {
                 copyDiagonalIndices(pn.evIndex, patchVerts, firstSupport);
             } else if (i == (5-pn.evIndex)%4) {
@@ -634,20 +645,12 @@ CharacteristicBuilder::populateTerminalNode(
             } else {
                 assert(0);
             }
-        } else {
-
-            // child contains the EV
-            int nodeSize = Characteristic::Node::getTerminalNodeSize();
-            if (child.patchTag.hasPatch) {
-                // we have reached the maximum isolation : end-cap node
-                populateEndCapNode(child, treePtr, supportsPtr);
-            } else {
-                populateTerminalNode(child, treePtr, supportsPtr);
-            }
         }
+        // not a recursive traversal : the xordinary child proto-node will be
+        // handled when its proto-node is processed
     }
 
-    // set support index for the EV to INVALID
+    // set corner support index for the EV to INVALID
     static int emptyIndices[4] = {0, 4, 24, 20 };
     firstSupport[emptyIndices[pn.evIndex]] = INDEX_INVALID;
 
@@ -655,14 +658,11 @@ CharacteristicBuilder::populateTerminalNode(
     bool nonquad = computeSubPatchDomain(childLevelIndex, getNodeChild(pn, 0).faceIndex, &u, &v);
 
     treePtr += pn.treeOffset;
+
     ((NodeDescriptor *)treePtr)->SetTerminal(nonquad, pn.levelIndex, permuteWinding(pn.evIndex), u, v);
-    ++treePtr;
 
-    *treePtr = pn.firstSupport;
-    ++treePtr;
-
-    *treePtr = getNodeChild(pn, pn.evIndex).treeOffset;
-    ++treePtr;
+    treePtr[1] = pn.firstSupport;
+    treePtr[2] = getNodeChild(pn, pn.evIndex).treeOffset;
 }
 
 void
@@ -682,7 +682,7 @@ CharacteristicBuilder::populateRecursiveNode(
 void
 CharacteristicBuilder::populateNodes(int * treePtr, Index * supportsPtr) const {
 
-    // populate tree & support indices
+    // populate tree & collect support stencil indices
     for (short level=0; level<_refiner.GetNumLevels(); ++level) {
 
         for (int pnIndex=0; pnIndex<(int)_nodeStore[level].size(); ++pnIndex) {
@@ -708,19 +708,19 @@ CharacteristicBuilder::populateNodes(int * treePtr, Index * supportsPtr) const {
 }
 
 Characteristic const *
-CharacteristicBuilder::Create(Index levelIndex, Index faceIndex, Neighborhood const * neighborhood) {
+CharacteristicBuilder::Create(
+    Index levelIndex, Index faceIndex, Neighborhood const * neighborhood) {
 
     assert(neighborhood);
 
-    //
-    // traverse topology & generate proto-nodes
-    //
-
+    // make sure the proto-node store is empty for each new characteristic
     resetNodeStore();
 
+    // traverse topology recursively & collect proto-nodes
     identifyNode(levelIndex, faceIndex);
 
     if (useTerminalNodes()) {
+        // prune recursive nodes that match terminal node configuration
         identifyTerminalNodes();
     }
 
@@ -728,24 +728,28 @@ CharacteristicBuilder::Create(Index levelIndex, Index faceIndex, Neighborhood co
     Characteristic * ch =
         new Characteristic(_charmap, neighborhood->GetNumVertices(), nonquad);
 
-    int treeSize = 0, numSupports = 0;
-    computeNodeOffsets(&treeSize, &numSupports);
+    // compute serial offsets for the Characteristic::Nodes tree
+    int treeSize = 0, numSupportsTotal = 0;
+    computeNodeOffsets(&treeSize, ch->_numSupports, &numSupportsTotal);
 
-    ch->_tree.resize(treeSize);
-    int * treePtr = &ch->_tree[0];
 
     BuildContext * context = new BuildContext;
     context->characteristic = ch;
     context->neighborhood = neighborhood;
     context->levelIndex = levelIndex;
     context->faceIndex = faceIndex;
-    context->numSupports = numSupports;
-    context->supportIndices.resize(numSupports);
+    context->numSupportsTotal = numSupportsTotal;
 
+    // populate the characteristic's tree & collect support indices
+    ch->_tree.resize(treeSize);
+    int * treePtr = &ch->_tree[0];
+
+    context->supportIndices.resize(numSupportsTotal);
     Index * supportsPtr = &context->supportIndices[0];
 
     populateNodes(treePtr, supportsPtr);
 
+    // save the context for the "finalize" step
     _buildContexts.push_back(context);
 
     return ch;
@@ -757,6 +761,7 @@ CharacteristicBuilder::FinalizeSupportStencils() {
     // XXXX manuelk : need to switch this for a code path that only computes
     // the stencils needed for the neighborhoods not yet in the map instead of
     // factorizing the entire mesh, including all redundant topologies
+
     StencilTable const * supportStencils =
         generateStencilTable(_refiner, *_endcapBuilder);
     assert(supportStencils);
@@ -768,7 +773,7 @@ CharacteristicBuilder::FinalizeSupportStencils() {
         Characteristic * ch = context->characteristic;
 
         // count the total number of influence weights & indices for the supports
-        int numSupports = context->numSupports,
+        int numSupports = context->numSupportsTotal,
             numWeights = 0;
         for (int i=0; i<numSupports; ++i) {
             int stencilIndex = context->supportIndices[i];
@@ -776,7 +781,7 @@ CharacteristicBuilder::FinalizeSupportStencils() {
                 supportStencils->GetSizes()[stencilIndex] : 0;
         }
 
-        // generate the support stencils
+        // generate the support stencil weights
         ch->_sizes.resize(numSupports);
         ch->_offsets.resize(numSupports);
         ch->_indices.resize(numWeights);
@@ -789,6 +794,8 @@ CharacteristicBuilder::FinalizeSupportStencils() {
             int stencilIndex = context->supportIndices[i],
                 stencilSize = 0;
             if (stencilIndex==INDEX_INVALID) {
+                // XXXX manuelk we could probably skip those if we adjust
+                // offsets computations accordingly
                 ch->_sizes[i] = stencilSize;
                 ch->_offsets[i] = offset;
             } else {
@@ -809,7 +816,6 @@ CharacteristicBuilder::FinalizeSupportStencils() {
         }
         delete context;
     }
-
     _buildContexts.clear();
 }
 
