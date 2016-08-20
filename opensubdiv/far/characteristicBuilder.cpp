@@ -755,7 +755,7 @@ CharacteristicBuilder::Create(
     return ch;
 }
 
-void
+int
 CharacteristicBuilder::FinalizeSupportStencils() {
 
     // XXXX manuelk : need to switch this for a code path that only computes
@@ -765,6 +765,8 @@ CharacteristicBuilder::FinalizeSupportStencils() {
     StencilTable const * supportStencils =
         generateStencilTable(_refiner, *_endcapBuilder);
     assert(supportStencils);
+
+    int numMaxSupports = 0;
 
     for (int i=0; i<(int)_buildContexts.size(); ++i) {
 
@@ -815,8 +817,11 @@ CharacteristicBuilder::FinalizeSupportStencils() {
             }
         }
         delete context;
-    }
+
+        numMaxSupports = std::max(numSupports, numMaxSupports);
+    }    
     _buildContexts.clear();
+    return numMaxSupports;
 }
 
 } // end namespace internal

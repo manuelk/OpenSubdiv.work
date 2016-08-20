@@ -88,8 +88,8 @@ int g_level = 2,
     g_useTerminalNodes = true;
 
 
-int   g_frame = 0,
-      g_repeatCount = 0;
+int g_frame = 0,
+    g_repeatCount = 0;
 
 bool g_DrawVertIDs = false,
      g_DrawFaceIDs = false,
@@ -657,6 +657,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
           * col = &colors[0];
 
     std::vector<Vertex> supports;
+    supports.resize(charmap->GetNumMaxSupports());
 
     // interpolate limits
 
@@ -670,6 +671,42 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
         Far::Characteristic const * ch =
             g_plansTable->GetPlanCharacteristic(planIndex);
+
+        //
+        // evaluate all supports points from the characteristic stencils
+        //
+
+        {
+            int nsupports = ch->GetNumSupportsTotal();
+            for (int i=0; i<nsupports; ++i) {
+
+                // get the stencil for this support point
+                Far::Characteristic::Support stencil = ch->GetSupport(i);
+
+                supports[i].Clear();
+                for (short k=0; k<stencil.size; ++k) {
+
+                     int cvIndex = stencil.indices[k];
+
+                     if (cvIndex==(Far::LocalIndex)Far::INDEX_INVALID) {
+                         continue;
+                     }
+
+                     // remap the support stencil indices, which are local
+                     // to the characteristic's neighborhood, to the control
+                     // mesh topology.
+                     Far::Index vertIndex =
+                         g_plansTable->GetMeshControlVertexIndex(planIndex, stencil.indices[k]);
+
+                     supports[i].AddWithWeight(controlVerts[vertIndex], stencil.weights[k]);
+                }
+
+            }
+        }
+
+        //
+        // evaluate sample limits
+        //
 
         int const tessFactor = ch->IsNonQuadPatch() ? g_tessLevel / 2 + 1 : g_tessLevel;
 
@@ -686,53 +723,16 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 Far::Characteristic::Node node =
                     ch->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant);
 
-                //Far::Characteristic::NodeType type = node.GetDescriptor().GetType();
-                
-                //
-                // evaluate supports from characteristic stencils
-                //
-
-                // note : the "better way" to do this would be to build a list
-                // of all the nodes that contain samples, evaluate the supports
-                // and then evaluate all limits. This would save a lot of
-                // redundant support points evaluations (XXXX should think about
-                // adding this as a far class)
-
-                int nsupports = node.GetNumSupports();
-
-                // this resize should be mostly "free"
-                // XXXX manuelk we could allocate correctly if CharacteristicMap
-                // stored the max size of all characteristics supports
-                supports.resize(nsupports);
-
-                for (int j=0; j<nsupports; ++j) {
-                
-                    // get the stencil for this support point
-                    Far::Characteristic::Support stencil = node.GetSupport(j,quadrant);
-
-                    supports[j].Clear();
-                    for (short k=0; k<stencil.size; ++k) {
-
-                         // remap the support stencil indices, which are local
-                         // to the characteristic's neighborhood, to the control
-                         // mesh topology.
-                         Far::Index vertIndex =
-                             g_plansTable->GetMeshControlVertexIndex(planIndex, stencil.indices[k]);
-
-                         supports[j].AddWithWeight(
-                             controlVerts[vertIndex], stencil.weights[k]);
-                    }
-
-                }
-
                 //
                 // limit points : interpolate support points with basis weights
                 //
+                int nsupports = node.GetNumSupports();
 
                 LimitFrame limit;
                 limit.Clear();
                 for (int j=0; j<nsupports; ++j) {
-                    limit.AddWithWeight(supports[j], wP[j], wDs[j], wDt[j]);
+                    Far::Index supportIndex = node.GetSupportIndex(j, quadrant);
+                    limit.AddWithWeight(supports[supportIndex], wP[j], wDs[j], wDt[j]);
                 }
 
                 memcpy(pos, limit.point, 3 * sizeof(float));

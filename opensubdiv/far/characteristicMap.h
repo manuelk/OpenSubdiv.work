@@ -61,7 +61,8 @@ public:
         Options() :
              hashSize(10000),
              endCapType(ENDCAP_BSPLINE_BASIS),
-             useTerminalNode(false) { }
+             useTerminalNode(true),
+             useDynamicIsolation(true) { }
 
         /// \brief Get endcap patch type
         EndCapType GetEndCapType() const { return (EndCapType)endCapType; }
@@ -71,8 +72,9 @@ public:
 
         int hashSize;
 
-        unsigned int endCapType           : 3, ///< Type of end-cap patches
-                     useTerminalNode      : 1; ///< Use "terminal" nodes on patches with single EV
+        unsigned int endCapType           : 3, ///< Type of end-cap patches        
+                     useTerminalNode      : 1, ///< Use "terminal" nodes on patches with single EV
+                     useDynamicIsolation  : 1; ///< Generate data for run-time dynamic isolation
     };
 
     /// \brief Constructor
@@ -94,6 +96,11 @@ public:
     /// \brief Returns the characteristic for index
     Characteristic const * GetCharacteristic(Index charIndex) const {
         return _characteristics[charIndex];
+    }
+
+    /// \brief Returns the maximum number of supports in a characteristic
+    int GetNumMaxSupports() const {
+        return _numMaxSupports;
     }
 
     /// \brief Returns the capacity of the hash map
@@ -120,6 +127,8 @@ private:
 
     static bool supportsEndCaps(EndCapType type);
     Options _options;
+
+    int _numMaxSupports; // maximum number of supports in a characteristic
 
 private:
 

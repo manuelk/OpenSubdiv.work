@@ -288,8 +288,13 @@ public:
         /// sub-patch pointed to by this node
         int GetNumSupports() const;
 
+        /// \brief Returns the index of the requested support in the
+        /// characteristic.
+        /// (supportIndex is relative : in range [0, GetNumSupports()])
+        Index GetSupportIndex(int supportIndex, int evIndex) const;
+
         /// \brief Returns the requested support at index
-        /// (index is relative : in range [0, GetNumSupports()])
+        /// (supportIndex is relative : in range [0, GetNumSupports()])
         Support GetSupport(int supportIndex, int evIndex) const;
 
         /// \brief Returns the creased edge sharpness

@@ -127,7 +127,9 @@ CharacteristicMap::supportsEndCaps(EndCapType type) {
     return true;
 }
 
-CharacteristicMap::CharacteristicMap(Options options) : _options(options) {
+CharacteristicMap::CharacteristicMap(Options options) :
+    _options(options), _numMaxSupports(0) {
+
     _characteristicsHash.resize(_options.hashSize, INDEX_INVALID);
 }
 
@@ -248,7 +250,8 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
         }
     }
 
-    charBuilder.FinalizeSupportStencils();
+    _numMaxSupports = std::max(
+        _numMaxSupports, charBuilder.FinalizeSupportStencils());
 
     for (int i=0; i<(int)neighborhoods.size(); ++i) {
         free((void *)neighborhoods[i]);

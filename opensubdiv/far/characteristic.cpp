@@ -156,8 +156,8 @@ Characteristic::Node::GetNumSupports() const {
     }
 }
 
-Characteristic::Support
-Characteristic::Node::GetSupport(int supportIndex, int evIndex) const {
+Index
+Characteristic::Node::GetSupportIndex(int supportIndex, int evIndex) const {
 
     Index firstSupport = getFirstSupportIndex();
 
@@ -165,7 +165,7 @@ Characteristic::Node::GetSupport(int supportIndex, int evIndex) const {
     switch (desc.GetType()) {
         case NODE_REGULAR:
         case NODE_END:
-            return GetCharacteristic()->GetSupport(firstSupport + supportIndex);
+            return firstSupport + supportIndex;
         case NODE_TERMINAL: {
             // note : winding order is 0, 1, 3, 2 !
             static int permuteTerminal[4][16] = {
@@ -176,12 +176,17 @@ Characteristic::Node::GetSupport(int supportIndex, int evIndex) const {
             };
             assert(evIndex!=desc.GetEvIndex() && evIndex>=0 && evIndex<4);
             supportIndex = permuteTerminal[evIndex][supportIndex];
-            return GetCharacteristic()->GetSupport(firstSupport + supportIndex);
+            return firstSupport + supportIndex;
         }
         default:
             assert(0);
-            return Support(0, 0, 0);
+            return INDEX_INVALID;
     }
+}
+
+Characteristic::Support
+Characteristic::Node::GetSupport(int supportIndex, int evIndex) const {
+    return GetCharacteristic()->GetSupport(GetSupportIndex(supportIndex, evIndex));
 }
 
 //
@@ -358,8 +363,7 @@ printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charInde
                     fprintf(fout, "\\n\\nsharp=%f", node.GetSharpness());
                 }
                 fprintf(fout, "\"");
-                fprintf(fout, ", style=filled, color=%s", desc.SingleCrease() ? "darksalmon" : "white");
-                fprintf(fout, ", shape=box]\n");
+                fprintf(fout, ", shape=box, style=filled, color=%s]", desc.SingleCrease() ? "darksalmon" : "white");
             } break;
 
         case Characteristic::NODE_END : {

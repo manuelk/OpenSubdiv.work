@@ -82,7 +82,7 @@ public:
         Index levelIndex, Index faceIndex, Neighborhood const * neighborhood);
 
     // Finalizes the characteristics created by this builder
-    void FinalizeSupportStencils();
+    int FinalizeSupportStencils();
 
 private:
 
@@ -191,6 +191,8 @@ private:
     short getMaxIsolationLevel() const { return _refiner.GetAdaptiveOptions().isolationLevel; }
 
     bool useTerminalNodes() const { return _charmap.GetOptions().useTerminalNode; }
+
+    bool useDynamicIsolation() const { return _charmap.GetOptions().useDynamicIsolation; }
 
     bool useSingleCreasePatches() const { return _refiner.GetAdaptiveOptions().useSingleCreasePatch; }
 
