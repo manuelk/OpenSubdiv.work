@@ -339,6 +339,10 @@ public:
 
         Index getFirstSupportIndex() const;
 
+        static int getNumEndCapSupports(EndCapType type);
+
+        static int getNumSupports(NodeType nodeType);
+
         int getNodeSize() const;
 
         friend class Characteristic;
@@ -532,6 +536,29 @@ Characteristic::Node::getNodeSize() const {
     NodeDescriptor desc = GetDescriptor();
     return getNodeSize(desc.GetType(), desc.SingleCrease());
 }
+
+inline int
+Characteristic::Node::getNumEndCapSupports(EndCapType type) {
+    switch (type) {
+        case ENDCAP_BSPLINE_BASIS: return 16;
+        case ENDCAP_GREGORY_BASIS: return 20;
+        default:
+            assert(0);
+    }
+    return 0;
+}
+
+inline int
+Characteristic::Node::getNumSupports(Characteristic::NodeType nodeType) {
+    switch (nodeType) {
+        case Characteristic::NODE_REGULAR  : return 16;
+        case Characteristic::NODE_TERMINAL : return 25;
+        case Characteristic::NODE_RECURSIVE: return 0;
+    }
+    assert(0);
+    return 0;
+}
+
 
 inline Characteristic::Node
 Characteristic::Node::operator ++ () {

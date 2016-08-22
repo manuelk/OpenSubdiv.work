@@ -688,7 +688,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
                      int cvIndex = stencil.indices[k];
 
-                     if (cvIndex==(Far::LocalIndex)Far::INDEX_INVALID) {
+                     if (cvIndex==(Far::Index)Far::INDEX_INVALID) {
                          continue;
                      }
 

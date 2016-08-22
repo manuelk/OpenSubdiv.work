@@ -180,9 +180,10 @@ permuteWinding(LocalIndex i) {
 }
 
 // Terminal node helpers : copy indices from 16-wide bicubic basis into
-// 25-wide terminal node. ('X' = extraordinary vertex)
 
+// 25-wide terminal node. ('X' = extraordinary vertex)
 // evIndex
+//         0           1            2            3
 //    X . . . .    . . . . X    + + + + .    . + + + +
 //    . + + + +    + + + + .    + + + + .    . + + + +
 //    . + + + +    + + + + .    + + + + .    . + + + +
@@ -198,7 +199,7 @@ copyDiagonalIndices(int evIndex, Index const * src, Index * dst) {
     memcpy(cornerPtr + 15, src + 12, 4 * sizeof(Index));
 }
 
-// rowIndex
+// evIndex
 //        0            1            2            3
 //    X + + + +    + + + + X    . . . . .    . . . . .
 //    . . . . .    . . . . .    . . . . .    . . . . .
@@ -214,7 +215,7 @@ copyRowIndices(int evIndex, Index const * src, Index * dst) {
     memcpy(dst, src, 4 * sizeof(Index));
 }
 
-// colIndex
+// evIndex
 //        0            1            2            3
 //    X . . . .    . . . . X    . . . . +    + . . . .
 //    + . . . .    . . . . +    . . . . +    + . . . .
@@ -228,29 +229,6 @@ copyColIndices(int evIndex, Index const * src, Index * dst) {
     for (int i=0; i<4; ++i, src+=4, dst+=5) {
         *(dst+dstOffsets[evIndex]) = *(src+srcOffsets[evIndex]);
     }
-}
-
-inline int
-getEndCapNumSupports(EndCapType type) {
-    switch (type) {
-        case ENDCAP_BSPLINE_BASIS: return 16;
-        case ENDCAP_GREGORY_BASIS: return 20;
-        default:
-            assert(0);
-    }
-    return 0;
-}
-
-inline int
-getNumSupports(Characteristic::NodeType nodeType, EndCapType endcaptype) {
-    switch (nodeType) {
-        case Characteristic::NODE_REGULAR  : return 16;
-        case Characteristic::NODE_END      : return getEndCapNumSupports(endcaptype);
-        case Characteristic::NODE_TERMINAL : return 25;
-        case Characteristic::NODE_RECURSIVE: return 0;
-    }
-    assert(0);
-    return 0;
 }
 
 static StencilTable const *
@@ -475,6 +453,8 @@ CharacteristicBuilder::computeNodeOffsets(
 
     typedef Characteristic::NodeType NodeType;
 
+    EndCapType endcapType = getEndCapType();
+
     int treeSize = 0, numSupportsTotal = 0;
     for (short level=0, numSupports = 0; level<_refiner.GetNumLevels(); ++level) {
 
@@ -494,7 +474,9 @@ CharacteristicBuilder::computeNodeOffsets(
             treeSize += Characteristic::Node::getNodeSize(
                 nodeType, (bool)pn.patchTag.isSingleCrease);
 
-            numSupports += getNumSupports(nodeType, getEndCapType());
+            numSupports += nodeType==Characteristic::NODE_END ?
+                Characteristic::Node::getNumEndCapSupports(endcapType) :
+                    Characteristic::Node::getNumSupports(nodeType);
         }
         numSupportsTotal += numSupports;
         numSupportsOut[level] = numSupportsTotal;

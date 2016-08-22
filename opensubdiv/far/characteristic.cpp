@@ -137,20 +137,20 @@ Characteristic::Node::getFirstSupportIndex() const {
 
 int
 Characteristic::Node::GetNumSupports() const {
-    switch (GetDescriptor().GetType()) {
-        case Characteristic::NODE_REGULAR :
-        case Characteristic::NODE_TERMINAL : return 16;
-        case Characteristic::NODE_END : {
+
+    NodeType type = GetDescriptor().GetType();
+    switch (type) {
+        case NODE_REGULAR:
+        case NODE_TERMINAL: 
+            // note : terminal nodes hold 25 supports, but the public-facing
+            // API client code to select which regular patch to use and
+            // automatically reduces the 25-set to 16 indices
+            return 16;
+        case NODE_END: {
             CharacteristicMap const & charmap =
                 GetCharacteristic()->GetCharacteristicMap();
-            switch (charmap.GetEndCapType()) {
-                case ENDCAP_BSPLINE_BASIS: return 16;
-                case ENDCAP_GREGORY_BASIS: return 20;
-                default:
-                    assert(0);
-                    return 0;
-            }
-        }
+            return getNumEndCapSupports(charmap.GetEndCapType());
+        };
         default:
             return 0;
     }
