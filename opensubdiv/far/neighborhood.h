@@ -91,7 +91,7 @@ public:
     bool IsEquivalent(Neighborhood const & other) const;
 
     /// \brief Remaps a vertex index to the local neighborhood
-    Index Remap(Index vertIndex) const;
+    LocalIndex Remap(Index vertIndex) const;
 
 public:
 
@@ -159,7 +159,7 @@ Neighborhood::IsEquivalent(Neighborhood const & other) const {
     return memcmp(this, &other, asize)==0;
 }
 
-inline Index
+inline LocalIndex
 Neighborhood::Remap(Index vertIndex) const {
     Index * remaps = getVertRemaps();
     for (int i=0; i<_vertRemapsCount; ++i) {

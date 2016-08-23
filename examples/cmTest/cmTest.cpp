@@ -79,7 +79,7 @@ enum ShadingMode {
     SHADING_TREE_DEPTH,
 };
 
-int g_level = 2,
+int g_level = 3,
     g_shadingMode = SHADING_PATCH_TYPE,
     g_tessLevel = 5,
     g_tessLevelMin = 2,
@@ -673,9 +673,11 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
             g_plansTable->GetPlanCharacteristic(planIndex);
 
         //
-        // evaluate all supports points from the characteristic stencils
-        //
-
+        // Evaluate all supports points for this plan.
+        // Depending on sampling density, we may end up using only a few of
+        // them. To avoid this, we could first build a list of Nodes 
+        // (ie. sub-patches) that we actually want to sample, and then
+        // evaluate only those support stencils.
         {
             int nsupports = ch->GetNumSupportsTotal();
             for (int i=0; i<nsupports; ++i) {
@@ -685,12 +687,6 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
                 supports[i].Clear();
                 for (short k=0; k<stencil.size; ++k) {
-
-                     int cvIndex = stencil.indices[k];
-
-                     if (cvIndex==(Far::Index)Far::INDEX_INVALID) {
-                         continue;
-                     }
 
                      // remap the support stencil indices, which are local
                      // to the characteristic's neighborhood, to the control

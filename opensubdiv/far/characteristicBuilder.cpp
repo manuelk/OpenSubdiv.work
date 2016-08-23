@@ -455,8 +455,8 @@ CharacteristicBuilder::computeNodeOffsets(
 
     EndCapType endcapType = getEndCapType();
 
-    int treeSize = 0, numSupportsTotal = 0;
-    for (short level=0, numSupports = 0; level<_refiner.GetNumLevels(); ++level) {
+    int treeSize = 0, numSupports = 0;
+    for (short level=0; level<_refiner.GetNumLevels(); ++level) {
 
         for (int pnIndex=0; pnIndex<(int)_nodeStore[level].size(); ++pnIndex) {
 
@@ -478,11 +478,10 @@ CharacteristicBuilder::computeNodeOffsets(
                 Characteristic::Node::getNumEndCapSupports(endcapType) :
                     Characteristic::Node::getNumSupports(nodeType);
         }
-        numSupportsTotal += numSupports;
-        numSupportsOut[level] = numSupportsTotal;
+        numSupportsOut[level] = numSupports;
     }
     *treeSizeOut = treeSize;
-    *numSupportsTotalOut = numSupportsTotal;
+    *numSupportsTotalOut = numSupports;
 }
 
 void
@@ -726,7 +725,7 @@ CharacteristicBuilder::Create(
     ch->_tree.resize(treeSize);
     int * treePtr = &ch->_tree[0];
 
-    context->supportIndices.resize(numSupportsTotal);
+    context->supportIndices.resize(numSupportsTotal, INDEX_INVALID);
     Index * supportsPtr = &context->supportIndices[0];
 
     populateNodes(treePtr, supportsPtr);
@@ -748,11 +747,12 @@ CharacteristicBuilder::FinalizeSupportStencils() {
         generateStencilTable(_refiner, *_endcapBuilder);
     assert(supportStencils);
 
-    int numMaxSupports = 0;
+    int numContexts = (int)_buildContexts.size(),
+        numMaxSupports = 0;
 
-    for (int i=0; i<(int)_buildContexts.size(); ++i) {
+    for (int contextIndex=0; contextIndex<numContexts; ++contextIndex) {
 
-        BuildContext const * context = _buildContexts[i];
+        BuildContext const * context = _buildContexts[contextIndex];
 
         Characteristic * ch = context->characteristic;
 
@@ -791,8 +791,10 @@ CharacteristicBuilder::FinalizeSupportStencils() {
                 ch->_sizes[i] = stencilSize;
                 ch->_offsets[i] = offset;
                 for (int k=0; k<stencilSize; ++k) {
-                    ch->_indices[offset+k] =
-                        neighborhood->Remap(stencil.GetVertexIndices()[k]);
+
+                    Index index = stencil.GetVertexIndices()[k];
+                    assert(index!=INDEX_INVALID);
+                    ch->_indices[offset+k] = neighborhood->Remap(index);
                     ch->_weights[offset+k] = stencil.GetWeights()[k];
                 }
                 offset += stencilSize;
