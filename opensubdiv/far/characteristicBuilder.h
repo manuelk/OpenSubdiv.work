@@ -151,6 +151,9 @@ private:
     // serializes a recursive proto-node
     void populateRecursiveNode(ProtoNode const & pn, int * treePtr, Index * supportsPtr) const;
 
+    // returns the numbers of supports required for a given sub-patch node
+    int computeNumSupports(Characteristic::NodeType nodeType, bool useDynamicIsolation) const;
+
 private:
 
     //
@@ -176,7 +179,7 @@ private:
         Neighborhood const * neighborhood; // remaps control verts indices
 
         int levelIndex,       // level of control face (0 for regular, 1 for non-quad)
-            faceIndex,        // Vtr::level index of control face 
+            faceIndex,        // Vtr::level index of control face
             numSupportsTotal; // total number of supports for the characteristic
 
         std::vector<Index> supportIndices;  //  stencil indices of supports

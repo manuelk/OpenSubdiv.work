@@ -447,13 +447,40 @@ CharacteristicBuilder::identifyTerminalNodes() {
     }
 }
 
+int
+CharacteristicBuilder::computeNumSupports(
+    Characteristic::NodeType nodeType, bool useDynamicIsolation) const {
+
+    typedef Characteristic::Node Node;
+
+    if (nodeType == Characteristic::NODE_REGULAR) {
+        return 16;
+    } else if (nodeType == Characteristic::NODE_END) {
+        return Node::getNumEndCapSupports(getEndCapType());
+    } else if (nodeType == Characteristic::NODE_RECURSIVE) {
+        return useDynamicIsolation ?
+            Node::getNumEndCapSupports(getEndCapType()) : 0;
+    } else {
+        int nsupports = 0;
+        if (nodeType == Characteristic::NODE_TERMINAL) {
+            nsupports += 25;
+        }
+        if (useDynamicIsolation) {
+            nsupports += Node::getNumEndCapSupports(getEndCapType());
+        }
+        return nsupports;
+    }
+    assert(0);
+    return 0;
+}
+
 void
 CharacteristicBuilder::computeNodeOffsets(
     int * treeSizeOut, short * numSupportsOut, int * numSupportsTotalOut) {
 
-    typedef Characteristic::NodeType NodeType;
+    typedef Characteristic::Node Node;
 
-    EndCapType endcapType = getEndCapType();
+    int numEndCapSupports = Node::getNumEndCapSupports(getEndCapType());
 
     int treeSize = 0, numSupports = 0;
     for (short level=0; level<_refiner.GetNumLevels(); ++level) {
@@ -469,14 +496,14 @@ CharacteristicBuilder::computeNodeOffsets(
             pn.treeOffset = treeSize;
             pn.firstSupport = numSupports;
 
-            NodeType nodeType = (NodeType)pn.nodeType;
+            Characteristic::NodeType nodeType =
+                (Characteristic::NodeType)pn.nodeType;
 
-            treeSize += Characteristic::Node::getNodeSize(
+            treeSize += Node::getNodeSize(
                 nodeType, (bool)pn.patchTag.isSingleCrease);
 
-            numSupports += nodeType==Characteristic::NODE_END ?
-                Characteristic::Node::getNumEndCapSupports(endcapType) :
-                    Characteristic::Node::getNumSupports(nodeType);
+            numSupports += computeNumSupports(
+                nodeType, useDynamicIsolation());
         }
         numSupportsOut[level] = numSupports;
     }
@@ -591,8 +618,7 @@ CharacteristicBuilder::populateTerminalNode(
 
     assert(pn.evIndex!=INDEX_INVALID);
 
-    int childLevelIndex = pn.levelIndex + 1,
-        levelVertOffset = _levelVertOffsets[childLevelIndex];
+    int childLevelIndex = pn.levelIndex + 1;
 
     Vtr::internal::Level const & childLevel = _refiner.getLevel(childLevelIndex);
 
@@ -613,7 +639,9 @@ CharacteristicBuilder::populateTerminalNode(
             // collect the support stencil indices
             Index localVerts[16], patchVerts[16];
             childLevel.gatherQuadRegularInteriorPatchPoints(child.faceIndex, localVerts, 0);
+
             static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
+            int levelVertOffset = _levelVertOffsets[childLevelIndex];
             offsetAndPermuteIndices(localVerts, 16, levelVertOffset, permuteRegular, patchVerts);
 
             // merge non-overlapping indices into a 5x5 array
@@ -629,6 +657,19 @@ CharacteristicBuilder::populateTerminalNode(
         }
         // not a recursive traversal : the xordinary child proto-node will be
         // handled when its proto-node is processed
+    }
+
+    if (useDynamicIsolation()) {
+
+        int levelIndex = (int)pn.levelIndex,
+            levelVertOffset = _levelVertOffsets[levelIndex];
+
+        Vtr::internal::Level const & level = _refiner.getLevel(levelIndex);
+
+        ConstIndexArray cvs =
+            _endcapBuilder->GatherPatchPoints(level, pn.faceIndex, levelVertOffset);
+
+        memcpy(supportsPtr + pn.firstSupport + 25, cvs.begin(), cvs.size()*sizeof(Index));
     }
 
     // set corner support index for the EV to INVALID
@@ -651,13 +692,38 @@ CharacteristicBuilder::populateRecursiveNode(
     ProtoNode const & pn, int * treePtr, Index * supportsPtr) const {
 
     treePtr += pn.treeOffset;
-    ((NodeDescriptor *)treePtr)->SetRecursive(pn.levelIndex);
-    ++treePtr;
 
+    if (useDynamicIsolation()) {
+
+        int levelIndex = (int)pn.levelIndex,
+            levelVertOffset = _levelVertOffsets[levelIndex];
+
+        Vtr::internal::Level const & level = _refiner.getLevel(levelIndex);
+
+        ConstIndexArray cvs =
+            _endcapBuilder->GatherPatchPoints(level, pn.faceIndex, levelVertOffset);
+
+        memcpy(supportsPtr + pn.firstSupport, cvs.begin(), cvs.size()*sizeof(Index));
+
+        short u, v;
+        bool nonquad = computeSubPatchDomain(pn.levelIndex, pn.faceIndex, &u, &v);
+
+        ((NodeDescriptor *)treePtr)->SetRecursive(nonquad, pn.levelIndex, u, v);
+
+        treePtr[1] = pn.firstSupport;
+    } else {
+
+        ((NodeDescriptor *)treePtr)->SetRecursive(0, pn.levelIndex, 0, 0);
+
+        treePtr[1] = INDEX_INVALID;
+    }
+
+    treePtr += 2;
     assert((int)pn.numChildren==4);
     for (int i=0; i<(int)pn.numChildren; ++i) {
         treePtr[permuteWinding(i)] = getNodeChild(pn, i).treeOffset;
     }
+
 }
 
 void
@@ -793,7 +859,14 @@ CharacteristicBuilder::FinalizeSupportStencils() {
                 for (int k=0; k<stencilSize; ++k) {
 
                     Index index = stencil.GetVertexIndices()[k];
-                    assert(index!=INDEX_INVALID);
+
+if (neighborhood->Remap(index)==(LocalIndex)INDEX_INVALID) {
+     printf("index=%d\n", index);
+     neighborhood->Print();
+     fflush(stdout);
+}
+                    assert(index!=INDEX_INVALID &&
+                        neighborhood->Remap(index)!=(LocalIndex)INDEX_INVALID);
                     ch->_indices[offset+k] = neighborhood->Remap(index);
                     ch->_weights[offset+k] = stencil.GetWeights()[k];
                 }
@@ -803,7 +876,7 @@ CharacteristicBuilder::FinalizeSupportStencils() {
         delete context;
 
         numMaxSupports = std::max(numSupports, numMaxSupports);
-    }    
+    }
     _buildContexts.clear();
     return numMaxSupports;
 }

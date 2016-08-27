@@ -119,20 +119,26 @@ public:
     /// \brief Evaluate basis functions for position and first derivatives at a
     /// given (s,t) parametric location of a patch.
     ///
-    /// @param s       Patch coordinate (in coarse face normalized space)
+    /// @param s        Patch coordinate (in coarse face normalized space)
     ///
-    /// @param t       Patch coordinate (in coarse face normalized space)
+    /// @param t        Patch coordinate (in coarse face normalized space)
     ///
-    /// @param wP      Weights (evaluated basis functions) for the position
+    /// @param wP       Weights (evaluated basis functions) for the position
     ///
-    /// @param wDs     Weights (evaluated basis functions) for derivative wrt s
+    /// @param wDs      Weights (evaluated basis functions) for derivative wrt s
     ///
-    /// @param wDt     Weights (evaluated basis functions) for derivative wrt t
+    /// @param wDt      Weights (evaluated basis functions) for derivative wrt t
     ///
-    /// @return        The leaf node pointing to the sub-patch evaluated
+    /// @param quadrant Domain quadrant containing (s,t) location (required in
+    ///                 order to obtain the correct supports for terminal node
+    ///                 sub-patches)
     ///
-    Node EvaluateBasis(float s, float t,
-        float wP[], float wDs[], float wDt[], unsigned char * quadrant=0) const;
+    /// @param maxLevel Dynamic level of isolation
+    ///
+    /// @return         The leaf node pointing to the sub-patch evaluated
+    ///
+    Node EvaluateBasis(float s, float t, float wP[], float wDs[], float wDt[],
+            unsigned char * quadrant, short maxLevel=11) const;
 
 public:
 
@@ -188,9 +194,16 @@ public:
         ///  Field         | Bits | Content
         ///  --------------|:----:|---------------------------------------------------
         ///  type          | 2    | NodeType
+        ///  nonquad       | 1    | whether the patch is the child of a non-quad face
         ///  depth         | 4    | level of isolation of the patches
-        void SetRecursive(unsigned short depth) {
-            field0 = ((depth & 0xf)        <<  4) |
+        ///  v             | 10   | log2 value of u parameter at first patch corner
+        ///  u             | 10   | log2 value of v parameter at first patch corner
+        void SetRecursive(unsigned short nonquad,
+            unsigned short depth, short u, short v) {
+            field0 = ((v & 0x3ff)          << 22) |
+                     ((u & 0x3ff)          << 12) |
+                     ((depth & 0xf)        <<  4) |
+                     ((nonquad ? 1:0)      <<  2) |
                       (NODE_RECURSIVE & 0x3);
         }
 
@@ -286,16 +299,16 @@ public:
 
         /// \brief Returns the number of support points required for the
         /// sub-patch pointed to by this node
-        int GetNumSupports() const;
+        int GetNumSupports(int quadrant, short maxLevel=11) const;
 
         /// \brief Returns the index of the requested support in the
         /// characteristic.
         /// (supportIndex is relative : in range [0, GetNumSupports()])
-        Index GetSupportIndex(int supportIndex, int evIndex) const;
+        Index GetSupportIndex(int supportIndex, int evIndex, short maxLevel=11) const;
 
         /// \brief Returns the requested support at index
         /// (supportIndex is relative : in range [0, GetNumSupports()])
-        Support GetSupport(int supportIndex, int evIndex) const;
+        Support GetSupport(int supportIndex, int evIndex, short maxLevel=11) const;
 
         /// \brief Returns the creased edge sharpness
         /// note : the value is undefined for any node other than REGULAR
@@ -333,7 +346,7 @@ public:
 
         static int getTerminalNodeSize() { return 3; }
 
-        static int getRecursiveNodeSize() { return 5; }
+        static int getRecursiveNodeSize() { return 6; }
 
         static int getNodeSize(NodeType nodeType, bool isSingleCrease);
 
@@ -347,6 +360,7 @@ public:
 
         friend class Characteristic;
         friend class internal::CharacteristicBuilder;
+        friend void printCharacteristicTreeNode(FILE * fout, Node node, int charIndex);
 
         Node(Characteristic const * ch, int treeOffset) :
             _characteristic(ch), _treeOffset(treeOffset) { }
@@ -365,8 +379,8 @@ public:
     /// \brief Returns a pointer to the root node of the sub-patches tree
     Node GetTreeRootNode() const { return Node(this, 0); }
 
-    /// \brief Returns a the node corresponding to the sub-patch at the given (s,t) location
-    Node GetTreeNode(float s, float t, unsigned char * quadrant=0) const;
+    /// \brief Returns the node corresponding to the sub-patch at the given (s,t) location
+    Node GetTreeNode(float s, float t, unsigned char * quadrant, short maxLevel=11) const;
 
     /// \brief Returns the node at the given offset in the serialized tree
     Node GetTreeNode(int treeOffset) const { return Node(this, treeOffset); }
@@ -486,6 +500,10 @@ public:
 
 private:
 
+    bool hasDynamicIsolation() const;
+
+    EndCapType getEndCapType() const;
+
     void reserveNeighborhoods(int count);
 
     void addNeighborhood(Neighborhood const * n, int startEdge);
@@ -517,6 +535,13 @@ private:
 //
 // Inline implementation
 //
+
+inline Characteristic::Node
+Characteristic::Node::GetNodeChild(int childIndex) const {
+    int const * offsetPtr = getNodeData() + 2 + childIndex;
+    return Node(_characteristic, *offsetPtr);
+}
+
 
 inline int
 Characteristic::Node::getNodeSize(

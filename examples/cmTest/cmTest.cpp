@@ -80,12 +80,13 @@ enum ShadingMode {
 };
 
 int g_level = 3,
+    g_dynamicLevel = 10,
     g_shadingMode = SHADING_PATCH_TYPE,
     g_tessLevel = 5,
     g_tessLevelMin = 2,
-    g_currentShape = 0, //cube = 8 square = 12 pyramid = 45 torus = 49
-    g_useTopologyHashing = false,
-    g_useTerminalNodes = true;
+    g_currentShape = 8, //cube = 8 square = 12 pyramid = 45 torus = 49
+    g_useTerminalNodes = true,
+    g_useDynamicIsolation = false;
 
 
 int g_frame = 0,
@@ -233,7 +234,7 @@ static float g_patchColors[43][4] = {
 };
 
 static float const *
-getAdaptiveColor(Far::Characteristic::Node node) {
+getAdaptiveColor(Far::Characteristic::Node node, int maxLevel) {
 
     Far::Characteristic::NodeDescriptor desc = node.GetDescriptor();
 
@@ -250,10 +251,9 @@ getAdaptiveColor(Far::Characteristic::Node node) {
             patchType = 1;
         }
     } else if (desc.GetType()==Far::Characteristic::NODE_END) {
-
-        Far::EndCapType type =
+        Far::EndCapType endtype =
             node.GetCharacteristic()->GetCharacteristicMap().GetEndCapType();
-        switch (type) {
+        switch (endtype) {
             case Far::ENDCAP_BILINEAR_BASIS : break;
             case Far::ENDCAP_BSPLINE_BASIS : break;
             case Far::ENDCAP_GREGORY_BASIS : patchType = 6; break;
@@ -262,6 +262,18 @@ getAdaptiveColor(Far::Characteristic::Node node) {
         }
     } else if (desc.GetType()==Far::Characteristic::NODE_TERMINAL) {
         patchType = 7;
+    } else if (desc.GetType()==Far::Characteristic::NODE_RECURSIVE) {
+        if (desc.GetDepth()>=maxLevel) {
+            Far::EndCapType endtype =
+                node.GetCharacteristic()->GetCharacteristicMap().GetEndCapType();
+            switch (endtype) {
+                case Far::ENDCAP_BILINEAR_BASIS : break;
+                case Far::ENDCAP_BSPLINE_BASIS : break;
+                case Far::ENDCAP_GREGORY_BASIS : patchType = 6; break;
+                default:
+                    break;
+            }
+        }
     } else {
         assert(0);
     }
@@ -322,15 +334,16 @@ createFaceNumbers(Far::TopologyRefiner const & refiner,
 
 static void
 createNodeNumbers(Far::SubdivisionPlanTable const & plansTable,
+
     int planIndex, Far::Characteristic::Node node, int quadrant,
         std::vector<Vertex> const & vertexBuffer) {
 
-    int nsupports = node.GetNumSupports();
-
-    for (int j=0; j<nsupports; ++j) {
+    int nsupports = node.GetNumSupports(quadrant, g_dynamicLevel);
+//printf("nsupports = %d\n", nsupports); fflush(stdout);
+    for (int i=0; i<nsupports; ++i) {
 
         // get the stencil for this support point
-        Far::Characteristic::Support stencil = node.GetSupport(j, quadrant);
+        Far::Characteristic::Support stencil = node.GetSupport(i, quadrant, g_dynamicLevel);
 
         Vertex support;
         support.Clear();
@@ -351,7 +364,7 @@ createNodeNumbers(Far::SubdivisionPlanTable const & plansTable,
                               support.point[1],
                               support.point[2], };
         static char buf[16];
-        snprintf(buf, 16, "%d", j);
+        snprintf(buf, 16, "%d", i);
         g_font->Print3D(position, buf, 2);
     }
 }
@@ -378,9 +391,7 @@ createPlanNumbers(Far::SubdivisionPlanTable const & plansTable,
             Far::Characteristic::NodeDescriptor desc = node.GetDescriptor();
 
             if (desc.GetType()==Far::Characteristic::NODE_TERMINAL) {
-                if (g_currentQuadrantIndex!=desc.GetEvIndex()) {
-                    createNodeNumbers(plansTable, planIndex, node, g_currentQuadrantIndex, vertexBuffer);
-                }
+                createNodeNumbers(plansTable, planIndex, node, g_currentQuadrantIndex, vertexBuffer);
             } else {
                 createNodeNumbers(plansTable, planIndex, node, 0, vertexBuffer);
             }
@@ -607,6 +618,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     Far::CharacteristicMap::Options options;
     options.endCapType = g_endCap;
     options.useTerminalNode = g_useTerminalNodes;
+    options.useDynamicIsolation = g_useDynamicIsolation;
     options.hashSize = 5000;
     Far::CharacteristicMap * charmap = new Far::CharacteristicMap(options);
 
@@ -696,7 +708,6 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
                      supports[i].AddWithWeight(controlVerts[vertIndex], stencil.weights[k]);
                 }
-
             }
         }
 
@@ -717,17 +728,17 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 unsigned char quadrant=0;
 
                 Far::Characteristic::Node node =
-                    ch->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant);
+                    ch->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant, g_dynamicLevel);
 
                 //
                 // limit points : interpolate support points with basis weights
                 //
-                int nsupports = node.GetNumSupports();
+                int nsupports = node.GetNumSupports(quadrant, g_dynamicLevel);
 
                 LimitFrame limit;
                 limit.Clear();
                 for (int j=0; j<nsupports; ++j) {
-                    Far::Index supportIndex = node.GetSupportIndex(j, quadrant);
+                    Far::Index supportIndex = node.GetSupportIndex(j, quadrant, g_dynamicLevel);
                     limit.AddWithWeight(supports[supportIndex], wP[j], wDs[j], wDt[j]);
                 }
 
@@ -742,7 +753,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 // color
                 switch (g_shadingMode) {
                     case ::SHADING_PATCH_TYPE : {
-                        float const * c = getAdaptiveColor(node);
+                        float const * c = getAdaptiveColor(node, g_dynamicLevel);
                         memcpy(col, c, 3 * sizeof(float));
                     } break;
                     case ::SHADING_PATCH_COORD : {
@@ -836,6 +847,39 @@ formatMemorySize(size_t memSize) {
     return _buf;
 }
 
+
+inline char const *
+getNodeData(Far::Characteristic::Node const & node) {
+
+        static char * nodeTypes[4] =
+            { "NODE_REGULAR", "NODE_RECURSIVE", "NODE_TERMINAL", "NODE_END" };
+
+        static char buffer[256];
+
+        Far::Characteristic::NodeDescriptor desc =
+            node.GetDescriptor();
+
+        char const * typeName = nodeTypes[desc.GetType()];
+
+        switch (desc.GetType()) {
+            case Far::Characteristic::NODE_REGULAR :
+            case Far::Characteristic::NODE_END : {
+                float sharp = desc.SingleCrease() ? node.GetSharpness() : 0.0f;
+                snprintf(buffer, 256, "type=%s nonquad=%d singleCrease=%d sharp=%f depth=%d boundary=%d u=%d v=%d",
+                    nodeTypes[desc.GetType()], desc.NonQuadRoot(), desc.SingleCrease(), sharp,
+                        desc.GetDepth(), desc.GetBoundaryMask(), desc.GetU(), desc.GetV());
+            } break;
+            case Far::Characteristic::NODE_RECURSIVE : {
+                snprintf(buffer, 256, "type=%s depth=%d", nodeTypes[desc.GetType()], desc.GetDepth());
+            } break;
+            case Far::Characteristic::NODE_TERMINAL : {
+                snprintf(buffer, 256, "type=%s nonquad=%d depth=%d evIndex=%d u=%d v=%d",
+                    nodeTypes[desc.GetType()], desc.NonQuadRoot(), desc.GetDepth(),
+                        desc.GetEvIndex(), desc.GetU(), desc.GetV());
+            } break;
+        }
+        return buffer;
+}
 
 //------------------------------------------------------------------------------
 static void
@@ -948,42 +992,17 @@ display() {
         // display node data
         if (g_plansTable && g_currentPlanIndex>=0 && g_currentNodeIndex>=0) {
 
-            static char * nodeTypes[4] =
-                { "NODE_REGULAR", "NODE_RECURSIVE", "NODE_TERMINAL", "NODE_END" };
+            Far::SubdivisionPlan const & plan = g_plansTable->GetPlan(g_currentPlanIndex);
 
             Far::Characteristic::NodeDescriptor desc =
                 g_currentNode.GetDescriptor();
 
-            char const * typeName = nodeTypes[desc.GetType()];
+            char const * nodeData = getNodeData(g_currentNode);
 
             int x = g_width/2-300, y = 200;
-            switch (desc.GetType()) {
-                case Far::Characteristic::NODE_REGULAR : {
-                    float sharp = desc.SingleCrease() ? g_currentNode.GetSharpness() : 0.0f;
-                    g_hud.DrawString(x, y,
-                        "plan=%d node=%d type=%s depth=%d nonquad=%d singleCrease=%d sharp=%f u=%d v=%d",
-                            g_currentPlanIndex, g_currentNodeIndex, typeName,
-                               desc.GetDepth(), desc.NonQuadRoot(), desc.SingleCrease(), sharp, desc.GetU(), desc.GetV());
-                } break;
-                case Far::Characteristic::NODE_END : {
-                    g_hud.DrawString(x, y,
-                        "plan=%d node=%d type=%s depth=%d nonquad=%d u=%d v=%d",
-                            g_currentPlanIndex, g_currentNodeIndex, typeName,
-                               desc.GetDepth(), desc.NonQuadRoot(), desc.GetU(), desc.GetV());
-                } break;
-                case Far::Characteristic::NODE_RECURSIVE : {
-                    g_hud.DrawString(x, y, "plan=%d node=%d type=%s",
-                        g_currentPlanIndex, g_currentNodeIndex, typeName);
-                } break;
-                case Far::Characteristic::NODE_TERMINAL : {
-                    g_hud.DrawString(x, y,
-                        "plan=%d node=%d quadrant=%d type=%s depth=%d nonquad=%d evIndex=%d u=%d v=%d",
-                            g_currentPlanIndex, g_currentNodeIndex, g_currentQuadrantIndex, typeName,
-                                desc.GetDepth(), desc.NonQuadRoot(), desc.GetEvIndex(), desc.GetU(), desc.GetV());
-                } break;
-                default:
-                    assert(0);
-            }
+
+            g_hud.DrawString(x, y, "plan=%d ch=%d ncvs=%d node=%d {%s}",
+                g_currentPlanIndex, plan.charIndex, plan.numControls, g_currentNodeIndex, nodeData);
         }
 
         static char const * schemeNames[3] = { "BILINEAR", "CATMARK", "LOOP" };
@@ -1029,6 +1048,12 @@ callbackLevel(int l) {
 }
 
 static void
+callbackDynamicLevel(int l) {
+    g_dynamicLevel = l;
+    rebuildMeshes();
+}
+
+static void
 callbackEndCap(int endCap) {
     g_endCap = (Far::EndCapType)endCap;
     rebuildMeshes();
@@ -1051,8 +1076,8 @@ enum HudCheckBox { kHUD_CB_DISPLAY_CONTROL_MESH_EDGES,
                    kHUD_CB_DISPLAY_VERT_IDS,
                    kHUD_CB_DISPLAY_FACE_IDS,
                    kHUD_CB_DISPLAY_NODE_IDS,
-                   kHUD_CB_USE_TOPOLOGY_HASHING,
                    kHUD_CB_USE_TERMINAL_NODES,
+                   kHUD_CB_USE_DYNAMIC_ISOLATION,
                   };
 
 
@@ -1071,8 +1096,8 @@ callbackCheckBox(bool checked, int button) {
             g_controlMeshDisplay.SetVerticesDisplay(checked);
             break;
 
-        case kHUD_CB_USE_TOPOLOGY_HASHING: g_useTopologyHashing = checked; break;
         case kHUD_CB_USE_TERMINAL_NODES: g_useTerminalNodes = checked; break;
+        case kHUD_CB_USE_DYNAMIC_ISOLATION: g_useDynamicIsolation = checked; break;
         default:
             break;
     }
@@ -1226,8 +1251,9 @@ initHUD() {
     g_hud.AddCheckBox("Terminal Nodes (T)", g_useTerminalNodes==1,
         10, 50, callbackCheckBox, kHUD_CB_USE_TERMINAL_NODES, 't');
 
-    g_hud.AddCheckBox("Topology Hashing", g_useTopologyHashing==1,
-        10, 70, callbackCheckBox, kHUD_CB_USE_TOPOLOGY_HASHING);
+    g_hud.AddCheckBox("Dynamic Isolation (I)", g_useDynamicIsolation==1,
+        10, 70, callbackCheckBox, kHUD_CB_USE_DYNAMIC_ISOLATION, 'i');
+
 
     g_hud.AddCheckBox("Vert IDs", g_DrawVertIDs!=0,
         10, 120, callbackCheckBox, kHUD_CB_DISPLAY_VERT_IDS);
@@ -1278,6 +1304,12 @@ initHUD() {
         char level[16];
         sprintf(level, "Lv. %d", i);
         g_hud.AddRadioButton(3, level, i==g_level, 10, 310+i*20, callbackLevel, i, '0'+(i%10));
+    }
+
+    for (int i = 1; i < 11; ++i) {
+        char level[16];
+        sprintf(level, "Lv. %d", i);
+        g_hud.AddRadioButton(4, level, i==g_dynamicLevel, 100, 310+i*20, callbackDynamicLevel, i, '0'+(i%10));
     }
 
     int shapes_pulldown = g_hud.AddPullDown("Shape (N)", -300, 10, 300, callbackModel, 'n');

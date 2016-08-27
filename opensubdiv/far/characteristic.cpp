@@ -73,6 +73,7 @@ namespace Far {
 //  ---------------|:----:|----------------------------------------------------
 //  Recursive      |      |
 //   descriptor    | 1    | see NodeDescriptor
+//   first support | 1    | local index of the first support stencil (dyn. isolation)
 //   child nodes   | 4    | offsets to the 4 children nodes
 //  ---------------|:----:|----------------------------------------------------
 //  TERMINAL       |      |
@@ -105,25 +106,6 @@ Characteristic::Node::GetNumChildrenNodes() const {
     }
 }
 
-Characteristic::Node
-Characteristic::Node::GetNodeChild(int childIndex) const {
-    NodeDescriptor desc = GetDescriptor();
-    switch (desc.GetType()) {
-        case Characteristic::NODE_TERMINAL: {
-            assert(childIndex==0);
-            int const * offsetPtr = getNodeData() + 2;
-            return Node(_characteristic, *offsetPtr);
-        }
-        case Characteristic::NODE_RECURSIVE: {
-            int const * offsetPtr = getNodeData() + 1 + childIndex;
-            return Node(_characteristic, *offsetPtr);
-        }
-        default:
-            assert(0);
-    }
-    return *this;
-}
-
 float
 Characteristic::Node::GetSharpness() const {
     assert(GetDescriptor().SingleCrease());
@@ -136,16 +118,27 @@ Characteristic::Node::getFirstSupportIndex() const {
 }
 
 int
-Characteristic::Node::GetNumSupports() const {
+Characteristic::Node::GetNumSupports(int quadrant, short maxLevel) const {
 
-    NodeType type = GetDescriptor().GetType();
+    NodeDescriptor desc = GetDescriptor();
+
+    NodeType type = desc.GetType();
+    
+    if (desc.GetDepth()>=maxLevel &&
+        (type==NODE_RECURSIVE || type==NODE_TERMINAL)) {
+        // if we hit the dynamic isolation level limit, then force the basis
+        // to end-cap patch for terminal & recursive nodes
+        type = NODE_END;
+    }  
+    
     switch (type) {
         case NODE_REGULAR:
+            return 16;
         case NODE_TERMINAL: 
             // note : terminal nodes hold 25 supports, but the public-facing
             // API client code to select which regular patch to use and
             // automatically reduces the 25-set to 16 indices
-            return 16;
+            return desc.GetEvIndex()!=(short)quadrant ? 16 : 0;
         case NODE_END: {
             CharacteristicMap const & charmap =
                 GetCharacteristic()->GetCharacteristicMap();
@@ -157,7 +150,7 @@ Characteristic::Node::GetNumSupports() const {
 }
 
 Index
-Characteristic::Node::GetSupportIndex(int supportIndex, int evIndex) const {
+Characteristic::Node::GetSupportIndex(int supportIndex, int evIndex, short maxLevel) const {
 
     Index firstSupport = getFirstSupportIndex();
 
@@ -167,26 +160,36 @@ Characteristic::Node::GetSupportIndex(int supportIndex, int evIndex) const {
         case NODE_END:
             return firstSupport + supportIndex;
         case NODE_TERMINAL: {
-            // note : winding order is 0, 1, 3, 2 !
-            static int permuteTerminal[4][16] = {
-                {0, 1, 2, 3, 5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18},
-                {1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19},
-                {5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 23},
-                {6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24},
-            };
-            assert(evIndex!=desc.GetEvIndex() && evIndex>=0 && evIndex<4);
-            supportIndex = permuteTerminal[evIndex][supportIndex];
+            if (desc.GetDepth()>=maxLevel) {
+                // if we hit the dynamic isolation cap, return the end-cap
+                // support stored at the end of the regular supports
+                firstSupport += 25;
+            } else {
+                // note : winding order is 0, 1, 3, 2 !
+                static int permuteTerminal[4][16] = {
+                    {0, 1, 2, 3, 5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18},
+                    {1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19},
+                    {5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 23},
+                    {6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24},
+                };
+                assert(evIndex!=desc.GetEvIndex() && evIndex>=0 && evIndex<4);
+                supportIndex = permuteTerminal[evIndex][supportIndex];
+            }
             return firstSupport + supportIndex;
         }
-        default:
-            assert(0);
-            return INDEX_INVALID;
+        case NODE_RECURSIVE:
+            return desc.GetDepth()>=maxLevel ?
+                firstSupport + supportIndex : INDEX_INVALID;
     }
+    assert(0);
+    return INDEX_INVALID;
 }
 
 Characteristic::Support
-Characteristic::Node::GetSupport(int supportIndex, int evIndex) const {
-    return GetCharacteristic()->GetSupport(GetSupportIndex(supportIndex, evIndex));
+Characteristic::Node::GetSupport(
+    int supportIndex, int evIndex, short maxLevel) const {
+    return GetCharacteristic()->GetSupport(
+        GetSupportIndex(supportIndex, evIndex, maxLevel));
 }
 
 //
@@ -202,7 +205,7 @@ Characteristic::~Characteristic() {
 }
 
 Characteristic::Node
-Characteristic::GetTreeNode(float s, float t, unsigned char * quadrant) const {
+Characteristic::GetTreeNode(float s, float t, unsigned char * quadrant, short maxLevel) const {
 
     assert(sizeof(NodeDescriptor)==sizeof(int));
 
@@ -213,6 +216,10 @@ Characteristic::GetTreeNode(float s, float t, unsigned char * quadrant) const {
     Characteristic::NodeType ntype = desc.GetType();
     while (ntype==NODE_RECURSIVE || ntype==NODE_TERMINAL) {
 
+        if (maxLevel>=0 && (short)desc.GetDepth()==maxLevel) {
+            break;
+        }
+
         if (s>0.5f) { corner ^= 1; s = 1.0f - s; }
         if (t>0.5f) { corner ^= 2; t = 1.0f - t; }
         s *= 2.0f;
@@ -220,7 +227,7 @@ Characteristic::GetTreeNode(float s, float t, unsigned char * quadrant) const {
 
         if (ntype==NODE_RECURSIVE) {
             // fetch child node
-            offset = _tree[offset + 1 + corner];
+            offset = _tree[offset + 2 + corner];
             desc = _tree[offset];
         } else if (ntype==NODE_TERMINAL) {
             if (corner==desc.GetEvIndex()) {
@@ -240,103 +247,136 @@ Characteristic::GetTreeNode(float s, float t, unsigned char * quadrant) const {
     return Node(this, offset);
 }
 
-Characteristic::Node
-Characteristic::EvaluateBasis(float s, float t,
-    float wP[], float wDs[], float wDt[], unsigned char * subpatch) const {
+inline void
+evaluateEndCapBasis(EndCapType type, PatchParam param,
+    float s, float t, float wP[], float wDs[], float wDt[]) {
 
-    unsigned char quadrant = 0;
-
-    Node n = GetTreeNode(s, t, &quadrant);
-
-    NodeDescriptor desc = n.GetDescriptor();
-
-    int depth = desc.GetDepth() - (desc.NonQuadRoot() ? 1 : 0);
-
-    PatchParam param;
-    switch (desc.GetType()) {
-
-       case NODE_REGULAR : {
-            param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), depth,
-                desc.NonQuadRoot(), desc.GetBoundaryMask(), 0);
-
-            if (desc.SingleCrease()) {
-                float sharpness = n.GetSharpness();
-                internal::GetBSplineWeights(param, sharpness, s, t, wP, wDs, wDt);
-            } else {
-                internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
-            }
-        } break;
-
-       case NODE_END : {
-            param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), depth,
-                desc.NonQuadRoot(), desc.GetBoundaryMask(), 0);
-
-            switch (GetCharacteristicMap().GetEndCapType()) {
-                case ENDCAP_NONE :
-                    break;
-                case ENDCAP_BILINEAR_BASIS :
-                    // XXXX manuelk TODO
-                    assert(0);
-                    break;
-                case ENDCAP_BSPLINE_BASIS :
-                    internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
-                    break;
-                case ENDCAP_GREGORY_BASIS :
-                    internal::GetGregoryWeights(param, s, t, wP, wDs, wDt);
-                    break;
-                default:
-                    assert(0);
-            }
-        } break;
-
-       case NODE_TERMINAL : {
-            unsigned short u = desc.GetU(),
-                           v = desc.GetV();
-            switch (quadrant) {
-                case 0 :                 break;
-                case 1 : { u+=1;       } break;
-                case 2 : {       v+=1; } break; // ^ bitwise winding order !!!
-                case 3 : { u+=1; v+=1; } break;
-            }
-
-            param.Set(/*face id*/ 0, u, v, depth+1, desc.NonQuadRoot(), 0, 0);
-
+    switch (type) {
+        case ENDCAP_NONE :
+            break;
+        case ENDCAP_BILINEAR_BASIS :
+            // XXXX manuelk TODO
+            assert(0);
+            break;
+        case ENDCAP_BSPLINE_BASIS :
             internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
-
-            if (subpatch) {
-                *subpatch = quadrant;
-            }
-        } break;
-
+            break;
+        case ENDCAP_GREGORY_BASIS :
+            internal::GetGregoryWeights(param, s, t, wP, wDs, wDt);
+            break;
         default:
             assert(0);
     }
+}
+
+Characteristic::Node
+Characteristic::EvaluateBasis(float s, float t,
+    float wP[], float wDs[], float wDt[], unsigned char * subpatch, short maxLevel) const {
+
+    unsigned char quadrant = 0;
+    Node n = GetTreeNode(s, t, &quadrant, maxLevel);
+
+    NodeDescriptor desc = n.GetDescriptor();
+
+    NodeType type = desc.GetType();
+    int depth = desc.GetDepth() - (desc.NonQuadRoot() ? 1 : 0);
+
+    PatchParam param;
+
+    if (hasDynamicIsolation() && (depth>=maxLevel) &&
+        (type==NODE_RECURSIVE || type==NODE_TERMINAL)) {
+
+        unsigned short u = desc.GetU(),
+                       v = desc.GetV();
+        if (type==NODE_TERMINAL) {
+            u = u >> 1;
+            v = v >> 1;
+        }
+        param.Set(/*face id*/ 0, u, v, depth, desc.NonQuadRoot(), 0, 0);
+
+        evaluateEndCapBasis(getEndCapType(), param, s, t, wP, wDs, wDt);
+    } else {
+
+        switch (type) {
+
+            case NODE_REGULAR : {
+                param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), depth,
+                    desc.NonQuadRoot(), desc.GetBoundaryMask(), 0);
+
+                if (desc.SingleCrease()) {
+                    float sharpness = n.GetSharpness();
+                    internal::GetBSplineWeights(param, sharpness, s, t, wP, wDs, wDt);
+                } else {
+                    internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
+                }
+            } break;
+
+            case NODE_END : {
+                param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), depth,
+                    desc.NonQuadRoot(), desc.GetBoundaryMask(), 0);
+                evaluateEndCapBasis(getEndCapType(), param, s, t, wP, wDs, wDt);
+            } break;
+
+            case NODE_TERMINAL : {
+                unsigned short u = desc.GetU(),
+                               v = desc.GetV();
+                switch (quadrant) {
+                    case 0 :                 break;
+                    case 1 : { u+=1;       } break;
+                    case 2 : {       v+=1; } break; // ^ bitwise winding order !!!
+                    case 3 : { u+=1; v+=1; } break;
+                }
+                param.Set(/*face id*/ 0, u, v, depth+1, desc.NonQuadRoot(), 0, 0);
+                internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
+            } break;
+
+            default:
+                assert(0);
+        }
+    }
+    if (subpatch) {
+        *subpatch = quadrant;
+    }
     return n;
+}
+
+
+inline bool
+Characteristic::hasDynamicIsolation() const {
+    return (bool)_characteristicMap.GetOptions().useDynamicIsolation;
+}
+
+inline EndCapType
+Characteristic::getEndCapType() const {
+    return GetCharacteristicMap().GetEndCapType();
 }
 
 //
 // Debug functions
 //
 
+#if 0
 static void
 printNodeIndices(FILE * fout, Characteristic::Node node) {
 
+    Characteristic const * ch = node.GetCharacteristic();
+
     Characteristic::NodeDescriptor desc = node.GetDescriptor();
 
-    int numSupports = node.GetNumSupports(),
-        stride = (numSupports==16) ? 4 : 5,
-        evIndex = desc.GetType()==Characteristic::NODE_TERMINAL ?
-            desc.GetEvIndex() : 0;
+    int numSupports = node.getNumSupports(desc.GetType()),
+        stride = (numSupports==16) ? 4 : 5;
 
-    for (int i=0; i<numSupports; ++i) {
-        Characteristic::Support support = node.GetSupport(i, evIndex);
-        if (i>0 && ((i%stride)!=0))
-            fprintf(fout, " ");
-        if ((i%stride)==0)
-            fprintf(fout, "\\n");
-        fprintf(fout, "%*d", 4, 0);
+    Index firstSupport = node.getFirstSupportIndex();
+    for (int i=0; i<numSupports, ++i) {
+        Characteristic::Support support = ch->GetSupport(firstSupport+1);        
+        //if (i>0 && ((i%stride)!=0))
+        //    fprintf(fout, " ");
+        //if ((i%stride)==0)
+        //    fprintf(fout, "\\n");
     }
 }
+
+#endif
 
 inline size_t
 hashNodeID(int charIndex, Characteristic::Node node) {
@@ -345,7 +385,7 @@ hashNodeID(int charIndex, Characteristic::Node node) {
 }
 
 static void
-printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charIndex, bool showIndices=false) {
+printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charIndex) {
 
     typedef Characteristic::NodeDescriptor Descriptor;
 
@@ -355,45 +395,37 @@ printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charInde
 
     switch (desc.GetType()) {
         case Characteristic::NODE_REGULAR : {
-                fprintf(fout, "  %zu [label=\"R\\n", nodeID);
-                if (showIndices) {
-                    //printNodeIndices(fout, node.GetSupportIndices());
-                }
-                if (desc.SingleCrease()) {
-                    fprintf(fout, "\\n\\nsharp=%f", node.GetSharpness());
-                }
-                fprintf(fout, "\"");
-                fprintf(fout, ", shape=box, style=filled, color=%s]", desc.SingleCrease() ? "darksalmon" : "white");
-            } break;
+            fprintf(fout, "  %zu [label=\"REG\\ntofs=%d\\nfsup=%d",
+                nodeID, node.GetTreeOffset(), node.getFirstSupportIndex());
+            if (desc.SingleCrease()) {
+                fprintf(fout, "\\n\\nsharp=%f", node.GetSharpness());
+            }
+            fprintf(fout, "\", shape=box, style=filled, color=%s]\n", desc.SingleCrease() ? "darksalmon" : "white");
+        } break;
 
         case Characteristic::NODE_END : {
-                fprintf(fout, "  %zu [label=\"E\\n", nodeID);
-                if (showIndices) {
-                    //printNodeIndices(fout, node.GetSupportIndices());
-                }
-                fprintf(fout, "\", shape=box, style=filled, color=darkorange]\n");
-            } break;
+            fprintf(fout, "  %zu [label=\"END\\ntofs=%d\\nfsup=%d",
+                nodeID, node.GetTreeOffset(), node.getFirstSupportIndex());
+            fprintf(fout, "\", shape=box, style=filled, color=darkorange]\n");
+        } break;
 
         case Characteristic::NODE_RECURSIVE : {
-                fprintf(fout, "  %zu [label=\"I\", shape=square, style=filled, color=dodgerblue]\n",nodeID );
-                for (int i=0; i<4; ++i) {
-                    Characteristic::Node child = node.GetNodeChild(i);
-                    printCharacteristicTreeNode(fout, child, charIndex, showIndices);
-                    fprintf(fout, "  %zu -> %zu [label=\"%d\"]\n", nodeID, hashNodeID(charIndex, child), i);
-                }
-            } break;
+            fprintf(fout, "  %zu [label=\"REC\\ntofs=%d\\nfsup=%d",
+                nodeID, node.GetTreeOffset(), node.getFirstSupportIndex());
+            fprintf(fout, "\", shape=square, style=filled, color=dodgerblue]\n");
+            for (int i=0; i<4; ++i) {
+                Characteristic::Node child = node.GetNodeChild(i);
+                printCharacteristicTreeNode(fout, child, charIndex);
+                fprintf(fout, "  %zu -> %zu [label=\"%d\"]\n", nodeID, hashNodeID(charIndex, child), i);
+            }
+        } break;
 
         case Characteristic::NODE_TERMINAL : {
-            fprintf(fout, "  %zu [shape=box, style=filled, color=grey, label=\"T", nodeID);
-            if (showIndices) {
-                //printNodeIndices(fout, node.GetSupportIndices());
-            }
-            fprintf(fout, "\"]\n");
-
+            fprintf(fout, "  %zu [label=\"TRM\\ntofs=%d\\nfsup=%d",
+                nodeID, node.GetTreeOffset(), node.getFirstSupportIndex());
+            fprintf(fout, "\", shape=box, style=filled, color=grey]\n");
             Characteristic::Node child = node.GetNodeChild();
-
-            printCharacteristicTreeNode(fout, child, charIndex, showIndices);
-
+            printCharacteristicTreeNode(fout, child, charIndex);
             fprintf(fout, "  %zu -> %zu\n", nodeID, hashNodeID(charIndex, child));
         } break;
         default:
@@ -411,7 +443,7 @@ Characteristic::WriteTreeDigraph(FILE * fout,
     } else {
         fprintf(fout, "digraph {\n");
     }
-    printCharacteristicTreeNode(fout, GetTreeRootNode(), charIndex, showIndices);
+    printCharacteristicTreeNode(fout, GetTreeRootNode(), charIndex);
     fprintf(fout, "}\n");
 }
 
