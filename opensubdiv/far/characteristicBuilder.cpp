@@ -661,6 +661,7 @@ CharacteristicBuilder::populateTerminalNode(
 
     if (useDynamicIsolation()) {
 
+        // collect the support points for the dynamic end-cap covering this face
         int levelIndex = (int)pn.levelIndex,
             levelVertOffset = _levelVertOffsets[levelIndex];
 

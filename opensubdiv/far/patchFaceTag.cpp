@@ -130,8 +130,6 @@ PatchFaceTag::ComputeTags(
 
     Vtr::internal::Level const * level = &refiner.getLevel(levelIndex);
 
-    hasPatch = false;
-
     if (level->isFaceHole(faceIndex)) {
         return false;
     }
@@ -210,8 +208,6 @@ PatchFaceTag::ComputeTags(
     bool hasBoundaryVertex    = compFaceVertTag._boundary;
     bool hasNonManifoldVertex = compFaceVertTag._nonManifold;
     bool hasXOrdinaryVertex   = compFaceVertTag._xordinary;
-
-    hasPatch = true;
 
     isRegular = ! hasXOrdinaryVertex || hasNonManifoldVertex;
 

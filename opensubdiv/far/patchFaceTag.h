@@ -57,8 +57,7 @@ class TopologyRefiner;
 class PatchFaceTag {
 
 public:
-    unsigned int hasPatch        : 1,
-                 isRegular       : 1,
+    unsigned int isRegular       : 1,
                  transitionMask  : 4,
                  boundaryMask    : 4,
                  boundaryIndex   : 2,
