@@ -52,6 +52,7 @@ public:
              endCapType(ENDCAP_GREGORY_BASIS),
              shareEndCapPatchPoints(true),
              generateFVarTables(false),
+             generateFVarLegacyLinearPatches(true),
              numFVarChannels(-1),
              fvarChannelIndices(0)
         { }
@@ -73,7 +74,8 @@ public:
                                                   ///< currently only work with GregoryBasis.
 
                      // face-varying
-                     generateFVarTables   : 1;///< Generate face-varying patch tables
+                     generateFVarTables              : 1, ///< Generate face-varying patch tables
+                     generateFVarLegacyLinearPatches : 1; ///< Generate all linear face-varying patches (legacy)
         int          numFVarChannels;          ///< Number of channel indices and interpolation modes passed
         int const *  fvarChannelIndices;       ///< List containing the indices of the channels selected for the factory
     };
@@ -113,7 +115,8 @@ private:
     static void populateAdaptivePatches(BuilderContext & context,
                                         PatchTable * table);
 
-    static void allocateVertexTables(PatchTable * table, bool hasSharpness);
+    static void allocateVertexTables(BuilderContext const & context,
+                                     PatchTable * table);
 
     static void allocateFVarChannels(BuilderContext const & context,
                                      PatchTable * table);

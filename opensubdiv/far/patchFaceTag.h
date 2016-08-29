@@ -28,6 +28,7 @@
 #include "../version.h"
 
 #include "../far/types.h"
+#include "../vtr/level.h"
 
 #include <vector>
 
@@ -58,6 +59,7 @@ class PatchFaceTag {
 
 public:
     unsigned int isRegular       : 1,
+                 isLinear        : 1,
                  transitionMask  : 4,
                  boundaryMask    : 4,
                  boundaryIndex   : 2,
@@ -72,6 +74,12 @@ public:
     bool ComputeTags(Far::TopologyRefiner const & refiner,
         Index const levelIndex, Index const faceIndex,
             int maxIsolationLevel, bool useSingleCreasePatch);
+
+    void ComputeFVarPatchTag(TopologyRefiner const & refiner,
+        Index const levelIndex, Index const faceIndex,
+            Vtr::internal::Level::VSpan cornerSpans[4],
+                int refinerChannel, bool generateFVarLegacyLinearPatches);
+
 
     // debug print
     void Print() const;

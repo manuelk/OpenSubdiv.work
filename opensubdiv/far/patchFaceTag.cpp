@@ -25,7 +25,7 @@
 #include "../far/patchFaceTag.h"
 #include "../far/error.h"
 #include "../far/topologyRefiner.h"
-#include "../vtr/level.h"
+#include "../vtr/fvarLevel.h"
 
 #include <algorithm>
 #include <cassert>
@@ -124,7 +124,7 @@ PatchFaceTag::assignBoundaryPropertiesFromVertexMask(int boundaryVertexMask) {
 
 bool
 PatchFaceTag::ComputeTags(
-    Far::TopologyRefiner const & refiner,
+    TopologyRefiner const & refiner,
         Index const levelIndex, Index const faceIndex,
             int maxIsolationLevel, bool useSingleCreasePatch) {
 
@@ -343,6 +343,160 @@ PatchFaceTag::ComputeTags(
 
     return true;
 }
+
+
+
+void
+PatchFaceTag::ComputeFVarPatchTag(
+    TopologyRefiner const & refiner,
+    Index const levelIndex, Index const faceIndex,
+    Vtr::internal::Level::VSpan cornerSpans[4],
+    int refinerChannel,
+    bool generateFVarLegacyLinearPatches) {
+
+    Vtr::internal::Level const & vtxLevel = refiner.getLevel(levelIndex);
+    Vtr::internal::FVarLevel const & fvarLevel = vtxLevel.getFVarLevel(refinerChannel);
+
+    //
+    // Bi-linear patches
+    //
+
+    if (generateFVarLegacyLinearPatches ||
+        (refiner.GetFVarLinearInterpolation(refinerChannel)==Sdc::Options::FVAR_LINEAR_ALL)) {
+        Clear();
+        isLinear = true;
+        return;
+    }
+
+    //
+    // Bi-cubic patches
+    //
+
+    //  If the face-varying topology matches the vertex topology (which should be the
+    //  dominant case), we can use the patch tag for the original vertex patch --
+    //  quickly check the composite tag for the face-varying values at the corners:
+    //
+
+    ConstIndexArray faceVerts = vtxLevel.getFaceVertices(faceIndex),
+                    fvarValues = fvarLevel.getFaceValues(faceIndex);
+
+    Vtr::internal::FVarLevel::ValueTag compFVarTagsForFace =
+        fvarLevel.getFaceCompositeValueTag(fvarValues, faceVerts);
+
+    if (compFVarTagsForFace.isMismatch()) {
+
+        //  At least one of the corner vertices has differing topology in FVar space,
+        //  so we need to perform similar analysis to what was done to determine the
+        //  face's original patch tag to determine the face-varying patch tag here.
+        //
+        //  Recall how that patch tag is initialized:
+        //      - a "composite" (bitwise-OR) tag of the face's VTags is taken
+        //      - if determined to be on a boundary, a "boundary mask" is built and
+        //        passed to the PatchFaceTag to determine boundary orientation
+        //      - when necessary, a "composite" tag for the face's ETags is inspected
+        //      - special case for "single-crease patch"
+        //      - special case for "approx smooth corner with regular patch"
+        //
+        //  Note differences here (simplifications):
+        //      - we don't need to deal with the single-crease patch case:
+        //          - if vertex patch was single crease the mismatching FVar patch
+        //            cannot be
+        //          - the fvar patch cannot become single-crease patch as only sharp
+        //            (discts) edges are introduced, which are now boundary edges
+        //      - the "approx smooth corner with regular patch" case was ignored:
+        //          - its unclear if it should persist for the vertex patch
+        //
+        //  As was the case with the vertex patch, since we are creating a patch it
+        //  is assumed that all required isolation has occurred.  For example, a
+        //  regular patch at level 0 that has a FVar patch with too many boundaries
+        //  (or local xordinary vertices) is going to cause trouble here...
+        //
+
+        //
+        //  Gather the VTags for the four corners of the FVar patch (these are the VTag
+        //  of each vertex merged with the FVar tag of its value) while computing the
+        //  composite VTag:
+        //
+        Vtr::internal::Level::VTag fvarVertTags[4];
+
+        Vtr::internal::Level::VTag compFVarVTag =
+            fvarLevel.getFaceCompositeValueAndVTag(fvarValues, faceVerts, fvarVertTags);
+
+        //
+        //  Clear/re-initialize the FVar patch tag and compute the appropriate boundary
+        //  masks if boundary orientation is necessary:
+        //
+        Clear();
+        isRegular = !compFVarVTag._xordinary;
+
+        if (compFVarVTag._boundary) {
+            Vtr::internal::Level::ETag fvarEdgeTags[4];
+
+            ConstIndexArray faceEdges = vtxLevel.getFaceEdges(faceIndex);
+
+            Vtr::internal::Level::ETag compFVarETag =
+                fvarLevel.getFaceCompositeCombinedEdgeTag(faceEdges, fvarEdgeTags);
+
+            if (compFVarETag._boundary) {
+                int boundaryEdgeMask = (fvarEdgeTags[0]._boundary << 0) |
+                                       (fvarEdgeTags[1]._boundary << 1) |
+                                       (fvarEdgeTags[2]._boundary << 2) |
+                                       (fvarEdgeTags[3]._boundary << 3);
+
+                assignBoundaryPropertiesFromEdgeMask(boundaryEdgeMask);
+            } else {
+                int boundaryVertMask = (fvarVertTags[0]._boundary << 0) |
+                                       (fvarVertTags[1]._boundary << 1) |
+                                       (fvarVertTags[2]._boundary << 2) |
+                                       (fvarVertTags[3]._boundary << 3);
+
+                assignBoundaryPropertiesFromVertexMask(boundaryVertMask);
+            }
+
+            if (! isRegular) {
+                for (int i=0; i<faceVerts.size(); ++i) {
+                    ConstIndexArray vFaces = vtxLevel.getVertexFaces(faceVerts[i]);
+                    LocalIndex fInVFaces = vFaces.FindIndex(faceIndex);
+
+                    if (fvarLevel.hasSmoothBoundaries()) {
+                        Vtr::internal::FVarLevel::ConstCreaseEndPairArray vCreaseEnds =
+                            fvarLevel.getVertexValueCreaseEnds(faceVerts[i]);
+
+                        Vtr::internal::FVarLevel::ConstSiblingArray vSiblings =
+                            fvarLevel.getVertexFaceSiblings(faceVerts[i]);
+
+                        Vtr::internal::FVarLevel::CreaseEndPair const & creaseEnd =
+                            vCreaseEnds[vSiblings[fInVFaces]];
+
+                        if (creaseEnd._startFace != creaseEnd._endFace) {
+                            // cornerSpan from creaseEnd
+                            cornerSpans[i]._leadingVertEdge = creaseEnd._startFace;
+                            cornerSpans[i]._numFaces =
+                                (creaseEnd._endFace - creaseEnd._startFace + vFaces.size()) % vFaces.size() + 1;
+                            continue;
+                        }
+                    }
+                    // corner span from boundaryMask;
+                    int ePrev = (i - 1 + faceVerts.size()) % faceVerts.size();
+                    int eNext = i;
+                    if (fvarEdgeTags[eNext]._boundary) {
+                        cornerSpans[i]._leadingVertEdge = fInVFaces;
+                        if (fvarEdgeTags[ePrev]._boundary) {
+                            cornerSpans[i]._numFaces = 1;
+                        } else {
+                            cornerSpans[i]._numFaces = 2;
+                        }
+                    } else if (fvarEdgeTags[ePrev]._boundary) {
+                        cornerSpans[i]._leadingVertEdge = (fInVFaces - 1 + vFaces.size()) % vFaces.size();
+                        cornerSpans[i]._numFaces = 2;
+                    }
+                }
+            }
+        }
+    }
+}
+
+
 
 } // end namespace Far
 

@@ -248,7 +248,7 @@ Characteristic::GetTreeNode(float s, float t, unsigned char * quadrant, short ma
 }
 
 inline void
-evaluateEndCapBasis(EndCapType type, PatchParam param,
+evaluateEndCapBasis(EndCapType type, PatchParamBase param,
     float s, float t, float wP[], float wDs[], float wDt[]) {
 
     switch (type) {
@@ -281,7 +281,7 @@ Characteristic::EvaluateBasis(float s, float t,
     NodeType type = desc.GetType();
     int depth = desc.GetDepth() - (desc.NonQuadRoot() ? 1 : 0);
 
-    PatchParam param;
+    PatchParamBase param;
 
     if (hasDynamicIsolation() && (depth>=maxLevel) &&
         (type==NODE_RECURSIVE || type==NODE_TERMINAL)) {
@@ -292,7 +292,7 @@ Characteristic::EvaluateBasis(float s, float t,
             u = u >> 1;
             v = v >> 1;
         }
-        param.Set(/*face id*/ 0, u, v, depth, desc.NonQuadRoot(), 0, 0);
+        param.Set(u, v, depth, desc.NonQuadRoot(), 0);
 
         evaluateEndCapBasis(getEndCapType(), param, s, t, wP, wDs, wDt);
     } else {
@@ -300,8 +300,8 @@ Characteristic::EvaluateBasis(float s, float t,
         switch (type) {
 
             case NODE_REGULAR : {
-                param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), depth,
-                    desc.NonQuadRoot(), desc.GetBoundaryMask(), 0);
+                param.Set(desc.GetU(), desc.GetV(), depth,
+                    desc.NonQuadRoot(), desc.GetBoundaryMask());
 
                 if (desc.SingleCrease()) {
                     float sharpness = n.GetSharpness();
@@ -312,8 +312,8 @@ Characteristic::EvaluateBasis(float s, float t,
             } break;
 
             case NODE_END : {
-                param.Set(/*face id*/ 0, desc.GetU(), desc.GetV(), depth,
-                    desc.NonQuadRoot(), desc.GetBoundaryMask(), 0);
+                param.Set(desc.GetU(), desc.GetV(), depth,
+                    desc.NonQuadRoot(), desc.GetBoundaryMask());
                 evaluateEndCapBasis(getEndCapType(), param, s, t, wP, wDs, wDt);
             } break;
 
@@ -326,7 +326,7 @@ Characteristic::EvaluateBasis(float s, float t,
                     case 2 : {       v+=1; } break; // ^ bitwise winding order !!!
                     case 3 : { u+=1; v+=1; } break;
                 }
-                param.Set(/*face id*/ 0, u, v, depth+1, desc.NonQuadRoot(), 0, 0);
+                param.Set(u, v, depth+1, desc.NonQuadRoot(), 0);
                 internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
             } break;
 

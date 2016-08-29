@@ -132,15 +132,16 @@ public:
 
     int gatherBilinearPatchPoints(Index * iptrs,
                                   PatchTuple const & patch,
-                                  int fvarChannel = -1);
+                                  int fvarChannel = -1) const;
     int gatherRegularPatchPoints(Index * iptrs,
                                  PatchTuple const & patch,
-                                 int fvarChannel = -1);
+                                 int fvarChannel = -1) const;
     template <class END_CAP_FACTORY_TYPE>
     int gatherEndCapPatchPoints(END_CAP_FACTORY_TYPE *endCapFactory,
                                 Index * iptrs,
                                 PatchTuple const & patch,
-                                int fvarChannel = -1);
+                                Vtr::internal::Level::VSpan cornerSpans[4],
+                                int fvarChannel = -1) const;
 
     // True if face-varying patches need to be generated for this topology
     bool RequiresFVarPatches() const {
@@ -188,7 +189,7 @@ PatchTableFactory::BuilderContext::BuilderContext(
 
 int
 PatchTableFactory::BuilderContext::gatherBilinearPatchPoints(
-        Index * iptrs, PatchTuple const & patch, int fvarChannel) {
+        Index * iptrs, PatchTuple const & patch, int fvarChannel) const {
 
     Vtr::internal::Level const * level = &refiner.getLevel(patch.levelIndex);
     int levelVertOffset = (fvarChannel < 0)
@@ -206,7 +207,7 @@ PatchTableFactory::BuilderContext::gatherBilinearPatchPoints(
 
 int
 PatchTableFactory::BuilderContext::gatherRegularPatchPoints(
-        Index * iptrs, PatchTuple const & patch, int fvarChannel) {
+        Index * iptrs, PatchTuple const & patch, int fvarChannel) const {
 
     Vtr::internal::Level const * level = &refiner.getLevel(patch.levelIndex);
     int levelVertOffset = (fvarChannel < 0)
@@ -264,7 +265,9 @@ int
 PatchTableFactory::BuilderContext::
 gatherEndCapPatchPoints(
         END_CAP_FACTORY_TYPE *endCapFactory,
-        Index * iptrs, PatchTuple const & patch, int fvarChannel) {
+        Index * iptrs, PatchTuple const & patch,
+        Vtr::internal::Level::VSpan cornerSpans[4],
+        int fvarChannel) const {
 
     Vtr::internal::Level const * level = &refiner.getLevel(patch.levelIndex);
     int levelVertOffset = (fvarChannel < 0)
@@ -273,11 +276,6 @@ gatherEndCapPatchPoints(
     int refinerChannel = (fvarChannel < 0)
                        ? fvarChannel
                        : fvarChannelIndices[fvarChannel];
-
-    // identify relevant spans around the corner vertices for the irregular patches
-    // (this is just a stub for now -- leaving the span "size" to zero, as constructed,
-    // indicates to use the full neighborhood)...
-    Vtr::internal::Level::VSpan cornerSpans[4];
 
     ConstIndexArray cvs = endCapFactory->GetPatchPoints(
         level, patch.faceIndex, cornerSpans, levelVertOffset, refinerChannel);
@@ -291,7 +289,7 @@ gatherEndCapPatchPoints(
 //
 void
 PatchTableFactory::allocateVertexTables(
-        PatchTable * table, bool hasSharpness) {
+        BuilderContext const & context, PatchTable * table) {
 
     int ncvs = 0, npatches = 0;
     for (int i=0; i<table->GetNumPatchArrays(); ++i) {
@@ -306,7 +304,12 @@ PatchTableFactory::allocateVertexTables(
 
     table->_paramTable.resize( npatches );
 
-    if (hasSharpness) {
+    if (! context.refiner.IsUniform()) {
+        table->allocateVaryingVertices(
+            PatchDescriptor(PatchDescriptor::QUADS), npatches);
+    }
+
+    if (context.options.useSingleCreasePatch) {
         table->_sharpnessIndices.resize( npatches, Vtr::INDEX_INVALID );
     }
 }
@@ -333,11 +336,27 @@ PatchTableFactory::allocateFVarChannels(
 
         table->setFVarPatchChannelLinearInterpolation(interpolation, fvc);
 
-        PatchDescriptor::Type type = context.options.triangulateQuads ?
-            PatchDescriptor::TRIANGLES : PatchDescriptor::QUADS;
+        if (refiner.IsUniform()) {
+            PatchDescriptor::Type uniformType = context.options.triangulateQuads
+                ? PatchDescriptor::TRIANGLES
+                : PatchDescriptor::QUADS;
 
-        table->allocateFVarPatchChannelValues(
-            PatchDescriptor(type), npatches, fvc);
+            table->allocateFVarPatchChannelValues(
+                PatchDescriptor(uniformType), npatches, fvc);
+
+        } else {
+            bool allLinear = context.options.generateFVarLegacyLinearPatches ||
+                (interpolation == Sdc::Options::FVAR_LINEAR_ALL);
+
+            PatchDescriptor::Type adaptiveType = allLinear
+                    ? PatchDescriptor::QUADS
+                    : ((context.options.GetEndCapType() == ENDCAP_GREGORY_BASIS)
+                        ? PatchDescriptor::GREGORY_BASIS
+                        : PatchDescriptor::REGULAR);
+
+            table->allocateFVarPatchChannelValues(
+                PatchDescriptor(adaptiveType), npatches, fvc);
+        }
     }
 }
 
@@ -396,7 +415,6 @@ PatchTableFactory::computePatchParam(
 
     if (nonquad) {
         ptexIndex+=childIndexInParent;
-        --depth;
     }
 
     PatchParam param;
@@ -497,7 +515,7 @@ PatchTableFactory::createUniform(TopologyRefiner const & refiner, Options option
     }
 
     // Allocate various tables
-    allocateVertexTables( table, /*hasSharpness=*/false );
+    allocateVertexTables(context, table);
 
     if (context.RequiresFVarPatches()) {
         allocateFVarChannels(context, table);
@@ -717,6 +735,7 @@ PatchTableFactory::populateAdaptivePatches(
         Far::PatchParam *pptr;
         Far::Index *sptr;
         Vtr::internal::StackBuffer<Far::Index*,1> fptr;
+        Vtr::internal::StackBuffer<Far::PatchParamBase*,1> fpptr;
 
     private:
         // Non-copyable
@@ -733,38 +752,38 @@ PatchTableFactory::populateAdaptivePatches(
 
     switch(context.options.GetEndCapType()) {
         case ENDCAP_BSPLINE_BASIS:
-            // Irregular patches are converted to bspline basis and
-            // will be packed into the same patch array as regular patches
-            IR = IRB = R;
-            arrayBuilders[R].numPatches += context.numIrregularPatches;
-            // Make sure we've counted this array even when
-            // there are no regular patches.
-            numPatchArrays = (arrayBuilders[R].numPatches > 0);
-            break;
+        // Irregular patches are converted to bspline basis and
+        // will be packed into the same patch array as regular patches
+        IR = IRB = R;
+        arrayBuilders[R].numPatches += context.numIrregularPatches;
+        // Make sure we've counted this array even when
+        // there are no regular patches.
+        numPatchArrays = (arrayBuilders[R].numPatches > 0);
+        break;
         case ENDCAP_GREGORY_BASIS:
-            // Irregular patches (both interior and boundary) are converted
-            // to Gregory basis and will be packed into an additional patch array
-            IR = IRB = numPatchArrays;
-            arrayBuilders[IR].patchType = PatchDescriptor::GREGORY_BASIS;
-            arrayBuilders[IR].numPatches += context.numIrregularPatches;
-            numPatchArrays += (arrayBuilders[IR].numPatches > 0);
-            break;
+        // Irregular patches (both interior and boundary) are converted
+        // to Gregory basis and will be packed into an additional patch array
+        IR = IRB = numPatchArrays;
+        arrayBuilders[IR].patchType = PatchDescriptor::GREGORY_BASIS;
+        arrayBuilders[IR].numPatches += context.numIrregularPatches;
+        numPatchArrays += (arrayBuilders[IR].numPatches > 0);
+        break;
         case ENDCAP_LEGACY_GREGORY:
-            // Irregular interior and irregular boundary patches each will be
-            // packed into separate additional patch arrays.
-            IR = numPatchArrays;
-            arrayBuilders[IR].patchType = PatchDescriptor::GREGORY;
-            arrayBuilders[IR].numPatches = context.numIrregularPatches
-                                         - context.numIrregularBoundaryPatches;
-            numPatchArrays += (arrayBuilders[IR].numPatches > 0);
+        // Irregular interior and irregular boundary patches each will be
+        // packed into separate additional patch arrays.
+        IR = numPatchArrays;
+        arrayBuilders[IR].patchType = PatchDescriptor::GREGORY;
+        arrayBuilders[IR].numPatches = context.numIrregularPatches
+                                     - context.numIrregularBoundaryPatches;
+        numPatchArrays += (arrayBuilders[IR].numPatches > 0);
 
-            IRB = numPatchArrays;
-            arrayBuilders[IRB].patchType = PatchDescriptor::GREGORY_BOUNDARY;
-            arrayBuilders[IRB].numPatches = context.numIrregularBoundaryPatches;
-            numPatchArrays += (arrayBuilders[IRB].numPatches > 0);
-            break;
-        default:
-            break;
+        IRB = numPatchArrays;
+        arrayBuilders[IRB].patchType = PatchDescriptor::GREGORY_BOUNDARY;
+        arrayBuilders[IRB].numPatches = context.numIrregularBoundaryPatches;
+        numPatchArrays += (arrayBuilders[IRB].numPatches > 0);
+        break;
+    default:
+        break;
     }
 
     // Create patch arrays
@@ -779,7 +798,7 @@ PatchTableFactory::populateAdaptivePatches(
 
     // Allocate patch array data buffers
     bool hasSharpness = context.options.useSingleCreasePatch;
-    allocateVertexTables(table, hasSharpness);
+    allocateVertexTables(context, table);
 
     if (context.RequiresFVarPatches()) {
         allocateFVarChannels(context, table);
@@ -797,6 +816,7 @@ PatchTableFactory::populateAdaptivePatches(
 
         if (context.RequiresFVarPatches()) {
             arrayBuilder.fptr.SetSize((int)context.fvarChannelIndices.size());
+            arrayBuilder.fpptr.SetSize((int)context.fvarChannelIndices.size());
 
             for (int fvc=0; fvc<(int)context.fvarChannelIndices.size(); ++fvc) {
 
@@ -804,6 +824,7 @@ PatchTableFactory::populateAdaptivePatches(
                 Index pidx = table->getPatchIndex(arrayIndex, 0);
                 int ofs = pidx * desc.GetNumControlVertices();
                 arrayBuilder.fptr[fvc] = &table->getFVarValues(fvc)[ofs];
+                arrayBuilder.fpptr[fvc] = &table->getFVarPatchParam(fvc)[pidx];
             }
         }
     }
@@ -813,32 +834,64 @@ PatchTableFactory::populateAdaptivePatches(
     EndCapBSplineBasisPatchFactory *endCapBSpline = NULL;
     EndCapGregoryBasisPatchFactory *endCapGregoryBasis = NULL;
     EndCapLegacyGregoryPatchFactory *endCapLegacyGregory = NULL;
+    Vtr::internal::StackBuffer<EndCapBSplineBasisPatchFactory*,1> fvarEndCapBSpline;
+    Vtr::internal::StackBuffer<EndCapGregoryBasisPatchFactory*,1> fvarEndCapGregoryBasis;
+
     StencilTable *localPointStencils = NULL;
     StencilTable *localPointVaryingStencils = NULL;
+    Vtr::internal::StackBuffer<StencilTable*,1> localPointFVarStencils;
 
     switch(context.options.GetEndCapType()) {
         case ENDCAP_GREGORY_BASIS:
-            localPointStencils = new StencilTable(0);
-            localPointVaryingStencils = new StencilTable(0);
-            endCapGregoryBasis = new EndCapGregoryBasisPatchFactory(
-                refiner,
-                localPointStencils,
-                localPointVaryingStencils,
-                context.options.shareEndCapPatchPoints);
-            break;
+        localPointStencils = new StencilTable(0);
+        localPointVaryingStencils = new StencilTable(0);
+        endCapGregoryBasis = new EndCapGregoryBasisPatchFactory(
+            refiner,
+            localPointStencils,
+            localPointVaryingStencils,
+            context.options.shareEndCapPatchPoints);
+        break;
         case ENDCAP_BSPLINE_BASIS:
-            localPointStencils = new StencilTable(0);
-            localPointVaryingStencils = new StencilTable(0);
-            endCapBSpline = new EndCapBSplineBasisPatchFactory(
-                refiner,
-                localPointStencils,
-                localPointVaryingStencils);
-            break;
+        localPointStencils = new StencilTable(0);
+        localPointVaryingStencils = new StencilTable(0);
+        endCapBSpline = new EndCapBSplineBasisPatchFactory(
+            refiner,
+            localPointStencils,
+            localPointVaryingStencils);
+        break;
         case ENDCAP_LEGACY_GREGORY:
-            endCapLegacyGregory = new EndCapLegacyGregoryPatchFactory(refiner);
-            break;
-        default:
-            break;
+        endCapLegacyGregory = new EndCapLegacyGregoryPatchFactory(refiner);
+        break;
+    default:
+        break;
+    }
+
+    if (context.RequiresFVarPatches()) {
+        fvarEndCapBSpline.SetSize((int)context.fvarChannelIndices.size());
+        fvarEndCapGregoryBasis.SetSize((int)context.fvarChannelIndices.size());
+        localPointFVarStencils.SetSize((int)context.fvarChannelIndices.size());
+
+        for (int fvc=0; fvc<(int)context.fvarChannelIndices.size(); ++fvc) {
+            switch(context.options.GetEndCapType()) {
+            case ENDCAP_GREGORY_BASIS:
+                localPointFVarStencils[fvc] = new StencilTable(0);
+                fvarEndCapGregoryBasis[fvc] = new EndCapGregoryBasisPatchFactory(
+                    refiner,
+                    localPointFVarStencils[fvc],
+                    NULL,
+                    context.options.shareEndCapPatchPoints);
+                break;
+            case ENDCAP_BSPLINE_BASIS:
+                localPointFVarStencils[fvc] = new StencilTable(0);
+                fvarEndCapBSpline[fvc] = new EndCapBSplineBasisPatchFactory(
+                    refiner,
+                    localPointFVarStencils[fvc],
+                    NULL);
+                break;
+            default:
+                break;
+            }
+        }
     }
 
     // Populate patch data buffers
@@ -862,7 +915,11 @@ PatchTableFactory::populateAdaptivePatches(
         // Most patches will be packed into the regular patch array
         PatchArrayBuilder * arrayBuilder = &arrayBuilders[R];
 
-        if (patch.tag.isRegular) {
+        if (patch.tag.isLinear) {
+            arrayBuilder->iptr +=
+                context.gatherBilinearPatchPoints(arrayBuilder->iptr, patch);
+
+        } else if (patch.tag.isRegular) {
             arrayBuilder->iptr +=
                 context.gatherRegularPatchPoints(arrayBuilder->iptr, patch);
 
@@ -873,46 +930,52 @@ PatchTableFactory::populateAdaptivePatches(
             boundaryMask = 0;
             transitionMask = 0;
 
+            // identify relevant spans around the corner vertices for the irregular patches
+            // (this is just a stub for now -- leaving the span "size" to zero, as constructed,
+            // indicates to use the full neighborhood)...
+            Vtr::internal::Level::VSpan cornerSpans[4];
+
             // switch endcap patchtype by option
             switch(context.options.GetEndCapType()) {
                 case ENDCAP_GREGORY_BASIS:
-                    arrayBuilder->iptr +=
-                        context.gatherEndCapPatchPoints(
-                            endCapGregoryBasis, arrayBuilder->iptr, patch);
-                    break;
+                arrayBuilder->iptr +=
+                    context.gatherEndCapPatchPoints(
+                        endCapGregoryBasis, arrayBuilder->iptr, patch, cornerSpans);
+                break;
                 case ENDCAP_BSPLINE_BASIS:
+                arrayBuilder->iptr +=
+                    context.gatherEndCapPatchPoints(
+                        endCapBSpline, arrayBuilder->iptr, patch, cornerSpans);
+                break;
+                case ENDCAP_LEGACY_GREGORY:
+                // For legacy gregory patches we may need to switch to
+                // the irregular boundary patch array.
+                    if (patch.tag.boundaryCount == 0) {
                     arrayBuilder->iptr +=
                         context.gatherEndCapPatchPoints(
-                            endCapBSpline, arrayBuilder->iptr, patch);
-                    break;
-                case ENDCAP_LEGACY_GREGORY:
-                    // For legacy gregory patches we may need to switch to
-                    // the irregular boundary patch array.
-                    if (patch.tag.boundaryCount == 0) {
-                        arrayBuilder->iptr +=
-                            context.gatherEndCapPatchPoints(
-                                endCapLegacyGregory, arrayBuilder->iptr, patch);
-                    } else {
-                        arrayBuilder = &arrayBuilders[IRB];
-                        arrayBuilder->iptr +=
-                            context.gatherEndCapPatchPoints(
-                                endCapLegacyGregory, arrayBuilder->iptr, patch);
-                    }
-                    break;
+                            endCapLegacyGregory, arrayBuilder->iptr, patch, cornerSpans);
+                } else {
+                    arrayBuilder = &arrayBuilders[IRB];
+                    arrayBuilder->iptr +=
+                        context.gatherEndCapPatchPoints(
+                            endCapLegacyGregory, arrayBuilder->iptr, patch, cornerSpans);
+                }
+                break;
                 case ENDCAP_BILINEAR_BASIS:
-                    // not implemented yet
-                    assert(false);
-                    break;
-                default:
-                    // no endcap
-                    break;
+                // not implemented yet
+                assert(false);
+                break;
+            default:
+                // no endcap
+                break;
             }
         }
 
-        *arrayBuilder->pptr++ =
+        PatchParam patchParam =
             computePatchParam(context,
                               patch.levelIndex, patch.faceIndex,
                               boundaryMask, transitionMask);
+        *arrayBuilder->pptr++ = patchParam;
 
         if (hasSharpness) {
             *arrayBuilder->sptr++ =
@@ -921,15 +984,56 @@ PatchTableFactory::populateAdaptivePatches(
 
         if (context.RequiresFVarPatches()) {
             for (int fvc=0; fvc<(int)context.fvarChannelIndices.size(); ++fvc) {
-                // For now, fvar data is always bilinear. Eventually, we will
-                // inspect the fvar topology and emit patches accordingly.
+                int refinerChannel = context.fvarChannelIndices[fvc];
+
                 BuilderContext::PatchTuple fvarPatch(patch);
-                arrayBuilder->fptr[fvc] +=
-                    context.gatherBilinearPatchPoints(
-                        arrayBuilder->fptr[fvc], fvarPatch, fvc);
+                Vtr::internal::Level::VSpan cornerSpans[4];
+
+                fvarPatch.tag.ComputeFVarPatchTag(refiner,
+                    patch.levelIndex, patch.faceIndex, cornerSpans, refinerChannel,
+                        context.options.generateFVarLegacyLinearPatches);
+
+                PatchDescriptor desc = table->GetFVarChannelPatchDescriptor(fvc);
+                PatchParamBase fvarPatchParam = patchParam.GetPatchParamBase();
+
+                switch (desc.GetType()) {
+                case PatchDescriptor::QUADS:
+                    arrayBuilder->fptr[fvc] +=
+                        context.gatherBilinearPatchPoints(
+                            arrayBuilder->fptr[fvc], fvarPatch, fvc);
+                    break;
+                case PatchDescriptor::REGULAR:
+                    if (fvarPatch.tag.isRegular) {
+                        arrayBuilder->fptr[fvc] +=
+                            context.gatherRegularPatchPoints(
+                                arrayBuilder->fptr[fvc], fvarPatch, fvc);
+                        fvarPatchParam.Set(
+                            patchParam.GetU(), patchParam.GetV(),
+                            patchParam.GetDepth(),
+                            patchParam.NonQuadRoot(),
+                            fvarPatch.tag.boundaryMask);
+                    } else {
+                        arrayBuilder->fptr[fvc] +=
+                            context.gatherEndCapPatchPoints(
+                                fvarEndCapBSpline[fvc],
+                                arrayBuilder->fptr[fvc], fvarPatch, cornerSpans, fvc);
+                    }
+                    break;
+                case PatchDescriptor::GREGORY_BASIS:
+                    arrayBuilder->fptr[fvc] +=
+                        context.gatherEndCapPatchPoints(
+                            fvarEndCapGregoryBasis[fvc],
+                            arrayBuilder->fptr[fvc], fvarPatch, cornerSpans, fvc);
+                    break;
+                default:
+                    break;
+                }
+                *arrayBuilder->fpptr[fvc]++ = fvarPatchParam;
             }
         }
     }
+
+    table->populateVaryingVertices();
 
     // finalize end patches
     if (localPointStencils && localPointStencils->GetNumStencils() > 0) {
@@ -948,24 +1052,52 @@ PatchTableFactory::populateAdaptivePatches(
 
     switch(context.options.GetEndCapType()) {
         case ENDCAP_GREGORY_BASIS:
-            table->_localPointStencils = localPointStencils;
-            table->_localPointVaryingStencils = localPointVaryingStencils;
-            delete endCapGregoryBasis;
-            break;
+        table->_localPointStencils = localPointStencils;
+        table->_localPointVaryingStencils = localPointVaryingStencils;
+        delete endCapGregoryBasis;
+        break;
         case ENDCAP_BSPLINE_BASIS:
-            table->_localPointStencils = localPointStencils;
-            table->_localPointVaryingStencils = localPointVaryingStencils;
-            delete endCapBSpline;
-            break;
+        table->_localPointStencils = localPointStencils;
+        table->_localPointVaryingStencils = localPointVaryingStencils;
+        delete endCapBSpline;
+        break;
         case ENDCAP_LEGACY_GREGORY:
-            endCapLegacyGregory->Finalize(
-                table->GetMaxValence(),
-                &table->_quadOffsetsTable,
-                &table->_vertexValenceTable);
-            delete endCapLegacyGregory;
-            break;
-        default:
-            break;
+        endCapLegacyGregory->Finalize(
+            table->GetMaxValence(),
+            &table->_quadOffsetsTable,
+            &table->_vertexValenceTable);
+        delete endCapLegacyGregory;
+        break;
+    default:
+        break;
+    }
+
+    if (context.RequiresFVarPatches()) {
+        table->_localPointFaceVaryingStencils.resize(
+                                        context.fvarChannelIndices.size());
+
+        for (int fvc=0; fvc<(int)context.fvarChannelIndices.size(); ++fvc) {
+            if (localPointFVarStencils[fvc]->GetNumStencils() > 0) {
+                localPointFVarStencils[fvc]->finalize();
+            } else {
+                delete localPointFVarStencils[fvc];
+                localPointFVarStencils[fvc] = NULL;
+            }
+
+            switch(context.options.GetEndCapType()) {
+            case ENDCAP_GREGORY_BASIS:
+                delete fvarEndCapGregoryBasis[fvc];
+                break;
+            case ENDCAP_BSPLINE_BASIS:
+                delete fvarEndCapBSpline[fvc];
+                break;
+            default:
+                break;
+            }
+
+            table->_localPointFaceVaryingStencils[fvc] =
+                                        localPointFVarStencils[fvc];
+        }
     }
 }
 
