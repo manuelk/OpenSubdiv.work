@@ -279,7 +279,9 @@ Characteristic::EvaluateBasis(float s, float t,
     NodeDescriptor desc = n.GetDescriptor();
 
     NodeType type = desc.GetType();
-    int depth = desc.GetDepth() - (desc.NonQuadRoot() ? 1 : 0);
+
+    
+    int depth = desc.GetDepth(); // - (desc.NonQuadRoot() ? 1 : 0);
 
     PatchParamBase param;
 
