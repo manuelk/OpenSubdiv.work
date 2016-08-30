@@ -179,15 +179,7 @@ public:
         ///  u             | 10   | log2 value of v parameter at first patch corner
         void SetPatch(unsigned short type, unsigned short nonquad,
             unsigned short singleCrease, unsigned short depth,
-                unsigned short boundary, short u, short v) {
-            field0 = ((v & 0x3ff)          << 22) |
-                     ((u & 0x3ff)          << 12) |
-                     ((boundary & 0xf)     <<  8) |
-                     ((depth & 0xf)        <<  4) |
-                     ((singleCrease ? 1:0) <<  3) |
-                     ((nonquad ? 1:0)      <<  2) |
-                      (type & 0x3);
-        }
+                unsigned short boundary, short u, short v);
 
         /// \brief Set bitfields for RECURSIVE nodes
         ///
@@ -199,13 +191,7 @@ public:
         ///  v             | 10   | log2 value of u parameter at first patch corner
         ///  u             | 10   | log2 value of v parameter at first patch corner
         void SetRecursive(unsigned short nonquad,
-            unsigned short depth, short u, short v) {
-            field0 = ((v & 0x3ff)          << 22) |
-                     ((u & 0x3ff)          << 12) |
-                     ((depth & 0xf)        <<  4) |
-                     ((nonquad ? 1:0)      <<  2) |
-                      (NODE_RECURSIVE & 0x3);
-        }
+            unsigned short depth, short u, short v);
 
         /// \brief Set bitfields for TERMINAL nodes
         ///
@@ -219,59 +205,57 @@ public:
         ///  v             | 10   | log2 value of u parameter at first patch corner
         ///  u             | 10   | log2 value of v parameter at first patch corner
         void SetTerminal(unsigned short nonquad,
-            unsigned short depth, unsigned short evIndex, short u, short v) {
-            field0 = ((v & 0x3ff)          << 22) |
-                     ((u & 0x3ff)          << 12) |
-                     ((evIndex & 0xf)      <<  8) |
-                     ((depth & 0xf)        <<  4) |
-                     ((nonquad ? 1:0)      <<  2) |
-                      (NODE_TERMINAL & 0x3);
-        }
+            unsigned short depth, unsigned short evIndex, short u, short v);
 
         /// \brief Resets everything to 0
         void Clear() { field0 = 0; }
 
         /// \brief Returns the type for the sub-patch.
-        NodeType GetType() const { return (NodeType)(field0 & 0x3); }
+        NodeType GetType() const { return (NodeType)unpackBitfield(field0, 2, 0); }
 
         /// \brief Returns the level of subdivision of the sub-patch
-        unsigned short GetDepth() const { return  (unsigned short)((field0 >> 4) & 0xf); }
+        unsigned short GetDepth() const { return (unsigned short)unpackBitfield(field0, 4, 4); }
 
         /// \brief Returns the boundary edge encoding for the sub-patch.
-        unsigned short GetBoundaryMask() const { return (unsigned short)((field0 >> 8) & 0xf); }
+        unsigned short GetBoundaryMask() const { return (unsigned short)unpackBitfield(field0, 4, 8); }
 
         /// \brief Returns the number of boundary edges in the sub-patch (-1 for invalid mask)
         unsigned short GetBoundaryCount() const;
 
         /// \brief Returns local index of the extraordinary vertex in a terminal patch
-        unsigned short GetEvIndex() const { return (unsigned short)((field0 >> 8) & 0xf); }
+        unsigned short GetEvIndex() const { return (unsigned short)unpackBitfield(field0, 4, 8); }
 
         /// \brief True if the parent coarse face is a non-quad
-        bool NonQuadRoot() const { return (field0 >> 2) & 0x1; }
+        bool NonQuadRoot() const { return unpackBitfield(field0, 1, 2)!=0; }
 
         /// \brief Returns true if the patch is of "single crease" type
-        bool SingleCrease() const { return (field0 >> 3) & 0x1; }
+        bool SingleCrease() const { return unpackBitfield(field0, 1, 3)!=0; }
 
         /// \brief Returns the log2 value of the u parameter at the top left corner of
         /// the patch
-        unsigned short GetU() const { return (unsigned short)((field0 >> 12) & 0x3ff); }
+        unsigned short GetU() const { return (unsigned short)unpackBitfield(field0, 10, 12); }
 
         /// \brief Returns the log2 value of the v parameter at the top left corner of
         /// the patch
-        unsigned short GetV() const { return (unsigned short)((field0 >> 22) & 0x3ff); }
+        unsigned short GetV() const { return (unsigned short)unpackBitfield(field0, 10, 22); }
 
         /// \brief Returns the fraction of normalized parametric space covered by the
         /// sub-patch.
         float GetParamFraction() const;
 
-        /// The (u,v) pair is normalized to this sub-parametric space.
+        /// \brief Maps the (u,v) parameterization from coarse to refined
+        /// The (u,v) pair is mapped from the coarse face parameterization to
+        /// the refined face parameterization
         ///
-        /// @param u  u parameter
-        /// @param v  v parameter
-        ///
-        void Normalize( float & u, float & v ) const;
+        void MapCoarseToRefined( float & u, float & v ) const;
 
-        int field0:32;
+        /// \brief Maps the (u,v) parameterization from refined to coarse
+        /// The (u,v) pair is mapped from the refined face parameterization to
+        /// the coarse face parameterization
+        ///
+        void MapRefinedToCoarse( float & u, float & v ) const;
+
+        unsigned int field0:32;
     };
 
     struct Support;
@@ -600,6 +584,42 @@ Characteristic::Node::operator == (Characteristic::Node const & other) const {
         _treeOffset == other._treeOffset;
 }
 
+
+inline void
+Characteristic::NodeDescriptor::SetPatch(unsigned short type,
+    unsigned short nonquad, unsigned short singleCrease, unsigned short depth,
+        unsigned short boundary, short u, short v) {
+    assert(type==NODE_REGULAR||type==NODE_END);
+    field0 = packBitfield(v,           10, 22) |
+             packBitfield(u,           10, 12) |
+             packBitfield(boundary,     4,  8) |
+             packBitfield(depth,        4,  4) |
+             packBitfield(singleCrease, 1,  3) |
+             packBitfield(nonquad,      1,  2) |
+             packBitfield(type,         2,  0);
+}
+
+inline void
+Characteristic::NodeDescriptor::SetRecursive(unsigned short nonquad,
+    unsigned short depth, short u, short v) {
+    field0 = packBitfield(v,             10, 22) |
+             packBitfield(u,             10, 12) |
+             packBitfield(depth,          4,  4) |
+             packBitfield(nonquad,        1,  2) |
+             packBitfield(NODE_RECURSIVE, 2,  0);
+}
+
+inline void
+Characteristic::NodeDescriptor::SetTerminal(unsigned short nonquad,
+    unsigned short depth, unsigned short evIndex, short u, short v) {
+    field0 = packBitfield(v,             10, 22) |
+             packBitfield(u,             10, 12) |
+             packBitfield(evIndex,        4,  8) |
+             packBitfield(depth,          4,  4) |
+             packBitfield(nonquad,        1,  2) |
+             packBitfield(NODE_TERMINAL,  2,  0);
+}
+
 inline float
 Characteristic::NodeDescriptor::GetParamFraction( ) const {
     if (NonQuadRoot()) {
@@ -610,17 +630,25 @@ Characteristic::NodeDescriptor::GetParamFraction( ) const {
 }
 
 inline void
-Characteristic::NodeDescriptor::Normalize( float & u, float & v ) const {
+Characteristic::NodeDescriptor::MapCoarseToRefined( float & u, float & v ) const {
 
-    float frac = GetParamFraction();
+    float frac = GetParamFraction(),
+          pu = (float)GetU()*frac,
+          pv = (float)GetV()*frac;
 
-    // top left corner
-    float pu = (float)GetU()*frac;
-    float pv = (float)GetV()*frac;
-
-    // normalize u,v coordinates
     u = (u - pu) / frac,
     v = (v - pv) / frac;
+}
+
+inline void
+Characteristic::NodeDescriptor::MapRefinedToCoarse( float & u, float & v ) const {
+
+    float frac = GetParamFraction(),
+          pu = (float)GetU()*frac,
+          pv = (float)GetV()*frac;
+
+    u = u * frac + pu,
+    v = v * frac + pv;
 }
 
 inline Characteristic::Support

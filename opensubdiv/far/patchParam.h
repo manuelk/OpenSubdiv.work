@@ -195,25 +195,17 @@ protected:
     unsigned int packBaseData(short u, short v,
                               unsigned short depth, bool nonquad,
                               unsigned short boundary) {
-        return pack(u,       10, 22) |
-               pack(v,       10, 12) |
-               pack(boundary, 4,  8) |
-               pack(nonquad,  1,  4) |
-               pack(depth,    4,  0);
+        return packBitfield(u,       10, 22) |
+               packBitfield(v,       10, 12) |
+               packBitfield(boundary, 4,  8) |
+               packBitfield(nonquad,  1,  4) |
+               packBitfield(depth,    4,  0);
     }
 
     template <class RETURN_TYPE>
     RETURN_TYPE baseData(int width, int offset) const {
         unsigned int value = static_cast<IMPL const *>(this)->baseValue();
-        return (RETURN_TYPE)unpack(value, width, offset);
-    }
-
-    unsigned int pack(unsigned int value, int width, int offset) const {
-        return (unsigned int)((value & ((1<<width)-1)) << offset);
-    }
-
-    unsigned int unpack(unsigned int value, int width, int offset) const {
-        return (unsigned short)((value >> offset) & ((1<<width)-1));
+        return (RETURN_TYPE)unpackBitfield(value, width, offset);
     }
 };
 
@@ -311,7 +303,7 @@ public:
     void Set(Index faceid, short u, short v,
              unsigned short depth, bool nonquad,
              unsigned short boundary, unsigned short transition) {
-        field0 = pack(faceid, 28, 0) | pack(transition, 4, 28);
+        field0 = packBitfield(faceid, 28, 0) | packBitfield(transition, 4, 28);
         field1 = packBaseData(u, v, depth, nonquad, boundary);
     }
 
@@ -319,11 +311,11 @@ public:
     void Clear() { field0 = field1 = 0; }
 
     /// \brief Retuns the faceid
-    Index GetFaceId() const { return Index(unpack(field0,28,0)); }
+    Index GetFaceId() const { return Index(unpackBitfield(field0,28,0)); }
 
     /// \brief Returns the transition edge encoding for the patch.
     unsigned short GetTransition() const {
-        return (unsigned short)unpack(field0,4,28);
+        return (unsigned short)unpackBitfield(field0,4,28);
     }
 
     PatchParamBase GetPatchParamBase() const {
