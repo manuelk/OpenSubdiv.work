@@ -367,7 +367,7 @@ PatchTableFactory::allocateFVarChannels(
 PatchParam
 PatchTableFactory::computePatchParam(
     BuilderContext const & context,
-    int depth, Vtr::Index faceIndex, int boundaryMask,
+    int depth, Vtr::Index faceIndex, int boundaryMask, 
     int transitionMask) {
 
     TopologyRefiner const & refiner = context.refiner;
@@ -879,7 +879,7 @@ PatchTableFactory::populateAdaptivePatches(
                     refiner,
                     localPointFVarStencils[fvc],
                     NULL,
-                    context.options.shareEndCapPatchPoints);
+                    /*context.options.shareEndCapPatchPoints*/false);
                 break;
             case ENDCAP_BSPLINE_BASIS:
                 localPointFVarStencils[fvc] = new StencilTable(0);
@@ -994,40 +994,43 @@ PatchTableFactory::populateAdaptivePatches(
                         context.options.generateFVarLegacyLinearPatches);
 
                 PatchDescriptor desc = table->GetFVarChannelPatchDescriptor(fvc);
-                PatchParamBase fvarPatchParam = patchParam.GetPatchParamBase();
+
+                PatchParamBase fvarPatchParam;
+                fvarPatchParam.Set(
+                    patchParam.GetU(), patchParam.GetV(),
+                    patchParam.GetDepth(), patchParam.NonQuadRoot(),
+                    (fvarPatch.tag.isRegular ?
+                        fvarPatch.tag.boundaryMask : 0), fvarPatch.tag.isRegular);
 
                 switch (desc.GetType()) {
                 case PatchDescriptor::QUADS:
-                    arrayBuilder->fptr[fvc] +=
-                        context.gatherBilinearPatchPoints(
-                            arrayBuilder->fptr[fvc], fvarPatch, fvc);
+                    context.gatherBilinearPatchPoints(
+                        arrayBuilder->fptr[fvc], fvarPatch, fvc);
                     break;
                 case PatchDescriptor::REGULAR:
                     if (fvarPatch.tag.isRegular) {
-                        arrayBuilder->fptr[fvc] +=
-                            context.gatherRegularPatchPoints(
-                                arrayBuilder->fptr[fvc], fvarPatch, fvc);
-                        fvarPatchParam.Set(
-                            patchParam.GetU(), patchParam.GetV(),
-                            patchParam.GetDepth(),
-                            patchParam.NonQuadRoot(),
-                            fvarPatch.tag.boundaryMask);
+                        context.gatherRegularPatchPoints(
+                            arrayBuilder->fptr[fvc], fvarPatch, fvc);
                     } else {
-                        arrayBuilder->fptr[fvc] +=
-                            context.gatherEndCapPatchPoints(
-                                fvarEndCapBSpline[fvc],
-                                arrayBuilder->fptr[fvc], fvarPatch, cornerSpans, fvc);
+                        context.gatherEndCapPatchPoints(
+                            fvarEndCapBSpline[fvc],
+                            arrayBuilder->fptr[fvc], fvarPatch, cornerSpans, fvc);
                     }
                     break;
                 case PatchDescriptor::GREGORY_BASIS:
-                    arrayBuilder->fptr[fvc] +=
+                    if (fvarPatch.tag.isRegular) {
+                        context.gatherRegularPatchPoints(
+                            arrayBuilder->fptr[fvc], fvarPatch, fvc);
+                    } else {
                         context.gatherEndCapPatchPoints(
                             fvarEndCapGregoryBasis[fvc],
                             arrayBuilder->fptr[fvc], fvarPatch, cornerSpans, fvc);
+                    }
                     break;
                 default:
                     break;
                 }
+                arrayBuilder->fptr[fvc] += desc.GetNumControlVertices();
                 *arrayBuilder->fpptr[fvc]++ = fvarPatchParam;
             }
         }
