@@ -230,6 +230,7 @@ protected:
     // XXX: temporarily, GregoryBasis class will go away.
     friend class GregoryBasis;
     // XXX: needed to call reserve().
+    friend class EndCapBilinearBasisPatchFactory;
     friend class EndCapBSplineBasisPatchFactory;
     friend class EndCapGregoryBasisPatchFactory;
 

@@ -29,6 +29,7 @@ set(SOURCE_FILES
     characteristicMap.cpp
     characteristicBuilder.cpp
     error.cpp
+    endCapBilinearBasisPatchFactory.cpp
     endCapBSplineBasisPatchFactory.cpp
     endCapGregoryBasisPatchFactory.cpp
     endCapLegacyGregoryPatchFactory.cpp
@@ -53,6 +54,7 @@ set(SOURCE_FILES
 
 set(PRIVATE_HEADER_FILES
     characteristicBuilder.h
+    endCapBilinearBasisPatchFactory.h
     endCapBSplineBasisPatchFactory.h
     endCapGregoryBasisPatchFactory.h
     endCapLegacyGregoryPatchFactory.h

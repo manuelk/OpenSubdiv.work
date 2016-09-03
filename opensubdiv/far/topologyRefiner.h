@@ -186,6 +186,7 @@ protected:
     friend class TopologyRefinerFactory;
     friend class TopologyRefinerFactoryBase;
     friend class PatchTableFactory;
+    friend class EndCapBilinearBasisPatchFactory;
     friend class EndCapGregoryBasisPatchFactory;
     friend class EndCapLegacyGregoryPatchFactory;
     friend class PatchFaceTag;

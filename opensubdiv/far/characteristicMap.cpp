@@ -119,7 +119,7 @@ bool
 CharacteristicMap::supportsEndCaps(EndCapType type) {
 
     // XXXX we do not support those end-cap types yet
-    if (type==ENDCAP_BILINEAR_BASIS || type==ENDCAP_LEGACY_GREGORY) {
+    if (type==ENDCAP_LEGACY_GREGORY) {
         Error(FAR_CODING_ERROR, "Failure in CharacteristicMap::MapTopology() -- "
             "unsupported EndCapType");
         return false;

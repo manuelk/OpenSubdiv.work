@@ -1268,8 +1268,8 @@ initHUD() {
         "End cap (E)", 10, 230, 200, callbackEndCap, 'e');
     //g_hud.AddPullDownButton(endcap_pulldown, "None",
     //    Far::ENDCAP_NONE, g_endCap == Far::ENDCAP_NONE);
-    //g_hud.AddPullDownButton(endcap_pulldown, "Bilinear",
-    //    Far::ENDCAP_BILINEAR_BASIS, g_endCap == Far::ENDCAP_BILINEAR_BASIS);
+    g_hud.AddPullDownButton(endcap_pulldown, "Bilinear",
+        Far::ENDCAP_BILINEAR_BASIS, g_endCap == Far::ENDCAP_BILINEAR_BASIS);
     g_hud.AddPullDownButton(endcap_pulldown, "BSpline",
         Far::ENDCAP_BSPLINE_BASIS, g_endCap == Far::ENDCAP_BSPLINE_BASIS);
     g_hud.AddPullDownButton(endcap_pulldown, "GregoryBasis",

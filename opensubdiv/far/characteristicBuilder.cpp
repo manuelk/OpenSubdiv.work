@@ -24,6 +24,7 @@
 
 #include "../far/CharacteristicBuilder.h"
 #include "../far/characteristicMap.h"
+#include "../far/endCapBilinearBasisPatchFactory.h"
 #include "../far/endCapBSplineBasisPatchFactory.h"
 #include "../far/endCapGregoryBasisPatchFactory.h"
 #include "../far/neighborhood.h"
@@ -55,7 +56,8 @@ struct EndCapBuilder {
 
         switch (type) {
             case ENDCAP_BILINEAR_BASIS:
-                assert(0);
+                bilinearBasis = new EndCapBilinearBasisPatchFactory(
+                    refiner, endcapStencils, endcapVaryingStencils);
                 break;
             case ENDCAP_BSPLINE_BASIS:
                 bsplineBasis = new EndCapBSplineBasisPatchFactory(
@@ -72,6 +74,9 @@ struct EndCapBuilder {
 
     EndCapBuilder::~EndCapBuilder() {
         switch (type) {
+            case ENDCAP_BILINEAR_BASIS:
+                delete bilinearBasis;
+                break;
             case ENDCAP_BSPLINE_BASIS:
                 delete bsplineBasis;
                 break;
@@ -89,7 +94,8 @@ struct EndCapBuilder {
         Vtr::internal::Level::VSpan cornerSpans[4];
         switch (type) {
             case ENDCAP_BILINEAR_BASIS:
-                assert(0); // XXXX TODO
+                cvs = bilinearBasis->GetPatchPoints(
+                    &level, faceIndex, cornerSpans, levelVertOffset);
                 break;
             case ENDCAP_BSPLINE_BASIS:
                 cvs = bsplineBasis->GetPatchPoints(
@@ -118,6 +124,7 @@ struct EndCapBuilder {
     EndCapType type;
 
     union {
+        EndCapBilinearBasisPatchFactory * bilinearBasis;
         EndCapBSplineBasisPatchFactory * bsplineBasis;
         EndCapGregoryBasisPatchFactory * gregoryBasis;
     };

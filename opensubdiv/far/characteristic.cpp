@@ -255,8 +255,7 @@ evaluateEndCapBasis(EndCapType type, PatchParamBase param,
         case ENDCAP_NONE :
             break;
         case ENDCAP_BILINEAR_BASIS :
-            // XXXX manuelk TODO
-            assert(0);
+            internal::GetBilinearWeights(param, s, t, wP, wDs, wDt);
             break;
         case ENDCAP_BSPLINE_BASIS :
             internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);

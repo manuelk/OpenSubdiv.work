@@ -549,6 +549,7 @@ Characteristic::Node::getNodeSize() const {
 inline int
 Characteristic::Node::getNumEndCapSupports(EndCapType type) {
     switch (type) {
+        case ENDCAP_BILINEAR_BASIS: return 4;
         case ENDCAP_BSPLINE_BASIS: return 16;
         case ENDCAP_GREGORY_BASIS: return 20;
         default:
