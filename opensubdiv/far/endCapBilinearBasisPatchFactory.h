@@ -83,13 +83,6 @@ public:
 
 private:
 
-    struct LevelAndVertex;
-
-    LevelAndVertex resolveVertex(Vtr::internal::Level const * level,
-        Index vertexIndex) const;
-
-private:
-
     StencilTable * _vertexStencils;
     StencilTable * _varyingStencils;
 

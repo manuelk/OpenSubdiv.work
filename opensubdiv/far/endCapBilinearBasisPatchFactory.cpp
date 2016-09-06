@@ -123,40 +123,6 @@ EndCapBilinearBasisPatchFactory::EndCapBilinearBasisPatchFactory(
     }
 }
 
-
-
-struct EndCapBilinearBasisPatchFactory::LevelAndVertex {
-    Vtr::internal::Level const * level;
-    Index vertexIndex;
-};
-
-EndCapBilinearBasisPatchFactory::LevelAndVertex
-EndCapBilinearBasisPatchFactory::resolveVertex(
-    Vtr::internal::Level const * level, Index vertexIndex) const {
-
-    LevelAndVertex result;
-    result.level = level;
-    result.vertexIndex = vertexIndex;
-
-    for (int depth=level->getDepth(); (depth+1)<_refiner.GetNumLevels(); ++depth) {
-
-        Vtr::internal::Refinement const & refinement =
-            _refiner.getRefinement(depth);
-
-        Index cVert =
-            refinement.getVertexChildVertex(result.vertexIndex);
-
-        if (Vtr::IndexIsValid(cVert)) {
-            result.level = &refinement.child();
-            result.vertexIndex = cVert;
-        } else {
-            break;
-        }
-    }
-
-    return result;
-}
-
 ConstIndexArray
 EndCapBilinearBasisPatchFactory::GetPatchPoints(
     Vtr::internal::Level const * level, Index faceIndex,
@@ -192,20 +158,20 @@ EndCapBilinearBasisPatchFactory::GetPatchPoints(
 
     for (int vert=0; vert<faceVerts.size(); ++vert) {
 
-        LevelAndVertex rVert = resolveVertex(level, faceVerts[vert]);
+        Index srcVertIndex = faceVerts[vert];
 
         GregoryBasis::Point dstPoint;
 
         ConstIndexArray vEdges =
-            rVert.level->getVertexEdges(rVert.vertexIndex);
+            level->getVertexEdges(srcVertIndex);
 
         //  Incomplete vertices (present in sparse refinement) do not have their full
         //  topological neighborhood to determine a proper limit -- just leave the
         //  vertex at the refined location and continue to the next:
-        if (rVert.level->getVertexTag(rVert.vertexIndex)._incomplete ||
+        if (level->getVertexTag(srcVertIndex)._incomplete ||
             (vEdges.size() == 0)) {
             dstPoint.Clear(stencilCapacity);
-            dstPoint.AddWithWeight(rVert.vertexIndex, 1.0);
+            dstPoint.AddWithWeight(srcVertIndex, 1.0);
             continue;
         }
 
@@ -214,10 +180,10 @@ EndCapBilinearBasisPatchFactory::GetPatchPoints(
         //  with infinitely sharp features correctly -- including boundaries and corners.
         //  The vertex neighborhood is minimally defined with vertex and edge counts.
         //
-        Sdc::Crease::Rule vRule = rVert.level->getVertexRule(rVert.vertexIndex);
+        Sdc::Crease::Rule vRule = level->getVertexRule(srcVertIndex);
 
         //  This is a bit obscure -- child vertex index will be ignored here
-        vHood.SetIndex(rVert.vertexIndex, rVert.vertexIndex);
+        vHood.SetIndex(srcVertIndex, srcVertIndex);
 
         scheme.ComputeVertexLimitMask(vHood, posMask, vRule);
 
@@ -229,25 +195,25 @@ EndCapBilinearBasisPatchFactory::GetPatchPoints(
         Index * fIndices = indexBuffer + vEdges.size();
 
         for (int i = 0; i < vEdges.size(); ++i) {
-            ConstIndexArray eVerts = rVert.level->getEdgeVertices(vEdges[i]);
+            ConstIndexArray eVerts = level->getEdgeVertices(vEdges[i]);
 
-            eIndices[i] = (eVerts[0] == rVert.vertexIndex) ? eVerts[1] : eVerts[0];
+            eIndices[i] = (eVerts[0] == srcVertIndex) ? eVerts[1] : eVerts[0];
         }
         if (posMask.GetNumFaceWeights()) {
 
             ConstIndexArray      vFaces =
-                rVert.level->getVertexFaces(rVert.vertexIndex);
+                level->getVertexFaces(srcVertIndex);
 
             ConstLocalIndexArray vInFace =
-                rVert.level->getVertexFaceLocalIndices(rVert.vertexIndex);
+                level->getVertexFaceLocalIndices(srcVertIndex);
 
             for (int i = 0; i < vFaces.size(); ++i) {
-                ConstIndexArray fVerts = rVert.level->getFaceVertices(vFaces[i]);
+                ConstIndexArray fVerts = level->getFaceVertices(vFaces[i]);
 
                 LocalIndex vOppInFace = (vInFace[i] + 2);
                 if (vOppInFace >= fVerts.size()) vOppInFace -= (LocalIndex)fVerts.size();
 
-                fIndices[i] = rVert.level->getFaceVertices(vFaces[i])[vOppInFace];
+                fIndices[i] = level->getFaceVertices(vFaces[i])[vOppInFace];
             }
         }
 
@@ -264,7 +230,7 @@ EndCapBilinearBasisPatchFactory::GetPatchPoints(
         for (int i = 0; i < posMask.GetNumEdgeWeights(); ++i) {
             dstPoint.AddWithWeight(eIndices[i], ePosWeights[i]);
         }
-        dstPoint.AddWithWeight(rVert.vertexIndex, vPosWeights[0]);
+        dstPoint.AddWithWeight(srcVertIndex, vPosWeights[0]);
 
         dstPoint.OffsetIndices(levelVertOffset);
 
