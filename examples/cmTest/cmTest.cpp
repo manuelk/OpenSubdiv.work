@@ -86,7 +86,7 @@ int g_level = 3,
     g_tessLevelMin = 2,
     g_currentShape = 8, //cube = 8 square = 12 pyramid = 45 torus = 49
     g_useTerminalNodes = true,
-    g_useDynamicIsolation = false;
+    g_useDynamicIsolation = true;
 
 
 int g_frame = 0,
@@ -180,7 +180,7 @@ struct LimitFrame {
 
 //-----------------------------------------------------------------------------
 
-static float g_patchColors[43][4] = {
+static float g_patchColors[44][4] = {
         {1.0f,  1.0f,  1.0f,  1.0f},   // regular
         {0.0f,  1.0f,  1.0f,  1.0f},   // regular pattern 0
         {0.0f,  0.5f,  1.0f,  1.0f},   // regular pattern 1
@@ -231,6 +231,7 @@ static float g_patchColors[43][4] = {
         {1.0f,  0.7f,  0.3f,  1.0f},   // gregory basis
 
         {0.4f,  0.4f,  0.6f,  1.0f},   // terminal
+        {1.0f,  0.2f,  0.4f,  1.0f},   // dynamic isolation
 };
 
 static float const *
@@ -238,7 +239,8 @@ getAdaptiveColor(Far::Characteristic::Node node, int maxLevel) {
 
     Far::Characteristic::NodeDescriptor desc = node.GetDescriptor();
 
-    int patchType = 0;
+    int patchType = 0,
+        pattern = 0;
     if (desc.GetType()==Far::Characteristic::NODE_REGULAR) {
 
         int edgeCount =desc.GetBoundaryCount();
@@ -262,8 +264,11 @@ getAdaptiveColor(Far::Characteristic::Node node, int maxLevel) {
         }
     } else if (desc.GetType()==Far::Characteristic::NODE_TERMINAL) {
         patchType = 7;
-    } else if (desc.GetType()==Far::Characteristic::NODE_RECURSIVE) {
         if (desc.GetDepth()>=maxLevel) {
+            pattern = 1;
+        }
+    } else if (desc.GetType()==Far::Characteristic::NODE_RECURSIVE) {
+        if (desc.GetDepth()<maxLevel) {
             Far::EndCapType endtype =
                 node.GetCharacteristic()->GetCharacteristicMap().GetEndCapType();
             switch (endtype) {
@@ -273,12 +278,14 @@ getAdaptiveColor(Far::Characteristic::Node node, int maxLevel) {
                 default:
                     break;
             }
+        } else { 
+            patchType = 7;
+            pattern = 1;
         }
     } else {
         assert(0);
     }
 
-    int pattern = 0; //desc.GetTransitionCount();
 
     return g_patchColors[6*patchType + pattern];
 }
