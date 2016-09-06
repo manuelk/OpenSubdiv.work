@@ -126,7 +126,7 @@ EndCapBilinearBasisPatchFactory::EndCapBilinearBasisPatchFactory(
 ConstIndexArray
 EndCapBilinearBasisPatchFactory::GetPatchPoints(
     Vtr::internal::Level const * level, Index faceIndex,
-    Vtr::internal::Level::VSpan const cornerSpans[],
+    Vtr::internal::Level::VSpan const /* cornerSpans */[],
     int levelVertOffset) {
 
     Sdc::Scheme<Sdc::SCHEME_CATMARK> scheme(_refiner.GetSchemeOptions());
@@ -156,11 +156,11 @@ EndCapBilinearBasisPatchFactory::GetPatchPoints(
 
     ConstIndexArray faceVerts = level->getFaceVertices(faceIndex);
 
+    GregoryBasis::Point dstPoint;
+
     for (int vert=0; vert<faceVerts.size(); ++vert) {
 
         Index srcVertIndex = faceVerts[vert];
-
-        GregoryBasis::Point dstPoint;
 
         ConstIndexArray vEdges =
             level->getVertexEdges(srcVertIndex);
