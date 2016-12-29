@@ -22,14 +22,49 @@
      language governing permissions and limitations under the Apache License.
 
 
-3.0 Release Notes
------------------
+3.0 - 3.1 Release Notes
+-----------------------
 
 .. contents::
    :local:
    :backlinks: none
 
 ----
+
+Release 3.1.0
+=============
+
+Release 3.1.0 is a significant release with several new features, bug fixes, and general
+code and configuration improvements.  For more information on the following, please see
+`Release 3.1 <release_31.html>`__
+
+**New Features**
+    - Bicubic Face-Varying Patches
+    - Varying and Face-Varying Evaluation
+    - Second Order Derivative Evaluation
+    - Separate Levels of Feature Isolation
+    - Sharp Patches for Infinitely Sharp Features
+
+**Changes**
+    - Enabled the use of CMake's folder feature
+    - Removed the use of iso646 alternative keywords ('and', 'or', 'not', etc.) to improve portability
+    - Added numerical valued preprocessor directives (OPENSUBDIV_VERSION_MAJOR, etc.) to <opensubdiv/version.h>
+    - Improved documentation for Far::PatchParam and added Unnormalize() to complement Normalize()
+    - Added additional topology queries to Far::TopologyLevel
+    - Updated glFVarViewer and glEvalLimit viewer to make use of bicubic face-varying patches
+    - Updated glViewer and dxViewer to add a toggle for InfSharpPatch
+    - Updated dxPtexViewer for improved feature parity with glPtexViewer
+    - Improved far_regression to exercise shapes independent of Hbr compatibility
+    - Added support for Appveyor continuous integration testing
+    - Removed cmake/FindIlmBase
+    - Removed mayaPolySmooth example
+
+**Bug Fixes**
+    - Fixed Ptex version parsing and compatibility issues
+    - Fixed compatibility issues with VS2015
+    - Fixed bug interpolating face-varying data with Bilinear scheme
+    - Fixed bug with refinement using Chaikin creasing
+    - Fixed bugs with HUD sliders in the example viewers
 
 Release 3.0.5
 =============
@@ -121,7 +156,7 @@ Release 3.0.0
 
 Release 3.0.0 is a major release with many significant improvements and
 changes.  For more information on the following, please see
-`Introduction to 3.0 <intro_30.html>`__
+`Release 3.0 <release_30.html>`__
 
 **New Features**
     - Faster subdivision using less memory
@@ -157,7 +192,7 @@ Release 3.0.0 RC2
     - Fixed glViewer/farViewer stability bugs
 
 
-Release 3.0.0 RC1 
+Release 3.0.0 RC1
 =================
 
 **Changes**

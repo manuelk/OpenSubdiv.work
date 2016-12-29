@@ -86,7 +86,8 @@ namespace internal {
 ///  -----------|:----:|------------------------------------------------------
 ///  level      | 4    | the subdivision level of the patch
 ///  nonquad    | 1    | whether the patch is refined from a non-quad face
-///  unused     | 3    | unused
+///  regular    | 1    | whether patch is regular
+///  unused     | 2    | unused
 ///  boundary   | 4    | boundary edge mask encoding
 ///  v          | 10   | log2 value of u parameter at first patch corner
 ///  u          | 10   | log2 value of v parameter at first patch corner
@@ -191,13 +192,17 @@ public:
         return MapCoarseToRefined(u, v);
     }
 
+    /// \brief Returns whether the patch is regular
+    bool IsRegular() const { return baseData<unsigned short>(1,5) != 0; }
+
 protected:
     unsigned int packBaseData(short u, short v,
                               unsigned short depth, bool nonquad,
-                              unsigned short boundary) {
+                              unsigned short boundary, bool regular) {
         return packBitfield(u,       10, 22) |
                packBitfield(v,       10, 12) |
                packBitfield(boundary, 4,  8) |
+               packBitfield(regular,  1,  5) |
                packBitfield(nonquad,  1,  4) |
                packBitfield(depth,    4,  0);
     }
@@ -265,15 +270,12 @@ public:
     void Set(short u, short v,
              unsigned short depth, bool nonquad,
              unsigned short boundary, bool isRegular = true) {
-        field1 = packBaseData(u, v, depth, nonquad, boundary);
+        field1 = packBaseData(u, v, depth, nonquad, boundary, isRegular);
         field1 |= packBitfield(isRegular,1,5);
     }
 
     /// \brief Resets everything to 0
     void Clear() { field1 = 0; }
-
-    /// \brief Returns whether the patch is regular
-    bool IsRegular() const { return (unpackBitfield(field1,1,5) != 0); }
 
     unsigned int field1:32;
 
@@ -306,9 +308,9 @@ public:
     ///
     void Set(Index faceid, short u, short v,
              unsigned short depth, bool nonquad,
-             unsigned short boundary, unsigned short transition) {
+             unsigned short boundary, bool isRegular = true, unsigned short transition = 0) {
         field0 = packBitfield(faceid, 28, 0) | packBitfield(transition, 4, 28);
-        field1 = packBaseData(u, v, depth, nonquad, boundary);
+        field1 = packBaseData(u, v, depth, nonquad, boundary, isRegular);
     }
 
     /// \brief Resets everything to 0

@@ -8,7 +8,7 @@ Feel free to use it and let us know what you think.
 
 For more details about OpenSubdiv, see [Pixar Graphics Technologies](http://graphics.pixar.com).
 
-|        |  Linux  |  Windows  | 
+|        |  Linux  |  Windows  |
 |:------:|:-------:|:---------:|
 | master | [![Linux Build Status](https://travis-ci.org/PixarAnimationStudios/OpenSubdiv.svg?branch=master)](https://travis-ci.org/PixarAnimationStudios/OpenSubdiv) | [![Windows Build Status](https://ci.appveyor.com/api/projects/status/mcmwg4q9m8kgi9im/branch/master?svg=true)](https://ci.appveyor.com/project/c64kernal/opensubdiv-ddr8q) |
 | dev | [![Linux Build Status](https://travis-ci.org/PixarAnimationStudios/OpenSubdiv.svg?branch=dev)](https://travis-ci.org/PixarAnimationStudios/OpenSubdiv) | [![Windows Build Status](https://ci.appveyor.com/api/projects/status/mcmwg4q9m8kgi9im/branch/dev?svg=true)](https://ci.appveyor.com/project/c64kernal/opensubdiv-ddr8q) |
@@ -46,7 +46,6 @@ For more details about OpenSubdiv, see [Pixar Graphics Technologies](http://grap
 | Lib (URL)                                     | Min Version | Note                |
 | --------------------------------------------- | ----------- | ------------------- |
 | GLFW <br> http://www.glfw.org                 | 3.0.0       | GL examples         |
-| Maya SDK <br> http://www.autodesk.com/maya    | 2013        | maya plugin example |
 | Ptex <br> https://github.com/wdas/ptex        | 2.0         | ptex viewers        |
 | Zlib <br> http://www.zlib.net                 |             | (required for Ptex under windows)|
 | Docutils <br> http://docutils.sourceforge.net |             | documents           |
@@ -84,7 +83,7 @@ For more details about OpenSubdiv, see [Pixar Graphics Technologies](http://grap
 ```
 "c:/Program Files (x86)/CMake/bin/cmake.exe" ^
     -G "Visual Studio 12 Win64" ^
-    -D NO_MAYA=1 -D NO_PTEX=1 -D NO_DOC=1 ^
+    -D NO_PTEX=1 -D NO_DOC=1 ^
     -D NO_OMP=1 -D NO_TBB=1 -D NO_CUDA=1 -D NO_OPENCL=1 -D NO_CLEW=1 ^
     -D "GLEW_LOCATION=*YOUR GLEW INSTALL LOCATION*" ^
     -D "GLFW_LOCATION=*YOUR GLFW INSTALL LOCATION*" ^
@@ -95,7 +94,7 @@ For more details about OpenSubdiv, see [Pixar Graphics Technologies](http://grap
 ### Linux
 
 ```
-cmake -D NO_MAYA=1 -D NO_PTEX=1 -D NO_DOC=1 \
+cmake -D NO_PTEX=1 -D NO_DOC=1 \
       -D NO_OMP=1 -D NO_TBB=1 -D NO_CUDA=1 -D NO_OPENCL=1 -D NO_CLEW=1 \
       -D GLEW_LOCATION="*YOUR GLEW INSTALL LOCATION*" \
       -D GLFW_LOCATION="*YOUR GLFW INSTALL LOCATION*" \
@@ -106,7 +105,7 @@ make
 ### OSX
 
 ```
-cmake -D NO_MAYA=1 -D NO_PTEX=1 -D NO_DOC=1 \
+cmake -D NO_PTEX=1 -D NO_DOC=1 \
       -D NO_OMP=1 -D NO_TBB=1 -D NO_CUDA=1 -D NO_OPENCL=1 -D NO_CLEW=1 \
       -D GLFW_LOCATION="*YOUR GLFW INSTALL LOCATION*" \
       ..
@@ -125,13 +124,11 @@ make
 -DPTEX_LOCATION=[path to Ptex]
 -DGLEW_LOCATION=[path to GLEW]
 -DGLFW_LOCATION=[path to GLFW]
--DMAYA_LOCATION=[path to Maya]
 
 -DNO_LIB=1        // disable the opensubdiv libs build (caveat emptor)
 -DNO_EXAMPLES=1   // disable examples build
 -DNO_TUTORIALS=1  // disable tutorials build
 -DNO_REGRESSION=1 // disable regression tests build
--DNO_MAYA=1       // disable Maya plugin build
 -DNO_PTEX=1       // disable PTex support
 -DNO_DOC=1        // disable documentation build
 -DNO_OMP=1        // disable OpenMP

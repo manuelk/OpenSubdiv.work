@@ -162,8 +162,8 @@ public:
 
     /// \brief Updates local point vertex values.
     ///
-    /// @param src       Buffer with primvar data for the coarse vertex values
-    ///                  and refined vertex values
+    /// @param src       Buffer with primvar data for the base and refined
+    ///                  vertex values
     ///
     /// @param dst       Destination buffer for the computed local point
     ///                  vertex values
@@ -182,8 +182,8 @@ public:
 
     /// \brief Updates local point varying values.
     ///
-    /// @param src       Buffer with primvar data for the coarse varying values
-    ///                  and refined varying values
+    /// @param src       Buffer with primvar data for the base and refined
+    ///                  varying values
     ///
     /// @param dst       Destination buffer for the computed local point
     ///                  varying values
@@ -202,11 +202,13 @@ public:
 
     /// \brief Updates local point face-varying values.
     ///
-    /// @param src       Buffer with primvar data for the coarse face-varying
-    ///                  values and refined face-varying values
+    /// @param src       Buffer with primvar data for the base and refined
+    ///                  face-varying values
     ///
     /// @param dst       Destination buffer for the computed local point
     ///                  face-varying values
+    ///
+    /// @param channel   face-varying channel
     ///
     ///
     template <class T> void
@@ -268,6 +270,9 @@ public:
     /// \brief Accessors for varying data
     ///
 
+    /// \brief Returns the varying patch descriptor
+    PatchDescriptor GetVaryingPatchDescriptor() const;
+
     /// \brief Returns the varying vertex indices for a given patch
     ConstIndexArray GetPatchVaryingVertices(PatchHandle const & handle) const;
 
@@ -293,11 +298,8 @@ public:
     /// \brief Returns the number of face-varying channels
     int GetNumFVarChannels() const;
 
-    /// \brief Deprecated Returns the interpolation mode for \p channel
-    Sdc::Options::FVarLinearInterpolation GetFVarChannelLinearInterpolation(int channel = 0) const;
-
     /// \brief Returns the patch descriptor for \p channel
-    PatchDescriptor GetFVarChannelPatchDescriptor(int channel = 0) const;
+    PatchDescriptor GetFVarPatchDescriptor(int channel = 0) const;
 
     /// \brief Returns the value indices for a given patch in \p channel
     ConstIndexArray GetPatchFVarValues(PatchHandle const & handle, int channel = 0) const;
@@ -312,16 +314,19 @@ public:
     ConstIndexArray GetFVarValues(int channel = 0) const;
 
     /// \brief Returns the value indices for a given patch in \p channel
-    PatchParamBase GetPatchFVarPatchParam(PatchHandle const & handle, int channel = 0) const;
+    PatchParam GetPatchFVarPatchParam(PatchHandle const & handle, int channel = 0) const;
 
     /// \brief Returns the face-varying params for a given patch \p channel
-    PatchParamBase GetPatchFVarPatchParam(int array, int patch, int channel = 0) const;
+    PatchParam GetPatchFVarPatchParam(int array, int patch, int channel = 0) const;
 
     /// \brief Returns the face-varying for a given patch in \p array in \p channel
-    ConstPatchParamBaseArray GetPatchArrayFVarPatchParam(int array, int channel = 0) const;
+    ConstPatchParamArray GetPatchArrayFVarPatchParams(int array, int channel = 0) const;
 
     /// \brief Returns an array of face-varying patch param for \p channel
-    ConstPatchParamBaseArray GetFVarPatchParam(int channel = 0) const;
+    ConstPatchParamArray GetFVarPatchParams(int channel = 0) const;
+
+    /// \brief Deprecated @see PatchTable#GetFVarPatchDescriptor
+    Sdc::Options::FVarLinearInterpolation GetFVarChannelLinearInterpolation(int channel = 0) const;
     //@}
 
 
@@ -364,84 +369,84 @@ public:
     ///
 
     /// \brief Evaluate basis functions for position and derivatives at a
-    /// given (s,t) parametric location of a patch.
+    /// given (u,v) parametric location of a patch.
     ///
     /// @param handle  A patch handle indentifying the sub-patch containing the
-    ///                (s,t) location
+    ///                (u,v) location
     ///
-    /// @param s       Patch coordinate (in coarse face normalized space)
+    /// @param u       Patch coordinate (in base face normalized space)
     ///
-    /// @param t       Patch coordinate (in coarse face normalized space)
+    /// @param v       Patch coordinate (in base face normalized space)
     ///
     /// @param wP      Weights (evaluated basis functions) for the position
     ///
-    /// @param wDs     Weights (evaluated basis functions) for derivative wrt s
+    /// @param wDu     Weights (evaluated basis functions) for derivative wrt u
     ///
-    /// @param wDt     Weights (evaluated basis functions) for derivative wrt t
+    /// @param wDv     Weights (evaluated basis functions) for derivative wrt v
     ///
-    /// @param wDss    Weights (evaluated basis functions) for derivative wrt ss
+    /// @param wDuu    Weights (evaluated basis functions) for 2nd derivative wrt u
     ///
-    /// @param wDst    Weights (evaluated basis functions) for derivative wrt st
+    /// @param wDuv    Weights (evaluated basis functions) for 2nd derivative wrt u and v
     ///
-    /// @param wDtt    Weights (evaluated basis functions) for derivative wrt tt
+    /// @param wDvv    Weights (evaluated basis functions) for 2nd derivative wrt v
     ///
-    void EvaluateBasis(PatchHandle const & handle, float s, float t,
-        float wP[], float wDs[] = 0, float wDt[] = 0,
-        float wDss[] = 0, float wDst[] = 0, float wDtt[] = 0) const;
+    void EvaluateBasis(PatchHandle const & handle, float u, float v,
+        float wP[], float wDu[] = 0, float wDv[] = 0,
+        float wDuu[] = 0, float wDuv[] = 0, float wDvv[] = 0) const;
 
     /// \brief Evaluate basis functions for a varying value and
-    /// derivatives at a given (s,t) parametric location of a patch.
+    /// derivatives at a given (u,v) parametric location of a patch.
     ///
     /// @param handle  A patch handle indentifying the sub-patch containing the
-    ///                (s,t) location
+    ///                (u,v) location
     ///
-    /// @param s       Patch coordinate (in coarse face normalized space)
+    /// @param u       Patch coordinate (in base face normalized space)
     ///
-    /// @param t       Patch coordinate (in coarse face normalized space)
+    /// @param v       Patch coordinate (in base face normalized space)
     ///
     /// @param wP      Weights (evaluated basis functions) for the position
     ///
-    /// @param wDs     Weights (evaluated basis functions) for derivative wrt s
+    /// @param wDu     Weights (evaluated basis functions) for derivative wrt u
     ///
-    /// @param wDt     Weights (evaluated basis functions) for derivative wrt t
+    /// @param wDv     Weights (evaluated basis functions) for derivative wrt v
     ///
-    /// @param wDss    Weights (evaluated basis functions) for derivative wrt ss
+    /// @param wDuu    Weights (evaluated basis functions) for 2nd derivative wrt u
     ///
-    /// @param wDst    Weights (evaluated basis functions) for derivative wrt st
+    /// @param wDuv    Weights (evaluated basis functions) for 2nd derivative wrt u and v
     ///
-    /// @param wDtt    Weights (evaluated basis functions) for derivative wrt tt
+    /// @param wDvv    Weights (evaluated basis functions) for 2nd derivative wrt v
     ///
-    void EvaluateBasisVarying(PatchHandle const & handle, float s, float t,
-        float wP[], float wDs[] = 0, float wDt[] = 0,
-        float wDss[] = 0, float wDst[] = 0, float wDtt[] = 0) const;
+    void EvaluateBasisVarying(PatchHandle const & handle, float u, float v,
+        float wP[], float wDu[] = 0, float wDv[] = 0,
+        float wDuu[] = 0, float wDuv[] = 0, float wDvv[] = 0) const;
 
     /// \brief Evaluate basis functions for a face-varying value and
-    /// derivatives at a given (s,t) parametric location of a patch.
+    /// derivatives at a given (u,v) parametric location of a patch.
     ///
     /// @param handle  A patch handle indentifying the sub-patch containing the
-    ///                (s,t) location
+    ///                (u,v) location
     ///
-    /// @param s       Patch coordinate (in coarse face normalized space)
+    /// @param u       Patch coordinate (in base face normalized space)
     ///
-    /// @param t       Patch coordinate (in coarse face normalized space)
+    /// @param v       Patch coordinate (in base face normalized space)
     ///
     /// @param wP      Weights (evaluated basis functions) for the position
     ///
-    /// @param wDs     Weights (evaluated basis functions) for derivative wrt s
+    /// @param wDu     Weights (evaluated basis functions) for derivative wrt u
     ///
-    /// @param wDt     Weights (evaluated basis functions) for derivative wrt t
+    /// @param wDv     Weights (evaluated basis functions) for derivative wrt v
     ///
-    /// @param wDss    Weights (evaluated basis functions) for derivative wrt ss
+    /// @param wDuu    Weights (evaluated basis functions) for 2nd derivative wrt u
     ///
-    /// @param wDst    Weights (evaluated basis functions) for derivative wrt st
+    /// @param wDuv    Weights (evaluated basis functions) for 2nd derivative wrt u and v
     ///
-    /// @param wDtt    Weights (evaluated basis functions) for derivative wrt tt
+    /// @param wDvv    Weights (evaluated basis functions) for 2nd derivative wrt v
     ///
     /// @param channel face-varying channel
     ///
-    void EvaluateBasisFaceVarying(PatchHandle const & handle, float s, float t,
-        float wP[], float wDs[] = 0, float wDt[] = 0,
-        float wDss[] = 0, float wDst[] = 0, float wDtt[] = 0,
+    void EvaluateBasisFaceVarying(PatchHandle const & handle, float u, float v,
+        float wP[], float wDu[] = 0, float wDv[] = 0,
+        float wDuu[] = 0, float wDuv[] = 0, float wDvv[] = 0,
         int channel = 0) const;
     //@}
 
@@ -510,8 +515,8 @@ private:
     IndexArray getFVarValues(int channel);
     ConstIndexArray getPatchFVarValues(int patch, int channel) const;
 
-    PatchParamBaseArray getFVarPatchParam(int channel);
-    PatchParamBase getPatchFVarPatchParam(int patch, int channel) const;
+    PatchParamArray getFVarPatchParams(int channel);
+    PatchParam getPatchFVarPatchParam(int patch, int channel) const;
 
 private:
 

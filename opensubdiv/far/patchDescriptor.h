@@ -107,6 +107,7 @@ public:
     /// type described
     static inline short GetNumControlVertices( Type t );
 
+    /// \brief Deprecated @see PatchDescriptor#GetNumControlVertices
     static inline short GetNumFVarControlVertices( Type t );
 
     /// \brief Returns the number of control vertices expected for a patch of the
@@ -115,8 +116,7 @@ public:
         return GetNumControlVertices( this->GetType() );
     }
 
-    /// \brief Returns the number of control vertices expected for a patch of the
-    /// type described
+    /// \brief Deprecated @see PatchDescriptor#GetNumControlVertices
     short GetNumFVarControlVertices() const {
         return GetNumFVarControlVertices( this->GetType() );
     }
@@ -169,17 +169,7 @@ PatchDescriptor::GetNumControlVertices( Type type ) {
 // Returns the number of face-varying control vertices expected for a patch of this type
 inline short
 PatchDescriptor::GetNumFVarControlVertices( Type type ) {
-    switch (type) {
-        case REGULAR           : return GetRegularPatchSize();
-        case QUADS             : return 4;
-        case TRIANGLES         : return 3;
-        case LINES             : return 2;
-        case POINTS            : return 1;
-        case GREGORY_BASIS     : assert(0); return GetGregoryBasisPatchSize();
-        case GREGORY           :
-        case GREGORY_BOUNDARY  : assert(0); // unsupported types
-        default : return -1;
-    }
+    return PatchDescriptor::GetNumControlVertices(type);
 }
 
 // Allows ordering of patches by type

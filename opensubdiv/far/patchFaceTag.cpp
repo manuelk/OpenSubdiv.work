@@ -50,76 +50,42 @@ PatchFaceTag::Print() const {
 }
 
 void
-PatchFaceTag::assignBoundaryPropertiesFromEdgeMask(int boundaryEdgeMask) {
-    //
-    //  The number of rotations to apply for boundary or corner patches varies on both
-    //  where the boundary/corner occurs and whether boundary or corner -- so using a
-    //  4-bit mask should be sufficient to quickly determine all cases:
-    //
-    //  Note that we currently expect patches with multiple boundaries to have already
-    //  been isolated, so asserts are applied for such unexpected cases.
-    //
-    //  Is the compiler going to build the 16-entry lookup table here, or should we do
-    //  it ourselves?
-    //
-    hasBoundaryEdge = true;
-    boundaryMask = boundaryEdgeMask;
+PatchFaceTag::assignBoundaryPropertiesFromEdgeMask(int eMask) {
 
-    switch (boundaryEdgeMask) {
-        case 0x0:  boundaryCount = 0, boundaryIndex = 0, hasBoundaryEdge = false;  break;  // no boundaries
-        case 0x1:  boundaryCount = 1, boundaryIndex = 0;  break;  // boundary edge 0
-        case 0x2:  boundaryCount = 1, boundaryIndex = 1;  break;  // boundary edge 1
-        case 0x3:  boundaryCount = 2, boundaryIndex = 1;  break;  // corner/crease vertex 1
-        case 0x4:  boundaryCount = 1, boundaryIndex = 2;  break;  // boundary edge 2
-        case 0x5:  assert(false);                         break;  // N/A - opposite boundary edges
-        case 0x6:  boundaryCount = 2, boundaryIndex = 2;  break;  // corner/crease vertex 2
-        case 0x7:  assert(false);                         break;  // N/A - three boundary edges
-        case 0x8:  boundaryCount = 1, boundaryIndex = 3;  break;  // boundary edge 3
-        case 0x9:  boundaryCount = 2, boundaryIndex = 0;  break;  // corner/crease vertex 0
-        case 0xa:  assert(false);                         break;  // N/A - opposite boundary edges
-        case 0xb:  assert(false);                         break;  // N/A - three boundary edges
-        case 0xc:  boundaryCount = 2, boundaryIndex = 3;  break;  // corner/crease vertex 3
-        case 0xd:  assert(false);                         break;  // N/A - three boundary edges
-        case 0xe:  assert(false);                         break;  // N/A - three boundary edges
-        case 0xf:  assert(false);                         break;  // N/A - all boundaries
-        default:   assert(false);                         break;
-    }
+    static int const edgeMaskToCount[16] =
+        { 0, 1, 1, 2, 1, -1, 2, -1, 1, 2, -1, -1, 2, -1, -1, -1 };
+    static int const edgeMaskToIndex[16] =
+        { -1, 0, 1, 1, 2, -1, 2, -1, 3, 0, -1, -1, 3, -1, -1,-1 };
+
+    assert(edgeMaskToCount[eMask] != -1);
+    assert(edgeMaskToIndex[eMask] != -1);
+
+    boundaryMask    = eMask;
+    hasBoundaryEdge = (eMask > 0);
+
+    boundaryCount = edgeMaskToCount[eMask];
+    boundaryIndex = edgeMaskToIndex[eMask];
 }
 
 void
-PatchFaceTag::assignBoundaryPropertiesFromVertexMask(int boundaryVertexMask) {
+PatchFaceTag::assignBoundaryPropertiesFromVertexMask(int vMask) {
 
-    //
-    //  This is strictly needed for the irregular case when a vertex is a boundary in
-    //  the presence of no boundary edges -- an extra-ordinary face with only one corner
-    //  on the boundary.
-    //
-    //  Its unclear at this point if patches with more than one such vertex are supported
-    //  (if so, how do we deal with rotations) so for now we only allow one such vertex
-    //  and assert for all other cases.
-    //
+    // This is only intended to support the case of a single boundary vertex with no
+    // boundary edges, which can only occur with an irregular vertex
+
+    static int const singleBitVertexMaskToCount[16] =
+        { 0, 1, 1, -1, 1, -1 , -1, -1, 1, -1 , -1, -1, -1, -1 , -1, -1 };
+    static int const singleBitVertexMaskToIndex[16] =
+        { 0, 0, 1, -1, 2, -1 , -1, -1, 3, -1 , -1, -1, -1, -1 , -1, -1 };
+
     assert(hasBoundaryEdge == false);
-    boundaryMask = boundaryVertexMask;
+    assert(singleBitVertexMaskToCount[vMask] != -1);
+    assert(singleBitVertexMaskToIndex[vMask] != -1);
 
-    switch (boundaryVertexMask) {
-        case 0x0:  boundaryCount = 0;                     break;  // no boundaries
-        case 0x1:  boundaryCount = 1, boundaryIndex = 0;  break;  // boundary vertex 0
-        case 0x2:  boundaryCount = 1, boundaryIndex = 1;  break;  // boundary vertex 1
-        case 0x3:  assert(false);                         break;
-        case 0x4:  boundaryCount = 1, boundaryIndex = 2;  break;  // boundary vertex 2
-        case 0x5:  assert(false);                         break;
-        case 0x6:  assert(false);                         break;
-        case 0x7:  assert(false);                         break;
-        case 0x8:  boundaryCount = 1, boundaryIndex = 3;  break;  // boundary vertex 3
-        case 0x9:  assert(false);                         break;
-        case 0xa:  assert(false);                         break;
-        case 0xb:  assert(false);                         break;
-        case 0xc:  assert(false);                         break;
-        case 0xd:  assert(false);                         break;
-        case 0xe:  assert(false);                         break;
-        case 0xf:  assert(false);                         break;
-        default:   assert(false);                         break;
-    }
+    boundaryMask = vMask;
+
+    boundaryCount = singleBitVertexMaskToCount[vMask];
+    boundaryIndex = singleBitVertexMaskToIndex[vMask];
 }
 
 bool
@@ -343,159 +309,6 @@ PatchFaceTag::ComputeTags(
 
     return true;
 }
-
-
-
-void
-PatchFaceTag::ComputeFVarPatchTag(
-    TopologyRefiner const & refiner,
-    Index const levelIndex, Index const faceIndex,
-    Vtr::internal::Level::VSpan cornerSpans[4],
-    int refinerChannel,
-    bool generateFVarLegacyLinearPatches) {
-
-    Vtr::internal::Level const & vtxLevel = refiner.getLevel(levelIndex);
-    Vtr::internal::FVarLevel const & fvarLevel = vtxLevel.getFVarLevel(refinerChannel);
-
-    //
-    // Bi-linear patches
-    //
-
-    if (generateFVarLegacyLinearPatches ||
-        (refiner.GetFVarLinearInterpolation(refinerChannel)==Sdc::Options::FVAR_LINEAR_ALL)) {
-        Clear();
-        isLinear = true;
-        return;
-    }
-
-    //
-    // Bi-cubic patches
-    //
-
-    //  If the face-varying topology matches the vertex topology (which should be the
-    //  dominant case), we can use the patch tag for the original vertex patch --
-    //  quickly check the composite tag for the face-varying values at the corners:
-    //
-
-    ConstIndexArray faceVerts = vtxLevel.getFaceVertices(faceIndex),
-                    fvarValues = fvarLevel.getFaceValues(faceIndex);
-
-    Vtr::internal::FVarLevel::ValueTag compFVarTagsForFace =
-        fvarLevel.getFaceCompositeValueTag(fvarValues, faceVerts);
-
-    if (compFVarTagsForFace.isMismatch()) {
-
-        //  At least one of the corner vertices has differing topology in FVar space,
-        //  so we need to perform similar analysis to what was done to determine the
-        //  face's original patch tag to determine the face-varying patch tag here.
-        //
-        //  Recall how that patch tag is initialized:
-        //      - a "composite" (bitwise-OR) tag of the face's VTags is taken
-        //      - if determined to be on a boundary, a "boundary mask" is built and
-        //        passed to the PatchFaceTag to determine boundary orientation
-        //      - when necessary, a "composite" tag for the face's ETags is inspected
-        //      - special case for "single-crease patch"
-        //      - special case for "approx smooth corner with regular patch"
-        //
-        //  Note differences here (simplifications):
-        //      - we don't need to deal with the single-crease patch case:
-        //          - if vertex patch was single crease the mismatching FVar patch
-        //            cannot be
-        //          - the fvar patch cannot become single-crease patch as only sharp
-        //            (discts) edges are introduced, which are now boundary edges
-        //      - the "approx smooth corner with regular patch" case was ignored:
-        //          - its unclear if it should persist for the vertex patch
-        //
-        //  As was the case with the vertex patch, since we are creating a patch it
-        //  is assumed that all required isolation has occurred.  For example, a
-        //  regular patch at level 0 that has a FVar patch with too many boundaries
-        //  (or local xordinary vertices) is going to cause trouble here...
-        //
-
-        //
-        //  Gather the VTags for the four corners of the FVar patch (these are the VTag
-        //  of each vertex merged with the FVar tag of its value) while computing the
-        //  composite VTag:
-        //
-        Vtr::internal::Level::VTag fvarVertTags[4];
-
-        Vtr::internal::Level::VTag compFVarVTag =
-            fvarLevel.getFaceCompositeValueAndVTag(fvarValues, faceVerts, fvarVertTags);
-
-        //
-        //  Clear/re-initialize the FVar patch tag and compute the appropriate boundary
-        //  masks if boundary orientation is necessary:
-        //
-        Clear();
-        isRegular = !compFVarVTag._xordinary;
-
-        if (compFVarVTag._boundary) {
-            Vtr::internal::Level::ETag fvarEdgeTags[4];
-
-            ConstIndexArray faceEdges = vtxLevel.getFaceEdges(faceIndex);
-
-            Vtr::internal::Level::ETag compFVarETag =
-                fvarLevel.getFaceCompositeCombinedEdgeTag(faceEdges, fvarEdgeTags);
-
-            if (compFVarETag._boundary) {
-                int boundaryEdgeMask = (fvarEdgeTags[0]._boundary << 0) |
-                                       (fvarEdgeTags[1]._boundary << 1) |
-                                       (fvarEdgeTags[2]._boundary << 2) |
-                                       (fvarEdgeTags[3]._boundary << 3);
-
-                assignBoundaryPropertiesFromEdgeMask(boundaryEdgeMask);
-            } else {
-                int boundaryVertMask = (fvarVertTags[0]._boundary << 0) |
-                                       (fvarVertTags[1]._boundary << 1) |
-                                       (fvarVertTags[2]._boundary << 2) |
-                                       (fvarVertTags[3]._boundary << 3);
-
-                assignBoundaryPropertiesFromVertexMask(boundaryVertMask);
-            }
-
-            if (! isRegular) {
-                for (int i=0; i<faceVerts.size(); ++i) {
-                    ConstIndexArray vFaces = vtxLevel.getVertexFaces(faceVerts[i]);
-                    LocalIndex fInVFaces = vFaces.FindIndex(faceIndex);
-
-                    if (fvarLevel.hasSmoothBoundaries()) {
-                        Vtr::internal::FVarLevel::ConstCreaseEndPairArray vCreaseEnds =
-                            fvarLevel.getVertexValueCreaseEnds(faceVerts[i]);
-
-                        Vtr::internal::FVarLevel::ConstSiblingArray vSiblings =
-                            fvarLevel.getVertexFaceSiblings(faceVerts[i]);
-
-                        Vtr::internal::FVarLevel::CreaseEndPair const & creaseEnd =
-                            vCreaseEnds[vSiblings[fInVFaces]];
-
-                        if (creaseEnd._startFace != creaseEnd._endFace) {
-                            // cornerSpan from creaseEnd
-                            cornerSpans[i]._leadingVertEdge = creaseEnd._startFace;
-                            cornerSpans[i]._numFaces =
-                                (creaseEnd._endFace - creaseEnd._startFace + vFaces.size()) % vFaces.size() + 1;
-                            continue;
-                        }
-                    }
-                    // corner span from boundaryMask;
-                    int ePrev = (i - 1 + faceVerts.size()) % faceVerts.size();
-                    int eNext = i;
-                    if (fvarEdgeTags[eNext]._boundary) {
-                        cornerSpans[i]._leadingVertEdge = fInVFaces;
-                        if (fvarEdgeTags[ePrev]._boundary) {
-                            cornerSpans[i]._numFaces = 1;
-                        } else {
-                            cornerSpans[i]._numFaces = 2;
-                        }
-                    } else if (fvarEdgeTags[ePrev]._boundary) {
-                        cornerSpans[i]._leadingVertEdge = (fInVFaces - 1 + vFaces.size()) % vFaces.size();
-                        cornerSpans[i]._numFaces = 2;
-                    }
-                }
-            }
-        }
-    }
-}
-
 
 
 } // end namespace Far

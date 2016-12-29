@@ -52,6 +52,10 @@ set(PUBLIC_HEADER_FILES
     types.h
 )
 
+list(APPEND KERNEL_FILES
+    patchBasisCommon.h
+)
+
 set(DOXY_HEADER_FILES ${PUBLIC_HEADER_FILES})
 
 #-------------------------------------------------------------------------------
@@ -289,10 +293,6 @@ if( CUDA_FOUND )
         list(APPEND PUBLIC_HEADER_FILES
             cudaD3D11VertexBuffer.h
         )
-    endif()
-
-    if (UNIX)
-        list( APPEND CUDA_NVCC_FLAGS -Xcompiler -fPIC --gpu-architecture compute_11 )
     endif()
 endif()
 

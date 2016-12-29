@@ -60,10 +60,16 @@ static void initShapes() {
     g_defaultShapes.push_back( ShapeDesc("catmark_fvar_bound0",      catmark_fvar_bound0,      kCatmark ) );
     g_defaultShapes.push_back( ShapeDesc("catmark_fvar_bound1",      catmark_fvar_bound1,      kCatmark ) );
     g_defaultShapes.push_back( ShapeDesc("catmark_fvar_bound2",      catmark_fvar_bound2,      kCatmark ) );
+    g_defaultShapes.push_back( ShapeDesc("catmark_fvar_bound3",      catmark_fvar_bound3,      kCatmark ) );
+    g_defaultShapes.push_back( ShapeDesc("catmark_fvar_bound4",      catmark_fvar_bound4,      kCatmark ) );
+    g_defaultShapes.push_back( ShapeDesc("catmark_fvar_project0",    catmark_fvar_project0,    kCatmark ) );
     g_defaultShapes.push_back( ShapeDesc("catmark_gregory_test1",    catmark_gregory_test1,    kCatmark ) );
     g_defaultShapes.push_back( ShapeDesc("catmark_gregory_test2",    catmark_gregory_test2,    kCatmark ) );
     g_defaultShapes.push_back( ShapeDesc("catmark_gregory_test3",    catmark_gregory_test3,    kCatmark ) );
     g_defaultShapes.push_back( ShapeDesc("catmark_gregory_test4",    catmark_gregory_test4,    kCatmark ) );
+    g_defaultShapes.push_back( ShapeDesc("catmark_gregory_test5",    catmark_gregory_test5,    kCatmark ) );
+    g_defaultShapes.push_back( ShapeDesc("catmark_gregory_test6",    catmark_gregory_test6,    kCatmark ) );
+    g_defaultShapes.push_back( ShapeDesc("catmark_gregory_test7",    catmark_gregory_test7,    kCatmark ) );
     g_defaultShapes.push_back( ShapeDesc("catmark_hole_test1",       catmark_hole_test1,       kCatmark ) );
     g_defaultShapes.push_back( ShapeDesc("catmark_hole_test2",       catmark_hole_test2,       kCatmark ) );
     g_defaultShapes.push_back( ShapeDesc("catmark_pyramid_creases0", catmark_pyramid_creases0, kCatmark ) );

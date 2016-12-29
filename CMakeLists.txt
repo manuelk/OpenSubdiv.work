@@ -267,13 +267,11 @@ set(CMAKE_SUPPRESS_REGENERATION TRUE)
 option(PTEX_LOCATION "Path to Ptex" "")
 option(GLEW_LOCATION "Path to GLEW" "")
 option(GLFW_LOCATION "Path to GLFW" "")
-option(MAYA_LOCATION "Path to Maya" "")
 
 option(NO_LIB "Disable the opensubdiv libs build (caveat emptor)" OFF)
 option(NO_EXAMPLES "Disable examples build" OFF)
 option(NO_TUTORIALS "Disable tutorials build" OFF)
 option(NO_REGRESSION "Disable regression tests build" OFF)
-option(NO_MAYA "Disable Maya plugin build" OFF)
 option(NO_PTEX "Disable PTex support" OFF)
 option(NO_DOC "Disable documentation build" OFF)
 option(NO_OMP "Disable OpenMP backend" OFF)
@@ -285,6 +283,8 @@ option(NO_OPENGL "Disable OpenGL support")
 option(NO_DX "Disable DirectX support")
 option(NO_TESTS "Disable all tests")
 option(NO_GLTESTS "Disable GL tests")
+
+option(OPENSUBDIV_GREGORY_EVAL_TRUE_DERIVATIVES "Enable true derivative evaluation for Gregory basis patches" OFF)
 
 set(OSD_GPU FALSE)
 
@@ -317,7 +317,7 @@ if(NOT NO_OPENGL AND NOT ANDROID AND NOT IOS)
 endif()
 if(NOT NO_PTEX)
    find_package(PTex 2.0)
-   find_package(Zlib 1.2)
+   find_package(ZLIB 1.2)
 endif()
 if (OPENGL_FOUND AND NOT IOS)
     add_definitions(
@@ -332,10 +332,6 @@ endif()
 
 if (WIN32 AND NOT NO_DX)
    find_package(DXSDK)
-endif()
-
-if (NOT NO_MAYA)
-find_package(Maya 201200)
 endif()
 
 if (NOT NO_DOC)
@@ -481,6 +477,22 @@ if(CUDA_FOUND)
         -DOPENSUBDIV_HAS_CUDA
     )
     set(OSD_GPU TRUE)
+
+    if (UNIX)
+        list( APPEND CUDA_NVCC_FLAGS -Xcompiler -fPIC )
+        if (NOT DEFINED OSD_CUDA_NVCC_FLAGS)
+            if (CUDA_VERSION_MAJOR LESS 6)
+                set( OSD_CUDA_NVCC_FLAGS --gpu-architecture compute_11 )
+            else()
+                set( OSD_CUDA_NVCC_FLAGS --gpu-architecture compute_20 )
+            endif()
+        endif()
+    endif()
+
+    if (DEFINED OSD_CUDA_NVCC_FLAGS)
+        list( APPEND CUDA_NVCC_FLAGS ${OSD_CUDA_NVCC_FLAGS})
+    endif()
+
 else()
     if (NOT NO_CUDA)
         message(WARNING
@@ -506,20 +518,8 @@ else()
     endif()
 endif()
 
-if (NOT NO_MAYA)
-    if(MAYA_FOUND)
-        add_definitions(
-            -DOPENSUBDIV_HAS_MAYA
-        )
-    else()
-        message(WARNING
-            "Maya was not found : the OpenSubdiv mayaViwer plugin will not be "
-            "available.  If you do have Maya installed and see this message, "
-            "please add your Maya path to FindMaya.cmake in "
-            "${PROJECT_SOURCE_DIR}/cmake or set it through the MAYA_LOCATION "
-            "cmake command line argument or environment variable."
-        )
-    endif()
+if( OPENSUBDIV_GREGORY_EVAL_TRUE_DERIVATIVES )
+    add_definitions(-DOPENSUBDIV_GREGORY_EVAL_TRUE_DERIVATIVES)
 endif()
 
 # Link examples & regressions dynamically against Osd

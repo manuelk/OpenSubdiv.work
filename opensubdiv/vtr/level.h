@@ -114,16 +114,12 @@ public:
         VTagSize _rule            : 4;  // variable when _semiSharp
         VTagSize _incomplete      : 1;  // variable for sparse refinement
 
-        //  Inf-sharp tags -- in development, some may not persist...
+        //  Tags indicating incident infinitely-sharp (permanent) features
         VTagSize _infSharpEdges   : 1;  // fixed
         VTagSize _infSharpCrease  : 1;  // fixed
-        VTagSize _infSharpCorners : 1;  // fixed
         VTagSize _infIrregular    : 1;  // fixed
 
-        //  On deck -- coming soon...
-        //VTagSize _constSharp   : 1;  // variable when _semiSharp
-        //VTagSize _hasEdits     : 1;  // variable
-        //VTagSize _editsApplied : 1;  // variable
+        static VTag BitwiseOr(VTag const vTags[], int size = 4);
     };
     struct ETag {
         ETag() { }
@@ -137,6 +133,8 @@ public:
         ETagSize _boundary     : 1;  // fixed
         ETagSize _infSharp     : 1;  // fixed
         ETagSize _semiSharp    : 1;  // variable
+
+        static ETag BitwiseOr(ETag const eTags[], int size = 4);
     };
     struct FTag {
         FTag() { }
@@ -151,30 +149,34 @@ public:
         //FTagSize _hasEdits : 1;  // variable
     };
 
-    VTag getFaceCompositeVTag(ConstIndexArray & faceVerts) const;
-
     ETag getFaceCompositeETag(ConstIndexArray & faceEdges) const;
 
     //  Additional simple struct to identify a "span" around a vertex, i.e. a
     //  subset of the faces around a vertex delimited by some property (e.g. a
     //  face-varying discontinuity, an inf-sharp edge, etc.)
     //
-    //  The span requires an "origin", i.e. a leading edge or face and a "size"
-    //  to fully define its extent.  Use of the size is preferred over leading
-    //  and trailing edges/faces so that valence is available since for a non-
-    //  manifold vertex that cannot be determined from the two extremeties.
-    //  There is also a subtle but marginal advantage in using a leading edge
-    //  rather than face, but it may be worth using the leading face with the
-    //  face count for consistency (both properties defined in terms of faces).
+    //  The span requires an "origin" and a "size" to fully define its extent.
+    //  Use of the size is required over a leading/trailing pair as the valence
+    //  around a non-manifold vertex cannot be trivially determined from two
+    //  extremeties.  Similarly a start face is chosen over an edge as starting
+    //  with a manifold edge is ambiguous.  Additional tags also support
+    //  non-manifold cases, e.g. periodic spans at the apex of a double cone.
     //
-    //  Currently setting the size to 0 is an indication to use the full
-    //  neighborhood rather than a subset -- may want to revisit that choice...
+    //  Currently setting the size to 0 or leaving the span "unassigned" is an
+    //  indication to use the full neighborhood rather than a subset -- prefer
+    //  use of the const method here to direct inspection of the member.
     //
     struct VSpan {
-        VSpan() : _numFaces(0), _leadingVertEdge(0) { }
+        VSpan() { std::memset(this, 0, sizeof(VSpan)); }
+
+        void clear()            { std::memset(this, 0, sizeof(VSpan)); }
+        bool isAssigned() const { return _numFaces > 0; }
 
         LocalIndex _numFaces;
-        LocalIndex _leadingVertEdge;
+        LocalIndex _startFace;
+
+        unsigned short _periodic : 1;
+        unsigned short _sharp    : 1;
     };
 
 public:
@@ -295,6 +297,29 @@ public:
     //  High-level topology queries -- these may be moved elsewhere:
 
     bool isSingleCreasePatch(Index face, float* sharpnessOut=NULL, int* rotationOut=NULL) const;
+
+    //
+    //  When inspecting topology, the component tags -- particularly VTag and ETag -- are most
+    //  often inspected in groups for the face to which they belong.  They are designed to be
+    //  bitwise OR'd (the result then referred to as a "composite" tag) to make quick decisions
+    //  about the face as a whole to avoid tedious topological inspection.
+    //
+    //  The same logic can be applied to topology in a FVar channel when tags specific to that
+    //  channel are used.  Note that the VTags apply to the FVar values assigned to the corners
+    //  of the face and not the vertex as a whole.  The "composite" face-varying VTag for a
+    //  vertex is the union of VTags of all distinct FVar values for that vertex.
+    //
+    bool doesVertexFVarTopologyMatch(Index vIndex, int fvarChannel) const;
+    bool doesFaceFVarTopologyMatch(  Index fIndex, int fvarChannel) const;
+    bool doesEdgeFVarTopologyMatch(  Index eIndex, int fvarChannel) const;
+
+    void getFaceVTags(Index fIndex, VTag vTags[], int fvarChannel = -1) const;
+    void getFaceETags(Index fIndex, ETag eTags[], int fvarChannel = -1) const;
+
+    VTag getFaceCompositeVTag(Index fIndex, int fvarChannel = -1) const;
+    VTag getFaceCompositeVTag(ConstIndexArray & fVerts) const;
+
+    VTag getVertexCompositeFVarVTag(Index vIndex, int fvarChannel) const;
 
     //
     //  When gathering "patch points" we may want the indices of the vertices or the corresponding

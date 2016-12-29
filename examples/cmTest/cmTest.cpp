@@ -66,6 +66,12 @@ GLFWmonitor* g_primary=0;
 #include <sstream>
 #include <thread>
 
+#if _MSC_VER
+    #define snprintf _snprintf
+#endif
+
+
+
 using namespace OpenSubdiv;
 
 enum DisplayStyle { DISPLAY_STYLE_WIRE,

@@ -75,12 +75,6 @@ public:
         Index const levelIndex, Index const faceIndex,
             int maxIsolationLevel, bool useSingleCreasePatch);
 
-    void ComputeFVarPatchTag(TopologyRefiner const & refiner,
-        Index const levelIndex, Index const faceIndex,
-            Vtr::internal::Level::VSpan cornerSpans[4],
-                int refinerChannel, bool generateFVarLegacyLinearPatches);
-
-
     // debug print
     void Print() const;
 
@@ -90,8 +84,8 @@ private:
 
     void assignBoundaryPropertiesFromVertexMask(int boundaryVertexMask);
 
-    void assignTransitionPropertiesFromEdgeMask(int mask) {
-        transitionMask = mask;
+    void assignTransitionPropertiesFromEdgeMask(int tMask) {
+        transitionMask = tMask;
     }
 
 };

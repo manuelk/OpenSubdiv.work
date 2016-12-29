@@ -39,15 +39,20 @@ class PatchFaceTag;
 class PtexIndices;
 class TopologyRefiner;
 
+/// \brief Factory for constructing a PatchTable from a TopologyRefiner
+///
 class PatchTableFactory {
 public:
 
+    /// \brief Public options for the PatchTable factory
+    ///
     struct Options {
 
         Options(unsigned int maxIsolation=10) :
              generateAllLevels(false),
              triangulateQuads(false),
              useSingleCreasePatch(false),
+             useInfSharpPatch(false),
              maxIsolationLevel(maxIsolation),
              endCapType(ENDCAP_GREGORY_BASIS),
              shareEndCapPatchPoints(true),
@@ -66,6 +71,7 @@ public:
         unsigned int generateAllLevels    : 1, ///< Include levels from 'firstLevel' to 'maxLevel' (Uniform mode only)
                      triangulateQuads     : 1, ///< Triangulate 'QUADS' primitives (Uniform mode only)
                      useSingleCreasePatch : 1, ///< Use single crease patch
+                     useInfSharpPatch     : 1, ///< Use infinitely-sharp patch
                      maxIsolationLevel    : 4, ///< Cap adaptive feature isolation to the given level (max. 10)
 
                      // end-capping

@@ -539,7 +539,6 @@ Level::print(const Refinement* pRefinement) const {
         printf(", infSharp = %d",       (int)vTag._infSharp);
         printf(", infSharpEdges = %d",  (int)vTag._infSharpEdges);
         printf(", infSharpCrease = %d", (int)vTag._infSharpCrease);
-        printf(", infSharpCorners = %d",(int)vTag._infSharpCorners);
         printf(", infIrregular = %d",   (int)vTag._infIrregular);
         printf(", semiSharp = %d",      (int)vTag._semiSharp);
         printf(", semiSharpEdges = %d", (int)vTag._semiSharpEdges);
@@ -548,6 +547,62 @@ Level::print(const Refinement* pRefinement) const {
     fflush(stdout);
 }
 
+//
+//  Methods for retrieving and combining tags:
+//
+bool
+Level::doesVertexFVarTopologyMatch(Index vIndex, int fvarChannel) const {
+
+    return getFVarLevel(fvarChannel).valueTopologyMatches(
+             getFVarLevel(fvarChannel).getVertexValueOffset(vIndex));
+}
+bool
+Level::doesEdgeFVarTopologyMatch(Index eIndex, int fvarChannel) const {
+
+    return getFVarLevel(fvarChannel).edgeTopologyMatches(eIndex);
+}
+bool
+Level::doesFaceFVarTopologyMatch(Index fIndex, int fvarChannel) const {
+
+    return ! getFVarLevel(fvarChannel).getFaceCompositeValueTag(fIndex).isMismatch();
+}
+
+void
+Level::getFaceVTags(Index fIndex, VTag vTags[], int fvarChannel) const {
+
+    ConstIndexArray fVerts = getFaceVertices(fIndex);
+    if (fvarChannel < 0) {
+        for (int i = 0; i < fVerts.size(); ++i) {
+            vTags[i] = getVertexTag(fVerts[i]);
+        }
+    } else {
+        FVarLevel const & fvarLevel = getFVarLevel(fvarChannel);
+        ConstIndexArray fValues = fvarLevel.getFaceValues(fIndex);
+        for (int i = 0; i < fVerts.size(); ++i) {
+            Index valueIndex = fvarLevel.findVertexValueIndex(fVerts[i], fValues[i]);
+            FVarLevel::ValueTag valueTag = fvarLevel.getValueTag(valueIndex);
+
+            vTags[i] = valueTag.combineWithLevelVTag(getVertexTag(fVerts[i]));
+        }
+    }
+}
+void
+Level::getFaceETags(Index fIndex, ETag eTags[], int fvarChannel) const {
+
+    ConstIndexArray fEdges = getFaceEdges(fIndex);
+    if (fvarChannel < 0) {
+        for (int i = 0; i < fEdges.size(); ++i) {
+            eTags[i] = getEdgeTag(fEdges[i]);
+        }
+    } else {
+        FVarLevel const & fvarLevel = getFVarLevel(fvarChannel);
+        for (int i = 0; i < fEdges.size(); ++i) {
+            FVarLevel::ETag fvarETag = fvarLevel.getEdgeTag(fEdges[i]);
+
+            eTags[i] = fvarETag.combineWithLevelETag(getEdgeTag(fEdges[i]));
+        }
+    }
+}
 
 namespace {
     template <typename TAG_TYPE, typename INT_TYPE>
@@ -563,25 +618,81 @@ namespace {
     }
 }
 
-Level::VTag
-Level::getFaceCompositeVTag(ConstIndexArray & faceVerts) const {
-
-    VTag compTag = _vertTags[faceVerts[0]];
-
-    for (int i = 1; i < faceVerts.size(); ++i) {
-        combineTags<VTag, VTag::VTagSize>(compTag, _vertTags[faceVerts[i]]);
-    }
-    return compTag;
-}
 Level::ETag
 Level::getFaceCompositeETag(ConstIndexArray & faceEdges) const {
 
     ETag compTag = _edgeTags[faceEdges[0]];
-
     for (int i = 1; i < faceEdges.size(); ++i) {
         combineTags<ETag, ETag::ETagSize>(compTag, _edgeTags[faceEdges[i]]);
     }
     return compTag;
+}
+
+Level::VTag
+Level::VTag::BitwiseOr(VTag const vTags[], int size) {
+
+    VTag compTag = vTags[0];
+    for (int i = 1; i < size; ++i) {
+        combineTags<VTag, VTag::VTagSize>(compTag, vTags[i]);
+    }
+    return compTag;
+}
+Level::ETag
+Level::ETag::BitwiseOr(ETag const eTags[], int size) {
+
+    ETag compTag = eTags[0];
+    for (int i = 1; i < size; ++i) {
+        combineTags<ETag, ETag::ETagSize>(compTag, eTags[i]);
+    }
+    return compTag;
+}
+
+Level::VTag
+Level::getFaceCompositeVTag(ConstIndexArray & fVerts) const {
+
+    VTag compTag = _vertTags[fVerts[0]];
+    for (int i = 1; i < fVerts.size(); ++i) {
+        combineTags<VTag, VTag::VTagSize>(compTag, _vertTags[fVerts[i]]);
+    }
+    return compTag;
+}
+Level::VTag
+Level::getFaceCompositeVTag(Index fIndex, int fvarChannel) const {
+
+    ConstIndexArray fVerts = getFaceVertices(fIndex);
+    if (fvarChannel < 0) {
+        return getFaceCompositeVTag(fVerts);
+    } else {
+        FVarLevel const & fvarLevel = getFVarLevel(fvarChannel);
+        internal::StackBuffer<FVarLevel::ValueTag,64> fvarTags(fVerts.size());
+        fvarLevel.getFaceValueTags(fIndex, fvarTags);
+
+        VTag compTag = fvarTags[0].combineWithLevelVTag(_vertTags[fVerts[0]]);
+        for (int i = 1; i < fVerts.size(); ++i) {
+            combineTags<VTag, VTag::VTagSize>(compTag,
+                        fvarTags[i].combineWithLevelVTag(_vertTags[fVerts[i]]));
+        }
+        return compTag;
+    }
+}
+
+Level::VTag
+Level::getVertexCompositeFVarVTag(Index vIndex, int fvarChannel) const {
+
+    FVarLevel const & fvarLevel = getFVarLevel(fvarChannel);
+
+    FVarLevel::ConstValueTagArray fvTags = fvarLevel.getVertexValueTags(vIndex);
+
+    VTag vTag = getVertexTag(vIndex);
+    if (fvTags[0].isMismatch()) {
+        VTag compVTag = fvTags[0].combineWithLevelVTag(vTag);
+        for (int i = 1; i < fvTags.size(); ++i) {
+            combineTags<VTag, VTag::VTagSize>(compVTag, fvTags[i].combineWithLevelVTag(vTag));
+        }
+        return compVTag;
+    } else {
+        return vTag;
+    }
 }
 
 //
@@ -665,8 +776,8 @@ Level::gatherQuadRegularPartialRingAroundVertex(
     ConstIndexArray      vFaces   = level.getVertexFaces(vIndex);
     ConstLocalIndexArray vInFaces = level.getVertexFaceLocalIndices(vIndex);
 
-    int nFaces      = span._numFaces;
-    int leadingEdge = span._leadingVertEdge;
+    int nFaces    = span._numFaces;
+    int startFace = span._startFace;
 
     int ringIndex = 0;
     for (int i = 0; i < nFaces; ++i) {
@@ -674,7 +785,7 @@ Level::gatherQuadRegularPartialRingAroundVertex(
         //  For every incident quad, we want the two vertices clockwise in each face, i.e.
         //  the vertex at the end of the leading edge and the vertex opposite this one:
         //
-        int fIncident = (leadingEdge + i) % vFaces.size();
+        int fIncident = (startFace + i) % vFaces.size();
 
         ConstIndexArray fPoints = (fvarChannel < 0)
                                 ? level.getFaceVertices(vFaces[fIncident])
@@ -685,7 +796,7 @@ Level::gatherQuadRegularPartialRingAroundVertex(
         ringPoints[ringIndex++] = fPoints[fastMod4(vInThisFace + 1)];
         ringPoints[ringIndex++] = fPoints[fastMod4(vInThisFace + 2)];
 
-        if (i == nFaces - 1) {
+        if ((i == nFaces - 1) && !span._periodic) {
             ringPoints[ringIndex++] = fPoints[fastMod4(vInThisFace + 3)];
         }
     }
