@@ -902,7 +902,7 @@ PatchTableFactory::computePatchParam(
 
     PatchParam param;
     param.Set(ptexIndex, (short)u, (short)v, (unsigned short) depth, nonquad,
-              (unsigned short) boundaryMask, /*regular*/ true, (unsigned short) transitionMask);
+              (unsigned short) boundaryMask, /*regular*/ false, (unsigned short) transitionMask);
     return param;
 }
 

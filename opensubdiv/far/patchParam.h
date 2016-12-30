@@ -308,7 +308,7 @@ public:
     ///
     void Set(Index faceid, short u, short v,
              unsigned short depth, bool nonquad,
-             unsigned short boundary, bool isRegular = true, unsigned short transition = 0) {
+             unsigned short boundary, bool isRegular = false, unsigned short transition = 0) {
         field0 = packBitfield(faceid, 28, 0) | packBitfield(transition, 4, 28);
         field1 = packBaseData(u, v, depth, nonquad, boundary, isRegular);
     }
