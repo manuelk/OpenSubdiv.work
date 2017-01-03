@@ -145,7 +145,7 @@ public:
     void print() const;
 
 private:
-    unsigned int  _type:4;
+    unsigned int  _type;
 };
 
 typedef Vtr::ConstArray<PatchDescriptor> ConstPatchDescriptorArray;
