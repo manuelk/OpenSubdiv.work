@@ -102,7 +102,6 @@ private:
         unsigned int active      : 1,  // skip inactive nodes
                      levelIndex  : 4,  // index of Vtr::level
                      nodeType    : 2,  // Characteristic::NodeType
-                     hasPatch    : 1,  // true if tree-leaf
                      evIndex     : 2,  // index of xordinary vertex for terminal nodes
                      numChildren : 3;  // number of children linked to the node
 

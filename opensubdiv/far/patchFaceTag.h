@@ -58,8 +58,8 @@ class TopologyRefiner;
 class PatchFaceTag {
 
 public:
-    unsigned int isRegular       : 1,
-                 isLinear        : 1,
+    unsigned int hasPatch        : 1, 
+                 isRegular       : 1,
                  transitionMask  : 4,
                  boundaryMask    : 4,
                  boundaryIndex   : 2,
@@ -71,7 +71,7 @@ public:
     void Clear();
 
     /// \brief Computes the patch tags for the given face
-    bool ComputeTags(Far::TopologyRefiner const & refiner,
+    void ComputeTags(Far::TopologyRefiner const & refiner,
         Index const levelIndex, Index const faceIndex,
             int maxIsolationLevel, bool useSingleCreasePatch);
 

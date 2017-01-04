@@ -47,12 +47,6 @@ namespace Far {
 /// * Adaptively subdivided meshes contain bicubic patches of types REGULAR,
 ///   GREGORY, GREGORY_BOUNDARY, GREGORY_BASIS.
 ///
-/// Bitfield layout :
-///
-///  Field       | Bits | Content
-///  ------------|:----:|------------------------------------------------------
-///  _type       | 4    | patch type
-///
 class PatchDescriptor {
 
 public:
@@ -145,7 +139,7 @@ public:
     void print() const;
 
 private:
-    unsigned int  _type;
+    unsigned int _type;
 };
 
 typedef Vtr::ConstArray<PatchDescriptor> ConstPatchDescriptorArray;

@@ -92,7 +92,8 @@ int g_level = 3,
     g_tessLevelMin = 2,
     g_currentShape = 8, //cube = 8 square = 12 pyramid = 45 torus = 49
     g_useTerminalNodes = true,
-    g_useDynamicIsolation = true;
+    g_useDynamicIsolation = true,
+    g_infSharpPatch = 0;
 
 
 int g_frame = 0,
@@ -284,7 +285,7 @@ getAdaptiveColor(Far::Characteristic::Node node, int maxLevel) {
                 default:
                     break;
             }
-        } else { 
+        } else {
             patchType = 7;
             pattern = 1;
         }
@@ -452,9 +453,9 @@ computeCharacteristicMapSize(Far::CharacteristicMap const & charmap) {
     for (int charIndex=0; charIndex<charmap.GetNumCharacteristics(); ++charIndex) {
 
         Far::Characteristic const * ch = charmap.GetCharacteristic(charIndex);
-        
+
         result += ch->GetTreeSize() * sizeof(int);
-        
+
         result += ch->GetSupportsSizes().size() * sizeof(short);
         result += ch->GetSupportIndices().size() * sizeof(Far::LocalIndex);
         result += ch->GetSupportWeights().size() * sizeof(float);
@@ -473,7 +474,7 @@ computePlansTableSize(Far::SubdivisionPlanTable const & plansTable) {
     size_t result = 0;
     result += plansTable.GetSubdivisionPlans().size() * sizeof(Far::SubdivisionPlan);
     result += plansTable.GetControlVertices().size() * sizeof(Far::Index);
-    return result;   
+    return result;
 }
 
 //------------------------------------------------------------------------------
@@ -541,7 +542,7 @@ createTessMesh(Far::SubdivisionPlanTable const & plansTable, int nplans, int tes
         topo.nverts = (int)positions.size()/3;
         g_tessMesh = new GLMesh(topo, GLMesh::DRAW_POINTS);
     } else {
-    
+
         int ntriangles = 2 * (tessFactor-1) * (tessFactor-1) * nplans;
 
         // create tess mesh
@@ -617,6 +618,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     {
         Far::TopologyRefiner::AdaptiveOptions options(maxlevel);
         options.useSingleCreasePatch = true;
+        options.useInfSharpPatch = g_infSharpPatch;
         refiner->RefineAdaptive(options);
     }
 
@@ -627,7 +629,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     g_controlMeshVerts->UpdateData(&shape->verts[0], 0, nverts);
     g_controlMeshDisplay.SetTopology(refiner->GetLevel(0));
 
-    // build characteristics map 
+    // build characteristics map
     Far::CharacteristicMap::Options options;
     options.endCapType = g_endCap;
     options.useTerminalNode = g_useTerminalNodes;
@@ -700,7 +702,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         //
         // Evaluate all supports points for this plan.
         // Depending on sampling density, we may end up using only a few of
-        // them. To avoid this, we could first build a list of Nodes 
+        // them. To avoid this, we could first build a list of Nodes
         // (ie. sub-patches) that we actually want to sample, and then
         // evaluate only those support stencils.
         {
@@ -788,7 +790,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
                 bool nodeSelected = false;
                 if (g_currentPlanIndex>=0 && g_currentPlanIndex==planIndex &&
-                    g_currentNodeIndex>=0 && 
+                    g_currentNodeIndex>=0 &&
                     g_currentNode==node) {
                     nodeSelected = true;
                 }
@@ -961,7 +963,7 @@ display() {
            { 0.1f, 0.1f, 0.1f, 1.0f },
            { 0.7f, 0.7f, 0.7f, 1.0f },
 #define SPECULAR
-#ifdef SPECULAR           
+#ifdef SPECULAR
            { 0.8f, 0.8f, 0.8f, 1.0f } },
 #else
            { 0.0f, 0.0f, 0.0f, 1.0f } },
@@ -970,7 +972,7 @@ display() {
          { { -0.8f, 0.4f, -1.0f, 0.0f },
            {  0.0f, 0.0f,  0.0f, 1.0f },
            {  0.5f, 0.5f,  0.5f, 1.0f },
-#ifdef SPECULAR           
+#ifdef SPECULAR
            {  0.8f, 0.8f,  0.8f, 1.0f } }}
 #else
            { 0.0f, 0.0f, 0.0f, 1.0f } }}
@@ -1091,6 +1093,7 @@ enum HudCheckBox { kHUD_CB_DISPLAY_CONTROL_MESH_EDGES,
                    kHUD_CB_DISPLAY_NODE_IDS,
                    kHUD_CB_USE_TERMINAL_NODES,
                    kHUD_CB_USE_DYNAMIC_ISOLATION,
+                   kHUD_CB_INF_SHARP_PATCH,
                   };
 
 
@@ -1111,6 +1114,7 @@ callbackCheckBox(bool checked, int button) {
 
         case kHUD_CB_USE_TERMINAL_NODES: g_useTerminalNodes = checked; break;
         case kHUD_CB_USE_DYNAMIC_ISOLATION: g_useDynamicIsolation = checked; break;
+        case kHUD_CB_INF_SHARP_PATCH: g_infSharpPatch = checked; break;
         default:
             break;
     }
@@ -1264,9 +1268,11 @@ initHUD() {
     g_hud.AddCheckBox("Terminal Nodes (T)", g_useTerminalNodes==1,
         10, 50, callbackCheckBox, kHUD_CB_USE_TERMINAL_NODES, 't');
 
-    g_hud.AddCheckBox("Dynamic Isolation (I)", g_useDynamicIsolation==1,
-        10, 70, callbackCheckBox, kHUD_CB_USE_DYNAMIC_ISOLATION, 'i');
+    g_hud.AddCheckBox("Dynamic Isolation (D)", g_useDynamicIsolation==1,
+        10, 70, callbackCheckBox, kHUD_CB_USE_DYNAMIC_ISOLATION, 'd');
 
+    g_hud.AddCheckBox("Inf Sharp Patch (I)", g_infSharpPatch!=0,
+                          10, 90, callbackCheckBox, kHUD_CB_INF_SHARP_PATCH, 'i');
 
     g_hud.AddCheckBox("Vert IDs", g_DrawVertIDs!=0,
         10, 120, callbackCheckBox, kHUD_CB_DISPLAY_VERT_IDS);

@@ -373,10 +373,10 @@ CharacteristicBuilder::identifyNode(int levelIndex, Index faceIndex) {
     node.faceIndex = faceIndex;
 
     node.patchTag.Clear();
-    node.hasPatch = node.patchTag.ComputeTags(_refiner,
+    node.patchTag.ComputeTags(_refiner,
         levelIndex, faceIndex, getMaxIsolationLevel(), useSingleCreasePatches());
 
-    if (node.hasPatch) {
+    if (node.patchTag.hasPatch) {
         node.nodeType = node.patchTag.isRegular ?
             Characteristic::NODE_REGULAR : Characteristic::NODE_END;
         node.numChildren = 0;
@@ -406,7 +406,7 @@ CharacteristicBuilder::nodeIsTerminal(ProtoNode const & pn, int * evIndex) const
 
         ProtoNode const & child = getNodeChild(pn, i);
         if (child.patchTag.isRegular) {
-            assert(child.hasPatch);
+            assert(child.patchTag.hasPatch);
             ++regular;
         } else {
             // trivial rejection for boundaries or creases

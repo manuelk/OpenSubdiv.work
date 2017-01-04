@@ -88,7 +88,7 @@ PatchFaceTag::assignBoundaryPropertiesFromVertexMask(int vMask) {
     boundaryIndex = singleBitVertexMaskToIndex[vMask];
 }
 
-bool
+void
 PatchFaceTag::ComputeTags(
     TopologyRefiner const & refiner,
         Index const levelIndex, Index const faceIndex,
@@ -97,7 +97,8 @@ PatchFaceTag::ComputeTags(
     Vtr::internal::Level const * level = &refiner.getLevel(levelIndex);
 
     if (level->isFaceHole(faceIndex)) {
-        return false;
+        hasPatch = false;
+        return;
     }
 
     //
@@ -134,7 +135,8 @@ PatchFaceTag::ComputeTags(
             : Vtr::internal::Refinement::SparseTag();
 
     if (refinedFaceTag._selected) {
-        return false;
+        hasPatch = false;
+        return;
     }
 
     Vtr::ConstIndexArray fVerts = level->getFaceVertices(faceIndex);
@@ -142,7 +144,8 @@ PatchFaceTag::ComputeTags(
 
     Vtr::internal::Level::VTag compFaceVertTag = level->getFaceCompositeVTag(fVerts);
     if (compFaceVertTag._incomplete) {
-        return false;
+        hasPatch = false;
+        return;
     }
 
     //
@@ -193,8 +196,8 @@ PatchFaceTag::ComputeTags(
                 float cappedSharpness =
                         std::min(sharpness, (float)(maxIsolationLevel - levelIndex));
                 if (cappedSharpness > 0) {
-            isSingleCrease = true;
-            boundaryIndex = rotation;
+                    isSingleCrease = true;
+                    boundaryIndex = rotation;
                 }
             }
         }
@@ -307,7 +310,7 @@ PatchFaceTag::ComputeTags(
     //
     transitionMask = refinedFaceTag._transitional;
 
-    return true;
+    hasPatch = true;
 }
 
 
