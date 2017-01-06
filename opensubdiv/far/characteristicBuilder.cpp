@@ -31,6 +31,8 @@
 #include "../far/patchFaceTag.h"
 #include "../far/stencilTableFactory.h"
 #include "../far/topologyRefinerFactory.h"
+#include "../vtr/level.h"
+#include "../vtr/fvarLevel.h"
 #include "../vtr/refinement.h"
 
 #include <cassert>
@@ -40,7 +42,102 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Far {
 
+using Vtr::internal::Refinement;
+using Vtr::internal::Level;
+using Vtr::internal::FVarLevel;
+
 namespace internal {
+
+inline Level::ETag
+getSingularEdgeMask(bool includeAllInfSharpEdges = false) {
+
+    Level::ETag eTagMask;
+    eTagMask.clear();
+    eTagMask._boundary = true;
+    eTagMask._nonManifold = true;
+    eTagMask._infSharp = includeAllInfSharpEdges;
+    return eTagMask;
+}
+
+inline bool
+isEdgeSingular(Level const & level, FVarLevel const * fvarLevel, Index eIndex,
+               Level::ETag eTagMask)
+{
+    Level::ETag eTag = level.getEdgeTag(eIndex);
+    if (fvarLevel) {
+        eTag = fvarLevel->getEdgeTag(eIndex).combineWithLevelETag(eTag);
+    }
+
+    Level::ETag::ETagSize * iTag  = reinterpret_cast<Level::ETag::ETagSize*>(&eTag);
+    Level::ETag::ETagSize * iMask = reinterpret_cast<Level::ETag::ETagSize*>(&eTagMask);
+    return (*iTag & *iMask) > 0;
+}
+
+void
+identifyManifoldCornerSpan(Level const & level, Index fIndex,
+                           int fCorner, Level::ETag eTagMask,
+                           Level::VSpan & vSpan, int fvc = -1)
+{
+    FVarLevel const * fvarLevel = (fvc < 0) ? 0 : &level.getFVarLevel(fvc);
+
+    ConstIndexArray fVerts = level.getFaceVertices(fIndex);
+    ConstIndexArray fEdges = level.getFaceEdges(fIndex);
+
+    ConstIndexArray vEdges = level.getVertexEdges(fVerts[fCorner]);
+    int             nEdges = vEdges.size();
+
+    int iLeadingStart  = vEdges.FindIndex(fEdges[fCorner]);
+    int iTrailingStart = (iLeadingStart + 1) % nEdges;
+
+    vSpan.clear();
+    vSpan._numFaces = 1;
+
+    int iLeading  = iLeadingStart;
+    while (! isEdgeSingular(level, fvarLevel, vEdges[iLeading], eTagMask)) {
+        ++vSpan._numFaces;
+        iLeading = (iLeading + nEdges - 1) % nEdges;
+        if (iLeading == iTrailingStart) break;
+    }
+
+    int iTrailing = iTrailingStart;
+    while (! isEdgeSingular(level, fvarLevel, vEdges[iTrailing], eTagMask)) {
+        ++vSpan._numFaces;
+        iTrailing = (iTrailing + 1) % nEdges;
+        if (iTrailing == iLeadingStart) break;
+    }
+    vSpan._startFace = (LocalIndex) iLeading;
+}
+
+void
+identifyNonManifoldCornerSpan(Level const & level, Index fIndex,
+                              int fCorner, Level::ETag /* eTagMask */,
+                              Level::VSpan & vSpan, int /* fvc */ = -1)
+{
+    //  For now, non-manifold patches revert to regular patches -- just identify
+    //  the single face now for a sharp corner patch.
+    //
+    //  Remember that the face may be incident the vertex multiple times when
+    //  non-manifold, so make sure the local index of the corner vertex in the
+    //  face identified additionally matches the corner.
+    //
+    //FVarLevel const * fvarLevel = (fvc < 0) ? 0 : &level.getFVarChannel(fvc);
+
+    Index vIndex = level.getFaceVertices(fIndex)[fCorner];
+
+    ConstIndexArray      vFaces  = level.getVertexFaces(vIndex);
+    ConstLocalIndexArray vInFace = level.getVertexFaceLocalIndices(vIndex);
+
+    vSpan.clear();
+    for (int i = 0; i < vFaces.size(); ++i) {
+        if ((vFaces[i] == fIndex) && ((int)vInFace[i] == fCorner)) {
+            vSpan._startFace = (LocalIndex) i;
+            vSpan._numFaces = 1;
+            vSpan._sharp = true;
+            break;
+        }
+    }
+    assert(vSpan._numFaces == 1);
+}
 
 //
 // Helper class to keep track of end-cap stencils
@@ -88,10 +185,66 @@ struct EndCapBuilder {
         }
     }
 
+    void GetIrregularPatchCornerSpans(Vtr::internal::Level const & level,
+        Index faceIndex, bool useInfSharpPatch, bool approxSmoothCornerWithSharp,
+            Level::VSpan cornerSpans[4]) {
+
+        //  Retrieve tags and identify other information for the corner vertices:
+        Level::VTag vTags[4];
+        level.getFaceVTags(faceIndex, vTags);
+
+        //
+        //  For each corner vertex, use the complete neighborhood when possible (which
+        //  does not require a search, otherwise identify the span of interest around
+        //  the vertex:
+        //
+        ConstIndexArray fVerts = level.getFaceVertices(faceIndex);
+
+        Level::ETag singularEdgeMask = getSingularEdgeMask(useInfSharpPatch);
+
+        for (int i = 0; i < fVerts.size(); ++i) {
+            bool testInfSharp = useInfSharpPatch &&
+               (vTags[i]._infSharpEdges && (vTags[i]._rule != Sdc::Crease::RULE_DART));
+
+            if (!testInfSharp) {
+                cornerSpans[i].clear();
+            } else {
+                if (!vTags[i]._nonManifold) {
+                    identifyManifoldCornerSpan(
+                            level, faceIndex, i, singularEdgeMask, cornerSpans[i]);
+                } else {
+                    identifyNonManifoldCornerSpan(
+                            level, faceIndex, i, singularEdgeMask, cornerSpans[i]);
+                }
+            }
+            if (vTags[i]._corner) {
+                cornerSpans[i]._sharp = true;
+            } else if (useInfSharpPatch) {
+                cornerSpans[i]._sharp = vTags[i]._infIrregular && (vTags[i]._rule == Sdc::Crease::RULE_CORNER);
+            }
+
+            //  Legacy option -- reinterpret an irregular smooth corner as sharp if specified:
+            if (!cornerSpans[i]._sharp && approxSmoothCornerWithSharp) {
+                if (vTags[i]._xordinary && vTags[i]._boundary && !vTags[i]._nonManifold) {
+                        int nFaces = cornerSpans[i].isAssigned() ? cornerSpans[i]._numFaces
+                                   : level.getVertexFaces(fVerts[i]).size();
+                        cornerSpans[i]._sharp = (nFaces == 1);
+                }
+            }
+        }
+    }
+
     ConstIndexArray GatherPatchPoints(Vtr::internal::Level const & level,
-        Index faceIndex, int levelVertOffset) {
+        Index faceIndex, int levelVertOffset,
+            bool useInfSharpPatch, bool approxSmoothCornerWithSharp) {
+
         ConstIndexArray cvs;
-        Vtr::internal::Level::VSpan cornerSpans[4];
+
+        Level::VSpan cornerSpans[4];
+
+        GetIrregularPatchCornerSpans(level, faceIndex,
+            useInfSharpPatch, approxSmoothCornerWithSharp, cornerSpans);
+
         switch (type) {
             case ENDCAP_BILINEAR_BASIS:
                 cvs = bilinearBasis->GetPatchPoints(
@@ -373,8 +526,16 @@ CharacteristicBuilder::identifyNode(int levelIndex, Index faceIndex) {
     node.faceIndex = faceIndex;
 
     node.patchTag.Clear();
+
+#ifdef NEW_CODE
+    node.patchTag.NewComputeTags(_refiner,
+        levelIndex, faceIndex, getMaxIsolationLevel(),
+            useSingleCreasePatches(), useInfSharpPatches());
+#else
     node.patchTag.ComputeTags(_refiner,
-        levelIndex, faceIndex, getMaxIsolationLevel(), useSingleCreasePatches());
+        levelIndex, faceIndex, getMaxIsolationLevel(),
+            useSingleCreasePatches(), useInfSharpPatches());
+#endif
 
     if (node.patchTag.hasPatch) {
         node.nodeType = node.patchTag.isRegular ?
@@ -522,31 +683,49 @@ void
 CharacteristicBuilder::populateRegularNode(
     ProtoNode const & pn, int * treePtr, Index * supportsPtr) const {
 
-    Vtr::internal::Level const & level = _refiner.getLevel(pn.levelIndex);
+    Level const & level = _refiner.getLevel(pn.levelIndex);
 
     Index patchVerts[16];
-
-    int bIndex = pn.patchTag.boundaryIndex,
-        boundaryMask = pn.patchTag.boundaryMask,
-        transitionMask = pn.patchTag.transitionMask,
-        levelVertOffset = _levelVertOffsets[pn.levelIndex];
 
     int const * permutation = 0;
     bool singleCrease = false;
     float sharpness = 0.f;
 
-    if (pn.patchTag.boundaryCount == 0) {
+#ifdef NEW_CODE
+    int bType = 0,
+        bIndex = pn.patchTag.boundaryIndex,
+        boundaryMask = pn.patchTag.isSingleCrease ? 0 : pn.patchTag.boundaryMask,
+        levelVertOffset = _levelVertOffsets[pn.levelIndex];
+
+    if (boundaryMask) {
+        static int const boundaryEdgeMaskToType[16] =
+            { 0, 1, 1, 2, 1, -1, 2, -1, 1, 2, -1, -1, 2, -1, -1, -1 };
+        static int const boundaryEdgeMaskToFeature[16] =
+            { -1, 0, 1, 1, 2, -1, 2, -1, 3, 0, -1, -1, 3, -1, -1, -1 };
+
+        bType  = boundaryEdgeMaskToType[boundaryMask];
+        bIndex = boundaryEdgeMaskToFeature[boundaryMask];
+    }
+
+#else
+    int bType = pn.patchTag.boundaryCount,
+        bIndex = pn.patchTag.boundaryIndex,
+        boundaryMask = pn.patchTag.boundaryMask,
+        levelVertOffset = _levelVertOffsets[pn.levelIndex];
+
+#endif
+    if (bType == 0) {
         static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
         permutation = permuteRegular;
         level.gatherQuadRegularInteriorPatchPoints(pn.faceIndex, patchVerts, 0);
         if (pn.patchTag.isSingleCrease) {
             int maxIsolation = _refiner.GetAdaptiveOptions().isolationLevel;
             singleCrease = true;
-            boundaryMask = (1<<bIndex);
+            boundaryMask = 1 << bIndex;
             sharpness = level.getEdgeSharpness((level.getFaceEdges(pn.faceIndex)[bIndex]));
             sharpness = std::min(sharpness, (float)(maxIsolation-pn.levelIndex));
         }
-    } else if (pn.patchTag.boundaryCount == 1) {
+    } else if (bType == 1) {
         // Expand boundary patch vertices and rotate to restore correct orientation.
         static int const permuteBoundary[4][16] = {
             { -1, -1, -1, -1, 11, 3, 0, 4, 10, 2, 1, 5, 9, 8, 7, 6 },
@@ -555,7 +734,7 @@ CharacteristicBuilder::populateRegularNode(
             { -1, 4, 5, 6, -1, 0, 1, 7, -1, 3, 2, 8, -1, 11, 10, 9 } };
         permutation = permuteBoundary[bIndex];
         level.gatherQuadRegularBoundaryPatchPoints(pn.faceIndex, patchVerts, bIndex);
-    } else if (pn.patchTag.boundaryCount == 2) {
+    } else if (bType == 2) {
         // Expand corner patch vertices and rotate to restore correct orientation.
         static int const permuteCorner[4][16] = {
             { -1, -1, -1, -1, -1, 0, 1, 4, -1, 3, 2, 5, -1, 8, 7, 6 },
@@ -565,7 +744,7 @@ CharacteristicBuilder::populateRegularNode(
         permutation = permuteCorner[bIndex];
         level.gatherQuadRegularCornerPatchPoints(pn.faceIndex, patchVerts, bIndex);
     } else {
-        assert(pn.patchTag.boundaryCount <= 2);
+        assert(bType <= 2);
     }
 
     short u, v;
@@ -585,7 +764,6 @@ CharacteristicBuilder::populateRegularNode(
     if (singleCrease) {
         *((float *)&treePtr[2]) = sharpness;
     }
-
 }
 
 
@@ -600,7 +778,8 @@ CharacteristicBuilder::populateEndCapNode(
     Index levelVertOffset = _levelVertOffsets[pn.levelIndex];
 
     ConstIndexArray cvs =
-        _endcapBuilder->GatherPatchPoints(level, pn.faceIndex, levelVertOffset);
+        _endcapBuilder->GatherPatchPoints(level,
+            pn.faceIndex, levelVertOffset, useSingleCreasePatches(), useInfSharpPatches());
 
     memcpy(supportsPtr + pn.firstSupport, cvs.begin(), cvs.size()*sizeof(Index));
 
@@ -675,7 +854,8 @@ CharacteristicBuilder::populateTerminalNode(
         Vtr::internal::Level const & level = _refiner.getLevel(levelIndex);
 
         ConstIndexArray cvs =
-            _endcapBuilder->GatherPatchPoints(level, pn.faceIndex, levelVertOffset);
+            _endcapBuilder->GatherPatchPoints(level,
+                pn.faceIndex, levelVertOffset, useSingleCreasePatches(), useInfSharpPatches());
 
         memcpy(supportsPtr + pn.firstSupport + 25, cvs.begin(), cvs.size()*sizeof(Index));
     }
@@ -709,7 +889,8 @@ CharacteristicBuilder::populateRecursiveNode(
         Vtr::internal::Level const & level = _refiner.getLevel(levelIndex);
 
         ConstIndexArray cvs =
-            _endcapBuilder->GatherPatchPoints(level, pn.faceIndex, levelVertOffset);
+            _endcapBuilder->GatherPatchPoints(level,
+                pn.faceIndex, levelVertOffset, useSingleCreasePatches(), useInfSharpPatches());
 
         memcpy(supportsPtr + pn.firstSupport, cvs.begin(), cvs.size()*sizeof(Index));
 

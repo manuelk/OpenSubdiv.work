@@ -32,6 +32,8 @@
 
 #include <vector>
 
+#define NEW_CODE
+
 namespace OpenSubdiv {
 namespace OPENSUBDIV_VERSION {
 
@@ -73,7 +75,11 @@ public:
     /// \brief Computes the patch tags for the given face
     void ComputeTags(Far::TopologyRefiner const & refiner,
         Index const levelIndex, Index const faceIndex,
-            int maxIsolationLevel, bool useSingleCreasePatch);
+            int maxIsolationLevel, bool useSingleCreasePatch, bool useInfSharpPatch=true);
+
+    void NewComputeTags(Far::TopologyRefiner const & refiner,
+        Index const levelIndex, Index const faceIndex,
+            int maxIsolationLevel, bool useSingleCreasePatch, bool useInfSharpPatch=true);
 
     // debug print
     void Print() const;
@@ -87,6 +93,24 @@ private:
     void assignTransitionPropertiesFromEdgeMask(int tMask) {
         transitionMask = tMask;
     }
+
+    bool isPatchEligible(TopologyRefiner const & refiner,
+        int levelIndex, Index faceIndex) const;
+
+    bool isPatchSmoothCorner(TopologyRefiner const & refiner,
+        int levelIndex, Index faceIndex,
+            bool useInfSharpPatch) const;
+
+    bool isPatchRegular(TopologyRefiner const & refiner,
+        int levelIndex, Index faceIndex,
+            bool useInfSharpPatch, bool approxSmoothCornerWithSharp=true) const;
+
+    int getRegularPatchBoundaryMask(TopologyRefiner const & refiner,
+        int levelIndex, Index faceIndex,
+            bool useInfSharpPatch) const;
+
+    int getTransitionMask(TopologyRefiner const & refiner,
+        int levelIndex, Index faceIndex) const;
 
 };
 

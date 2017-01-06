@@ -198,6 +198,8 @@ private:
 
     bool useSingleCreasePatches() const { return _refiner.GetAdaptiveOptions().useSingleCreasePatch; }
 
+    bool useInfSharpPatches() const { return _refiner.GetAdaptiveOptions().useInfSharpPatch; }
+
     bool computeSubPatchDomain(int levelIndex, Index faceIndex, short * s, short * t) const;
 
 private:

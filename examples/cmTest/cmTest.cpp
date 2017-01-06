@@ -93,6 +93,7 @@ int g_level = 3,
     g_currentShape = 8, //cube = 8 square = 12 pyramid = 45 torus = 49
     g_useTerminalNodes = true,
     g_useDynamicIsolation = true,
+    g_singleCreasePatch = 1,
     g_infSharpPatch = 0;
 
 
@@ -617,7 +618,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     // refine adaptively
     {
         Far::TopologyRefiner::AdaptiveOptions options(maxlevel);
-        options.useSingleCreasePatch = true;
+        options.useSingleCreasePatch = g_singleCreasePatch;
         options.useInfSharpPatch = g_infSharpPatch;
         refiner->RefineAdaptive(options);
     }
@@ -1093,6 +1094,7 @@ enum HudCheckBox { kHUD_CB_DISPLAY_CONTROL_MESH_EDGES,
                    kHUD_CB_DISPLAY_NODE_IDS,
                    kHUD_CB_USE_TERMINAL_NODES,
                    kHUD_CB_USE_DYNAMIC_ISOLATION,
+                   kHUD_CB_SINGLE_CREASE_PATCH,
                    kHUD_CB_INF_SHARP_PATCH,
                   };
 
@@ -1114,6 +1116,7 @@ callbackCheckBox(bool checked, int button) {
 
         case kHUD_CB_USE_TERMINAL_NODES: g_useTerminalNodes = checked; break;
         case kHUD_CB_USE_DYNAMIC_ISOLATION: g_useDynamicIsolation = checked; break;
+        case kHUD_CB_SINGLE_CREASE_PATCH: g_singleCreasePatch = checked; break;
         case kHUD_CB_INF_SHARP_PATCH: g_infSharpPatch = checked; break;
         default:
             break;
@@ -1271,14 +1274,17 @@ initHUD() {
     g_hud.AddCheckBox("Dynamic Isolation (D)", g_useDynamicIsolation==1,
         10, 70, callbackCheckBox, kHUD_CB_USE_DYNAMIC_ISOLATION, 'd');
 
+    g_hud.AddCheckBox("Single Crease Patch (S)", g_singleCreasePatch!=0,
+                          10, 90, callbackCheckBox, kHUD_CB_SINGLE_CREASE_PATCH, 's');
+
     g_hud.AddCheckBox("Inf Sharp Patch (I)", g_infSharpPatch!=0,
-                          10, 90, callbackCheckBox, kHUD_CB_INF_SHARP_PATCH, 'i');
+                          10, 110, callbackCheckBox, kHUD_CB_INF_SHARP_PATCH, 'i');
 
     g_hud.AddCheckBox("Vert IDs", g_DrawVertIDs!=0,
-        10, 120, callbackCheckBox, kHUD_CB_DISPLAY_VERT_IDS);
+        10, 140, callbackCheckBox, kHUD_CB_DISPLAY_VERT_IDS);
 
     g_hud.AddCheckBox("Face IDs", g_DrawFaceIDs!=0,
-        10, 140, callbackCheckBox, kHUD_CB_DISPLAY_FACE_IDS);
+        10, 160, callbackCheckBox, kHUD_CB_DISPLAY_FACE_IDS);
 
     g_hud.AddCheckBox("Node IDs", g_DrawNodeIDs!=0,
         10, 180, callbackCheckBox, kHUD_CB_DISPLAY_NODE_IDS);
