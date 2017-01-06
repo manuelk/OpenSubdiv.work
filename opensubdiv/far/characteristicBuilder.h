@@ -200,6 +200,8 @@ private:
 
     bool useInfSharpPatches() const { return _refiner.GetAdaptiveOptions().useInfSharpPatch; }
 
+    bool approxSmoothCornerWithSharp() const { return true; }
+
     bool computeSubPatchDomain(int levelIndex, Index faceIndex, short * s, short * t) const;
 
 private:

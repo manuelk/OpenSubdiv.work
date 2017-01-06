@@ -779,7 +779,7 @@ CharacteristicBuilder::populateEndCapNode(
 
     ConstIndexArray cvs =
         _endcapBuilder->GatherPatchPoints(level,
-            pn.faceIndex, levelVertOffset, useSingleCreasePatches(), useInfSharpPatches());
+            pn.faceIndex, levelVertOffset, useInfSharpPatches(), approxSmoothCornerWithSharp());
 
     memcpy(supportsPtr + pn.firstSupport, cvs.begin(), cvs.size()*sizeof(Index));
 
@@ -855,7 +855,7 @@ CharacteristicBuilder::populateTerminalNode(
 
         ConstIndexArray cvs =
             _endcapBuilder->GatherPatchPoints(level,
-                pn.faceIndex, levelVertOffset, useSingleCreasePatches(), useInfSharpPatches());
+                pn.faceIndex, levelVertOffset, useInfSharpPatches(), approxSmoothCornerWithSharp());
 
         memcpy(supportsPtr + pn.firstSupport + 25, cvs.begin(), cvs.size()*sizeof(Index));
     }
@@ -890,7 +890,7 @@ CharacteristicBuilder::populateRecursiveNode(
 
         ConstIndexArray cvs =
             _endcapBuilder->GatherPatchPoints(level,
-                pn.faceIndex, levelVertOffset, useSingleCreasePatches(), useInfSharpPatches());
+                pn.faceIndex, levelVertOffset, useInfSharpPatches(), approxSmoothCornerWithSharp());
 
         memcpy(supportsPtr + pn.firstSupport, cvs.begin(), cvs.size()*sizeof(Index));
 
