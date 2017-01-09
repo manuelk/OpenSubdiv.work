@@ -527,15 +527,9 @@ CharacteristicBuilder::identifyNode(int levelIndex, Index faceIndex) {
 
     node.patchTag.Clear();
 
-#ifdef NEW_CODE
-    node.patchTag.NewComputeTags(_refiner,
-        levelIndex, faceIndex, getMaxIsolationLevel(),
-            useSingleCreasePatches(), useInfSharpPatches());
-#else
     node.patchTag.ComputeTags(_refiner,
         levelIndex, faceIndex, getMaxIsolationLevel(),
             useSingleCreasePatches(), useInfSharpPatches());
-#endif
 
     if (node.patchTag.hasPatch) {
         node.nodeType = node.patchTag.isRegular ?
@@ -691,7 +685,6 @@ CharacteristicBuilder::populateRegularNode(
     bool singleCrease = false;
     float sharpness = 0.f;
 
-#ifdef NEW_CODE
     int bType = 0,
         bIndex = pn.patchTag.boundaryIndex,
         boundaryMask = pn.patchTag.isSingleCrease ? 0 : pn.patchTag.boundaryMask,
@@ -707,13 +700,6 @@ CharacteristicBuilder::populateRegularNode(
         bIndex = boundaryEdgeMaskToFeature[boundaryMask];
     }
 
-#else
-    int bType = pn.patchTag.boundaryCount,
-        bIndex = pn.patchTag.boundaryIndex,
-        boundaryMask = pn.patchTag.boundaryMask,
-        levelVertOffset = _levelVertOffsets[pn.levelIndex];
-
-#endif
     if (bType == 0) {
         static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
         permutation = permuteRegular;

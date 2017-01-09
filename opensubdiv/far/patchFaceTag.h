@@ -32,8 +32,6 @@
 
 #include <vector>
 
-#define NEW_CODE
-
 namespace OpenSubdiv {
 namespace OPENSUBDIV_VERSION {
 
@@ -77,22 +75,10 @@ public:
         Index const levelIndex, Index const faceIndex,
             int maxIsolationLevel, bool useSingleCreasePatch, bool useInfSharpPatch=true);
 
-    void NewComputeTags(Far::TopologyRefiner const & refiner,
-        Index const levelIndex, Index const faceIndex,
-            int maxIsolationLevel, bool useSingleCreasePatch, bool useInfSharpPatch=true);
-
     // debug print
     void Print() const;
 
 private:
-
-    void assignBoundaryPropertiesFromEdgeMask(int boundaryEdgeMask);
-
-    void assignBoundaryPropertiesFromVertexMask(int boundaryVertexMask);
-
-    void assignTransitionPropertiesFromEdgeMask(int tMask) {
-        transitionMask = tMask;
-    }
 
     bool isPatchEligible(TopologyRefiner const & refiner,
         int levelIndex, Index faceIndex) const;
