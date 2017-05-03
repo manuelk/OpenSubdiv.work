@@ -196,11 +196,11 @@ private:
 
     bool useDynamicIsolation() const { return _charmap.GetOptions().useDynamicIsolation; }
 
+    bool useLegacySharpCornerPatches() const { return _charmap.GetOptions().generateLegacySharpCornerPatches; }
+
     bool useSingleCreasePatches() const { return _refiner.GetAdaptiveOptions().useSingleCreasePatch; }
 
     bool useInfSharpPatches() const { return _refiner.GetAdaptiveOptions().useInfSharpPatch; }
-
-    bool approxSmoothCornerWithSharp() const { return true; }
 
     bool computeSubPatchDomain(int levelIndex, Index faceIndex, short * s, short * t) const;
 

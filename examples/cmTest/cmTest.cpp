@@ -60,6 +60,7 @@ GLFWmonitor* g_primary=0;
 #include "./init_shapes.h"
 #include "./glFontutils.h"
 #include "./glMesh.h"
+#include "./svg.h"
 
 #include <string>
 #include <fstream>
@@ -94,6 +95,7 @@ int g_level = 3,
     g_useTerminalNodes = true,
     g_useDynamicIsolation = true,
     g_singleCreasePatch = 1,
+    g_smoothCornerPatch = 0,
     g_infSharpPatch = 0;
 
 
@@ -102,7 +104,8 @@ int g_frame = 0,
 
 bool g_DrawVertIDs = false,
      g_DrawFaceIDs = false,
-     g_DrawNodeIDs = false;
+     g_DrawNodeIDs = false,
+     g_saveSVG = false;
 
 Far::EndCapType g_endCap = Far::ENDCAP_BSPLINE_BASIS;
 
@@ -635,6 +638,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     options.endCapType = g_endCap;
     options.useTerminalNode = g_useTerminalNodes;
     options.useDynamicIsolation = g_useDynamicIsolation;
+    options.generateLegacySharpCornerPatches = g_smoothCornerPatch;
     options.hashSize = 5000;
     Far::CharacteristicMap * charmap = new Far::CharacteristicMap(options);
 
@@ -933,13 +937,9 @@ display() {
 
     glUseProgram(0);
 
-    // draw the control mesh
-    GLuint vbo = g_controlMeshVerts->BindVBO();
-    int stride = g_controlMeshVerts->GetNumElements();
-    g_controlMeshDisplay.Draw(vbo, 3*sizeof(float),
-                              g_transformData.ModelViewProjectionMatrix);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
+Svg * svg = 0;
+if (g_saveSVG) 
+    svg = Svg::Create("screenshot.svg");
 
     // Update and bind transform state ---------------------
     if (! g_transformUB) {
@@ -991,6 +991,30 @@ display() {
     // Draw stuff ------------------------------------------
     bool wireframe = g_displayStyle == DISPLAY_STYLE_WIRE;
     g_tessMesh->Draw(g_transformUB, g_lightingUB, wireframe);
+
+if (g_saveSVG) {
+    svg->SetLineWidth(0.1f);
+    svg->SetLineColor(0.5f, 0.5f, 0.5f, 0.5f);
+    svg->Write();
+}
+    // draw the control mesh
+    GLuint vbo = g_controlMeshVerts->BindVBO();
+    int stride = g_controlMeshVerts->GetNumElements();
+    g_controlMeshDisplay.Draw(vbo, 3*sizeof(float),
+                              g_transformData.ModelViewProjectionMatrix);
+
+if (g_saveSVG) {
+    svg->SetPointSize(2.5f);
+    svg->SetPointColor(0.9f, 0.3f, 0.2f);
+    svg->SetLineWidth(1.0f);
+    svg->SetLineColor(0.463f, 0.725f, 0.0f);
+    svg->Write();
+    delete svg;
+    g_saveSVG = false;
+}
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
 
     // draw 3D strings (if any)
     if (g_font) {
@@ -1094,6 +1118,7 @@ enum HudCheckBox { kHUD_CB_DISPLAY_CONTROL_MESH_EDGES,
                    kHUD_CB_DISPLAY_NODE_IDS,
                    kHUD_CB_USE_TERMINAL_NODES,
                    kHUD_CB_USE_DYNAMIC_ISOLATION,
+                   kHUD_CB_SMOOTH_CORNER_PATCH,
                    kHUD_CB_SINGLE_CREASE_PATCH,
                    kHUD_CB_INF_SHARP_PATCH,
                   };
@@ -1116,6 +1141,7 @@ callbackCheckBox(bool checked, int button) {
 
         case kHUD_CB_USE_TERMINAL_NODES: g_useTerminalNodes = checked; break;
         case kHUD_CB_USE_DYNAMIC_ISOLATION: g_useDynamicIsolation = checked; break;
+        case kHUD_CB_SMOOTH_CORNER_PATCH: g_smoothCornerPatch = checked; break;
         case kHUD_CB_SINGLE_CREASE_PATCH: g_singleCreasePatch = checked; break;
         case kHUD_CB_INF_SHARP_PATCH: g_infSharpPatch = checked; break;
         default:
@@ -1213,6 +1239,8 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int mods) {
             mods==GLFW_MOD_SHIFT ? -1 : g_currentPlanIndex);
             break;
 
+        case 'V' : g_saveSVG = true; break;
+
         case '=':  {
             g_tessLevel+=5;
             rebuildMeshes();
@@ -1274,20 +1302,24 @@ initHUD() {
     g_hud.AddCheckBox("Dynamic Isolation (D)", g_useDynamicIsolation==1,
         10, 70, callbackCheckBox, kHUD_CB_USE_DYNAMIC_ISOLATION, 'd');
 
+
+    g_hud.AddCheckBox("Smooth Corner Patch (O)", g_smoothCornerPatch!=0,
+                      10, 90, callbackCheckBox, kHUD_CB_SMOOTH_CORNER_PATCH, 'o');
+
     g_hud.AddCheckBox("Single Crease Patch (S)", g_singleCreasePatch!=0,
-                          10, 90, callbackCheckBox, kHUD_CB_SINGLE_CREASE_PATCH, 's');
+                          10, 110, callbackCheckBox, kHUD_CB_SINGLE_CREASE_PATCH, 's');
 
     g_hud.AddCheckBox("Inf Sharp Patch (I)", g_infSharpPatch!=0,
-                          10, 110, callbackCheckBox, kHUD_CB_INF_SHARP_PATCH, 'i');
+                          10, 130, callbackCheckBox, kHUD_CB_INF_SHARP_PATCH, 'i');
 
     g_hud.AddCheckBox("Vert IDs", g_DrawVertIDs!=0,
-        10, 140, callbackCheckBox, kHUD_CB_DISPLAY_VERT_IDS);
+        10, 160, callbackCheckBox, kHUD_CB_DISPLAY_VERT_IDS);
 
     g_hud.AddCheckBox("Face IDs", g_DrawFaceIDs!=0,
-        10, 160, callbackCheckBox, kHUD_CB_DISPLAY_FACE_IDS);
+        10, 180, callbackCheckBox, kHUD_CB_DISPLAY_FACE_IDS);
 
     g_hud.AddCheckBox("Node IDs", g_DrawNodeIDs!=0,
-        10, 180, callbackCheckBox, kHUD_CB_DISPLAY_NODE_IDS);
+        10, 200, callbackCheckBox, kHUD_CB_DISPLAY_NODE_IDS);
 
     int endcap_pulldown = g_hud.AddPullDown(
         "End cap (E)", 10, 230, 200, callbackEndCap, 'e');

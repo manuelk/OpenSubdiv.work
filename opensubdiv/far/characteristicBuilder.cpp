@@ -186,7 +186,7 @@ struct EndCapBuilder {
     }
 
     void GetIrregularPatchCornerSpans(Vtr::internal::Level const & level,
-        Index faceIndex, bool useInfSharpPatch, bool approxSmoothCornerWithSharp,
+        Index faceIndex, bool useInfSharpPatch, bool generateLegacySharpCornerPatches,
             Level::VSpan cornerSpans[4]) {
 
         //  Retrieve tags and identify other information for the corner vertices:
@@ -224,7 +224,7 @@ struct EndCapBuilder {
             }
 
             //  Legacy option -- reinterpret an irregular smooth corner as sharp if specified:
-            if (!cornerSpans[i]._sharp && approxSmoothCornerWithSharp) {
+            if (!cornerSpans[i]._sharp && generateLegacySharpCornerPatches) {
                 if (vTags[i]._xordinary && vTags[i]._boundary && !vTags[i]._nonManifold) {
                         int nFaces = cornerSpans[i].isAssigned() ? cornerSpans[i]._numFaces
                                    : level.getVertexFaces(fVerts[i]).size();
@@ -236,27 +236,27 @@ struct EndCapBuilder {
 
     ConstIndexArray GatherPatchPoints(Vtr::internal::Level const & level,
         Index faceIndex, int levelVertOffset,
-            bool useInfSharpPatch, bool approxSmoothCornerWithSharp) {
+            bool useInfSharpPatch, bool generateLegacySharpCornerPatches) {
 
         ConstIndexArray cvs;
 
-        Level::VSpan cornerSpans[4];
+        Level::VSpan irregCornerSpans[4];
 
         GetIrregularPatchCornerSpans(level, faceIndex,
-            useInfSharpPatch, approxSmoothCornerWithSharp, cornerSpans);
+            useInfSharpPatch, generateLegacySharpCornerPatches, irregCornerSpans);
 
         switch (type) {
             case ENDCAP_BILINEAR_BASIS:
                 cvs = bilinearBasis->GetPatchPoints(
-                    &level, faceIndex, cornerSpans, levelVertOffset);
+                    &level, faceIndex, irregCornerSpans, levelVertOffset);
                 break;
             case ENDCAP_BSPLINE_BASIS:
                 cvs = bsplineBasis->GetPatchPoints(
-                    &level, faceIndex, cornerSpans, levelVertOffset);
+                    &level, faceIndex, irregCornerSpans, levelVertOffset);
                 break;
             case ENDCAP_GREGORY_BASIS:
                 cvs = gregoryBasis->GetPatchPoints(
-                    &level, faceIndex, cornerSpans, levelVertOffset);
+                    &level, faceIndex, irregCornerSpans, levelVertOffset);
                 break;
             default:
                 assert(0);
@@ -529,7 +529,8 @@ CharacteristicBuilder::identifyNode(int levelIndex, Index faceIndex) {
 
     node.patchTag.ComputeTags(_refiner,
         levelIndex, faceIndex, getMaxIsolationLevel(),
-            useSingleCreasePatches(), useInfSharpPatches());
+            useSingleCreasePatches(), useInfSharpPatches(),
+                useLegacySharpCornerPatches());
 
     if (node.patchTag.hasPatch) {
         node.nodeType = node.patchTag.isRegular ?
@@ -765,7 +766,7 @@ CharacteristicBuilder::populateEndCapNode(
 
     ConstIndexArray cvs =
         _endcapBuilder->GatherPatchPoints(level,
-            pn.faceIndex, levelVertOffset, useInfSharpPatches(), approxSmoothCornerWithSharp());
+            pn.faceIndex, levelVertOffset, useInfSharpPatches(), useLegacySharpCornerPatches());
 
     memcpy(supportsPtr + pn.firstSupport, cvs.begin(), cvs.size()*sizeof(Index));
 
@@ -841,7 +842,7 @@ CharacteristicBuilder::populateTerminalNode(
 
         ConstIndexArray cvs =
             _endcapBuilder->GatherPatchPoints(level,
-                pn.faceIndex, levelVertOffset, useInfSharpPatches(), approxSmoothCornerWithSharp());
+                pn.faceIndex, levelVertOffset, useInfSharpPatches(), useLegacySharpCornerPatches());
 
         memcpy(supportsPtr + pn.firstSupport + 25, cvs.begin(), cvs.size()*sizeof(Index));
     }
@@ -876,7 +877,7 @@ CharacteristicBuilder::populateRecursiveNode(
 
         ConstIndexArray cvs =
             _endcapBuilder->GatherPatchPoints(level,
-                pn.faceIndex, levelVertOffset, useInfSharpPatches(), approxSmoothCornerWithSharp());
+                pn.faceIndex, levelVertOffset, useInfSharpPatches(), useLegacySharpCornerPatches());
 
         memcpy(supportsPtr + pn.firstSupport, cvs.begin(), cvs.size()*sizeof(Index));
 

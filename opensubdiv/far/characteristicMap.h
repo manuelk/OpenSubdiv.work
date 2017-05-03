@@ -62,7 +62,8 @@ public:
              hashSize(10000),
              endCapType(ENDCAP_BSPLINE_BASIS),
              useTerminalNode(true),
-             useDynamicIsolation(true) { }
+             useDynamicIsolation(true),
+             generateLegacySharpCornerPatches(true) { }
 
         /// \brief Get endcap patch type
         EndCapType GetEndCapType() const { return (EndCapType)endCapType; }
@@ -72,9 +73,12 @@ public:
 
         int hashSize;
 
-        unsigned int endCapType           : 3, ///< Type of end-cap patches        
-                     useTerminalNode      : 1, ///< Use "terminal" nodes on patches with single EV
-                     useDynamicIsolation  : 1; ///< Generate data for run-time dynamic isolation
+        unsigned int endCapType           : 3,  ///< Type of end-cap patches
+                     useTerminalNode      : 1,  ///< Use "terminal" nodes on patches with single EV
+                     useDynamicIsolation  : 1,  ///< Generate data for run-time dynamic isolation
+
+                     // legacy behaviors (default to true)
+                     generateLegacySharpCornerPatches : 1; ///< Generate sharp regular patches at smooth corners (legacy)
     };
 
     /// \brief Constructor

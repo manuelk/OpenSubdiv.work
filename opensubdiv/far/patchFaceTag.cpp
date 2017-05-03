@@ -229,7 +229,8 @@ PatchFaceTag::isPatchSmoothCorner(TopologyRefiner const & refiner,
 
 bool
 PatchFaceTag::isPatchRegular(TopologyRefiner const & refiner,
-    int levelIndex, Index faceIndex, bool useInfSharpPatch, bool approxSmoothCornerWithSharp) const {
+    int levelIndex, Index faceIndex, bool useInfSharpPatch,
+        bool generateLegacySharpCornerPatches) const {
 
     Level const & level = refiner.getLevel(levelIndex);
 
@@ -294,7 +295,7 @@ PatchFaceTag::isPatchRegular(TopologyRefiner const & refiner,
     }
 
     //  Legacy option -- reinterpret an irregular smooth corner as sharp if specified:
-    if (!isRegular && approxSmoothCornerWithSharp) {
+    if (!isRegular && generateLegacySharpCornerPatches) {
         if (fCompVTag._xordinary && fCompVTag._boundary && !fCompVTag._nonManifold) {
             isRegular = isPatchSmoothCorner(refiner, levelIndex, faceIndex, useInfSharpPatch);
         }
@@ -385,7 +386,8 @@ void
 PatchFaceTag::ComputeTags(
     TopologyRefiner const & refiner,
         Index const levelIndex, Index const faceIndex,
-            int maxIsolationLevel, bool useSingleCreasePatch, bool useInfSharpPatch) {
+            int maxIsolationLevel, bool useSingleCreasePatch,
+                bool useInfSharpPatch, bool generateLegacySharpCornerPatches) {
 
     hasPatch = isPatchEligible(refiner, levelIndex, faceIndex);
 
@@ -399,7 +401,8 @@ PatchFaceTag::ComputeTags(
 
     Level::VSpan irregCornerSpans[4];
 
-    isRegular = isPatchRegular(refiner, levelIndex, faceIndex, useInfSharpPatch);
+    isRegular = isPatchRegular(refiner, levelIndex, faceIndex,
+        useInfSharpPatch, generateLegacySharpCornerPatches);
 
     if (isRegular) {
         boundaryMask = getRegularPatchBoundaryMask(refiner, levelIndex, faceIndex, useInfSharpPatch);

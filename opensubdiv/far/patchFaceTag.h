@@ -72,8 +72,9 @@ public:
 
     /// \brief Computes the patch tags for the given face
     void ComputeTags(Far::TopologyRefiner const & refiner,
-        Index const levelIndex, Index const faceIndex,
-            int maxIsolationLevel, bool useSingleCreasePatch, bool useInfSharpPatch=true);
+        Index const levelIndex, Index const faceIndex, int maxIsolationLevel,
+            bool useSingleCreasePatch, bool useInfSharpPatch,
+                bool generateLegacySharpCornerPatches);
 
     // debug print
     void Print() const;
@@ -89,7 +90,7 @@ private:
 
     bool isPatchRegular(TopologyRefiner const & refiner,
         int levelIndex, Index faceIndex,
-            bool useInfSharpPatch, bool approxSmoothCornerWithSharp=true) const;
+            bool useInfSharpPatch, bool generateLegacySharpCornerPatches) const;
 
     int getRegularPatchBoundaryMask(TopologyRefiner const & refiner,
         int levelIndex, Index faceIndex,
