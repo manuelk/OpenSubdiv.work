@@ -274,7 +274,7 @@ StencilTableFactory::appendLocalPointStencilTable(
             : refiner.GetNumFVarValuesTotal(channel);
         if (nBaseStencils == nverts) {
 
-            // the table contain stencils for the control vertices
+            // the table contains stencils for the control vertices
             //
             //  <-----------------  nverts ------------------>
             //
@@ -314,7 +314,7 @@ StencilTableFactory::appendLocalPointStencilTable(
         }
     }
 
-    // copy all local points stencils to proto stencils, and factorize if needed.
+    // copy all local point stencils to proto stencils, and factorize if needed.
     int nLocalPointStencils = localPointStencilTable->GetNumStencils();
     int nLocalPointStencilsElements = 0;
 
@@ -417,15 +417,15 @@ LimitStencilTableFactory::Create(TopologyRefiner const & refiner,
         // regular patches, such as in a torus)
         // note: the control vertices of the mesh are added as single-index
         //       stencils of weight 1.0f
-        StencilTableFactory::Options options;
-        options.generateIntermediateLevels = uniform ? false :true;
-        options.generateControlVerts = true;
-        options.generateOffsets = true;
+        StencilTableFactory::Options stencilTableOptions;
+        stencilTableOptions.generateIntermediateLevels = uniform ? false :true;
+        stencilTableOptions.generateControlVerts = true;
+        stencilTableOptions.generateOffsets = true;
 
         // PERFORMANCE: We could potentially save some mem-copies by not
         // instantiating the stencil tables and work directly off the source
         // data.
-        cvstencils = StencilTableFactory::Create(refiner, options);
+        cvstencils = StencilTableFactory::Create(refiner, stencilTableOptions);
     } else {
         // Sanity checks
         //
@@ -447,12 +447,12 @@ LimitStencilTableFactory::Create(TopologyRefiner const & refiner,
         // have been added to the refiner, maybe we can remove the need for the
         // patch table.
 
-        PatchTableFactory::Options options;
-        options.SetEndCapType(ENDCAP_GREGORY_BASIS);
-        options.useInfSharpPatch = !uniform &&
+        PatchTableFactory::Options patchTableOptions;
+        patchTableOptions.SetEndCapType(ENDCAP_GREGORY_BASIS);
+        patchTableOptions.useInfSharpPatch = !uniform &&
             refiner.GetAdaptiveOptions().useInfSharpPatch;
 
-        patchtable = PatchTableFactory::Create(refiner, options);
+        patchtable = PatchTableFactory::Create(refiner, patchTableOptions);
 
         if (! cvStencilsIn) {
             // if cvstencils is just created above, append endcap stencils
