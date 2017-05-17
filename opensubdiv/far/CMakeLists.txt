@@ -37,6 +37,7 @@ set(SOURCE_FILES
     neighborhood.cpp
     neighborhoodBuilder.cpp
     patchBasis.cpp
+    patchBuilder.cpp
     patchDescriptor.cpp
     patchFaceTag.cpp
     patchMap.cpp
@@ -61,6 +62,7 @@ set(PRIVATE_HEADER_FILES
     gregoryBasis.h
     neighborhoodBuilder.h
     patchBasis.h
+    patchBuilder.h
     stencilBuilder.h
 )
 

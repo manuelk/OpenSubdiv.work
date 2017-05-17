@@ -44,6 +44,7 @@ namespace Far {
 
 namespace internal {
     class CharacteristicBuilder;
+    class PatchBuilder;
 }
 
 template <class MESH> class TopologyRefinerFactory;
@@ -217,6 +218,7 @@ protected:
     friend class EndCapBilinearBasisPatchFactory;
     friend class EndCapGregoryBasisPatchFactory;
     friend class EndCapLegacyGregoryPatchFactory;
+    friend class internal::PatchBuilder;
     friend class PatchFaceTag;
     friend class PtexIndices;
     friend class PrimvarRefiner;
