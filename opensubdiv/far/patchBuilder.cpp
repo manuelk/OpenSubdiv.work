@@ -43,8 +43,6 @@ using Vtr::internal::FVarLevel;
 
 namespace internal {
 
-namespace tmp {
-
 //
 //  Local helper functions for identifying the subset of a ring around a
 //  corner that contributes to a patch -- parameterized by a mask that
@@ -151,8 +149,6 @@ identifyNonManifoldCornerSpan(Level const & level, Index fIndex, int fCorner,
     assert(vSpan._numFaces == 1);
 }
 
-} // end namespace tmp
-
 PatchBuilder::PatchBuilder(TopologyRefiner const & refiner,
     int numFVarChannels, int const * fvarChannelIndices,
         bool useInfSharpPatch, bool generateLegacySharpCornerPatches) :
@@ -171,6 +167,11 @@ PatchBuilder::PatchBuilder(TopologyRefiner const & refiner,
         _fvarChannelIndices.assign(
             fvarChannelIndices, fvarChannelIndices+numFVarChannels);
     }
+}
+
+Vtr::internal::Level const &
+PatchBuilder::GetVtrLevel(int levelIndex) const {
+    return _refiner.getLevel(levelIndex);
 }
 
 int
@@ -332,13 +333,13 @@ PatchBuilder::IsPatchRegular(
             level.getFaceVTags(faceIndex, vTags, fvcRefiner);
 
             Level::VSpan vSpan;
-            Level::ETag eMask = tmp::getSingularEdgeMask(true);
+            Level::ETag eMask = getSingularEdgeMask(true);
 
             isRegular = true;
             for (int i = 0; i < 4; ++i) {
                 if (vTags[i]._infIrregular) {
 
-                    tmp::identifyManifoldCornerSpan(level, faceIndex, i, eMask, vSpan, fvcRefiner);
+                    identifyManifoldCornerSpan(level, faceIndex, i, eMask, vSpan, fvcRefiner);
 
                     isRegular = (vSpan._numFaces == (vTags[i]._infSharpCrease ? 2 : 1));
                     if (!isRegular) break;
@@ -393,7 +394,7 @@ PatchBuilder::GetIrregularPatchCornerSpans(
     //
     ConstIndexArray fVerts = level.getFaceVertices(faceIndex);
 
-    Level::ETag singularEdgeMask = tmp::getSingularEdgeMask(_useInfSharpPatch);
+    Level::ETag singularEdgeMask = getSingularEdgeMask(_useInfSharpPatch);
 
     for (int i = 0; i < fVerts.size(); ++i) {
         bool noFVarMisMatch = (fvcRefiner < 0) || !fvarTags[i]._mismatch;
@@ -404,10 +405,10 @@ PatchBuilder::GetIrregularPatchCornerSpans(
             cornerSpans[i].clear();
         } else {
             if (!vTags[i]._nonManifold) {
-                tmp::identifyManifoldCornerSpan(
+                identifyManifoldCornerSpan(
                     level, faceIndex, i, singularEdgeMask, cornerSpans[i], fvcRefiner);
             } else {
-                tmp::identifyNonManifoldCornerSpan(
+                identifyNonManifoldCornerSpan(
                     level, faceIndex, i, singularEdgeMask, cornerSpans[i], fvcRefiner);
             }
         }

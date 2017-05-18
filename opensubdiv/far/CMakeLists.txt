@@ -39,7 +39,6 @@ set(SOURCE_FILES
     patchBasis.cpp
     patchBuilder.cpp
     patchDescriptor.cpp
-    patchFaceTag.cpp
     patchMap.cpp
     patchTable.cpp
     patchTableFactory.cpp
@@ -72,7 +71,6 @@ set(PUBLIC_HEADER_FILES
     error.h
     neighborhood.h
     patchDescriptor.h
-    patchFaceTag.h
     patchParam.h
     patchMap.h
     patchTable.h

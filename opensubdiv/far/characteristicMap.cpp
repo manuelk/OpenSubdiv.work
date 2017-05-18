@@ -26,7 +26,6 @@
 #include "../far/characteristicBuilder.h"
 #include "../far/error.h"
 #include "../far/neighborhoodBuilder.h"
-#include "../far/patchFaceTag.h"
 #include "../far/subdivisionPlanTable.h"
 #include "../far/topologyRefiner.h"
 

@@ -48,97 +48,6 @@ using Vtr::internal::FVarLevel;
 
 namespace internal {
 
-inline Level::ETag
-getSingularEdgeMask(bool includeAllInfSharpEdges = false) {
-
-    Level::ETag eTagMask;
-    eTagMask.clear();
-    eTagMask._boundary = true;
-    eTagMask._nonManifold = true;
-    eTagMask._infSharp = includeAllInfSharpEdges;
-    return eTagMask;
-}
-
-inline bool
-isEdgeSingular(Level const & level, FVarLevel const * fvarLevel, Index eIndex,
-               Level::ETag eTagMask)
-{
-    Level::ETag eTag = level.getEdgeTag(eIndex);
-    if (fvarLevel) {
-        eTag = fvarLevel->getEdgeTag(eIndex).combineWithLevelETag(eTag);
-    }
-
-    Level::ETag::ETagSize * iTag  = reinterpret_cast<Level::ETag::ETagSize*>(&eTag);
-    Level::ETag::ETagSize * iMask = reinterpret_cast<Level::ETag::ETagSize*>(&eTagMask);
-    return (*iTag & *iMask) > 0;
-}
-
-void
-identifyManifoldCornerSpan(Level const & level, Index fIndex,
-                           int fCorner, Level::ETag eTagMask,
-                           Level::VSpan & vSpan, int fvc = -1)
-{
-    FVarLevel const * fvarLevel = (fvc < 0) ? 0 : &level.getFVarLevel(fvc);
-
-    ConstIndexArray fVerts = level.getFaceVertices(fIndex);
-    ConstIndexArray fEdges = level.getFaceEdges(fIndex);
-
-    ConstIndexArray vEdges = level.getVertexEdges(fVerts[fCorner]);
-    int             nEdges = vEdges.size();
-
-    int iLeadingStart  = vEdges.FindIndex(fEdges[fCorner]);
-    int iTrailingStart = (iLeadingStart + 1) % nEdges;
-
-    vSpan.clear();
-    vSpan._numFaces = 1;
-
-    int iLeading  = iLeadingStart;
-    while (! isEdgeSingular(level, fvarLevel, vEdges[iLeading], eTagMask)) {
-        ++vSpan._numFaces;
-        iLeading = (iLeading + nEdges - 1) % nEdges;
-        if (iLeading == iTrailingStart) break;
-    }
-
-    int iTrailing = iTrailingStart;
-    while (! isEdgeSingular(level, fvarLevel, vEdges[iTrailing], eTagMask)) {
-        ++vSpan._numFaces;
-        iTrailing = (iTrailing + 1) % nEdges;
-        if (iTrailing == iLeadingStart) break;
-    }
-    vSpan._startFace = (LocalIndex) iLeading;
-}
-
-void
-identifyNonManifoldCornerSpan(Level const & level, Index fIndex,
-                              int fCorner, Level::ETag /* eTagMask */,
-                              Level::VSpan & vSpan, int /* fvc */ = -1)
-{
-    //  For now, non-manifold patches revert to regular patches -- just identify
-    //  the single face now for a sharp corner patch.
-    //
-    //  Remember that the face may be incident the vertex multiple times when
-    //  non-manifold, so make sure the local index of the corner vertex in the
-    //  face identified additionally matches the corner.
-    //
-    //FVarLevel const * fvarLevel = (fvc < 0) ? 0 : &level.getFVarChannel(fvc);
-
-    Index vIndex = level.getFaceVertices(fIndex)[fCorner];
-
-    ConstIndexArray      vFaces  = level.getVertexFaces(vIndex);
-    ConstLocalIndexArray vInFace = level.getVertexFaceLocalIndices(vIndex);
-
-    vSpan.clear();
-    for (int i = 0; i < vFaces.size(); ++i) {
-        if ((vFaces[i] == fIndex) && ((int)vInFace[i] == fCorner)) {
-            vSpan._startFace = (LocalIndex) i;
-            vSpan._numFaces = 1;
-            vSpan._sharp = true;
-            break;
-        }
-    }
-    assert(vSpan._numFaces == 1);
-}
-
 //
 // Helper class to keep track of end-cap stencils
 //
@@ -185,65 +94,16 @@ struct EndCapBuilder {
         }
     }
 
-    void GetIrregularPatchCornerSpans(Vtr::internal::Level const & level,
-        Index faceIndex, bool useInfSharpPatch, bool generateLegacySharpCornerPatches,
-            Level::VSpan cornerSpans[4]) {
-
-        //  Retrieve tags and identify other information for the corner vertices:
-        Level::VTag vTags[4];
-        level.getFaceVTags(faceIndex, vTags);
-
-        //
-        //  For each corner vertex, use the complete neighborhood when possible (which
-        //  does not require a search, otherwise identify the span of interest around
-        //  the vertex:
-        //
-        ConstIndexArray fVerts = level.getFaceVertices(faceIndex);
-
-        Level::ETag singularEdgeMask = getSingularEdgeMask(useInfSharpPatch);
-
-        for (int i = 0; i < fVerts.size(); ++i) {
-            bool testInfSharp = useInfSharpPatch &&
-               (vTags[i]._infSharpEdges && (vTags[i]._rule != Sdc::Crease::RULE_DART));
-
-            if (!testInfSharp) {
-                cornerSpans[i].clear();
-            } else {
-                if (!vTags[i]._nonManifold) {
-                    identifyManifoldCornerSpan(
-                            level, faceIndex, i, singularEdgeMask, cornerSpans[i]);
-                } else {
-                    identifyNonManifoldCornerSpan(
-                            level, faceIndex, i, singularEdgeMask, cornerSpans[i]);
-                }
-            }
-            if (vTags[i]._corner) {
-                cornerSpans[i]._sharp = true;
-            } else if (useInfSharpPatch) {
-                cornerSpans[i]._sharp = vTags[i]._infIrregular && (vTags[i]._rule == Sdc::Crease::RULE_CORNER);
-            }
-
-            //  Legacy option -- reinterpret an irregular smooth corner as sharp if specified:
-            if (!cornerSpans[i]._sharp && generateLegacySharpCornerPatches) {
-                if (vTags[i]._xordinary && vTags[i]._boundary && !vTags[i]._nonManifold) {
-                        int nFaces = cornerSpans[i].isAssigned() ? cornerSpans[i]._numFaces
-                                   : level.getVertexFaces(fVerts[i]).size();
-                        cornerSpans[i]._sharp = (nFaces == 1);
-                }
-            }
-        }
-    }
-
-    ConstIndexArray GatherPatchPoints(Vtr::internal::Level const & level,
-        Index faceIndex, int levelVertOffset,
-            bool useInfSharpPatch, bool generateLegacySharpCornerPatches) {
+    ConstIndexArray GatherPatchPoints(PatchBuilder const & patchBuilder,
+        int levelIndex, Index faceIndex, int levelVertOffset) {
 
         ConstIndexArray cvs;
 
         Level::VSpan irregCornerSpans[4];
 
-        GetIrregularPatchCornerSpans(level, faceIndex,
-            useInfSharpPatch, generateLegacySharpCornerPatches, irregCornerSpans);
+        patchBuilder.GetIrregularPatchCornerSpans(levelIndex, faceIndex, irregCornerSpans);
+
+        Vtr::internal::Level const & level = patchBuilder.GetVtrLevel(levelIndex);
 
         switch (type) {
             case ENDCAP_BILINEAR_BASIS:
@@ -289,8 +149,6 @@ struct EndCapBuilder {
 //
 //  Helper functions:
 //
-
-inline bool isSharpnessEqual(float s1, float s2) { return (s1 == s2); }
 
 static inline void
 offsetAndPermuteIndices(Index const indices[], int count,
@@ -392,7 +250,7 @@ copyColIndices(int evIndex, Index const * src, Index * dst) {
 }
 
 static StencilTable const *
-generateStencilTable(
+createStencilTable(
     TopologyRefiner const & refiner, EndCapBuilder & endcapBuilder) {
 
     StencilTableFactory::Options options;
@@ -424,6 +282,55 @@ generateStencilTable(
 // Characteristic builder implementation
 //
 
+void CharacteristicBuilder::setFaceTags(
+    FaceTags & tags, int levelIndex, Index faceIndex) const {
+
+    tags.Clear();
+
+    tags.hasPatch = _patchBuilder.IsPatchEligible(levelIndex, faceIndex);
+
+    if (!tags.hasPatch) {
+        return;
+    }
+
+    Level const & level =
+        _patchBuilder.GetVtrLevel(levelIndex);
+
+    Level::VTag faceVTags = level.getFaceCompositeVTag(faceIndex);
+
+    Level::VSpan irregCornerSpans[4];
+
+    tags.isRegular = _patchBuilder.IsPatchRegular(levelIndex, faceIndex);
+
+    if (tags.isRegular) {
+
+        tags.boundaryMask =
+            _patchBuilder.GetRegularPatchBoundaryMask(levelIndex, faceIndex);
+
+        // Test regular interior patches for a single-crease patch when specified:
+        if (useSingleCreasePatches() && (tags.boundaryMask == 0) &&
+            (faceVTags._semiSharpEdges || faceVTags._infSharpEdges)) {
+
+            float edgeSharpness = 0.0f;
+            int   edgeInFace = 0;
+            if (level.isSingleCreasePatch(faceIndex, &edgeSharpness, &edgeInFace)) {
+
+                // cap sharpness to the max isolation level
+                edgeSharpness =
+                    std::min(edgeSharpness, float(getMaxIsolationLevel() - levelIndex));
+
+                if (edgeSharpness > 0.0f) {
+                    tags.isSingleCrease = true;
+                    tags.boundaryIndex = edgeInFace;
+                }
+            }
+        }
+    }
+    tags.transitionMask = tags.isRegular ?
+        _patchBuilder.GetTransitionMask(levelIndex, faceIndex) : 0;
+}
+
+
 typedef Characteristic::NodeDescriptor NodeDescriptor;
 
 inline CharacteristicBuilder::ProtoNode const &
@@ -439,7 +346,9 @@ CharacteristicBuilder::getNodeChild(ProtoNode const & pn, short childIndex) {
 CharacteristicBuilder::CharacteristicBuilder(TopologyRefiner const & refiner,
     CharacteristicMap const & charmap) :
         _refiner(refiner),
-        _charmap(charmap) {
+        _charmap(charmap),
+        // no support yet for face-varying, so numChannel & channelIndices are set to 0
+        _patchBuilder(refiner, 0, 0, useInfSharpPatches(), useLegacySharpCornerPatches()) {
 
     static int const levelSizes[numLevelMax] =
         { 1, 4, 16, 64, 128, 128, 128, 128, 128, 128, 128 };
@@ -525,15 +434,10 @@ CharacteristicBuilder::identifyNode(int levelIndex, Index faceIndex) {
     node.levelIndex = levelIndex;
     node.faceIndex = faceIndex;
 
-    node.patchTag.Clear();
+    setFaceTags(node.faceTags, levelIndex, faceIndex);
 
-    node.patchTag.ComputeTags(_refiner,
-        levelIndex, faceIndex, getMaxIsolationLevel(),
-            useSingleCreasePatches(), useInfSharpPatches(),
-                useLegacySharpCornerPatches());
-
-    if (node.patchTag.hasPatch) {
-        node.nodeType = node.patchTag.isRegular ?
+    if (node.faceTags.hasPatch) {
+        node.nodeType = node.faceTags.isRegular ?
             Characteristic::NODE_REGULAR : Characteristic::NODE_END;
         node.numChildren = 0;
     } else {
@@ -561,13 +465,13 @@ CharacteristicBuilder::nodeIsTerminal(ProtoNode const & pn, int * evIndex) const
     for (int i=0; i<(int)pn.numChildren; ++i) {
 
         ProtoNode const & child = getNodeChild(pn, i);
-        if (child.patchTag.isRegular) {
-            assert(child.patchTag.hasPatch);
+        if (child.faceTags.isRegular) {
+            assert(child.faceTags.hasPatch);
             ++regular;
         } else {
             // trivial rejection for boundaries or creases
-            if ((child.patchTag.boundaryCount>0) ||
-                 child.patchTag.isSingleCrease) {
+            if ((child.faceTags.boundaryCount>0) ||
+                 child.faceTags.isSingleCrease) {
                  return false;
             }
             // complete check
@@ -663,7 +567,7 @@ CharacteristicBuilder::computeNodeOffsets(
                 (Characteristic::NodeType)pn.nodeType;
 
             treeSize += Node::getNodeSize(
-                nodeType, (bool)pn.patchTag.isSingleCrease);
+                nodeType, (bool)pn.faceTags.isSingleCrease);
 
             numSupports += computeNumSupports(
                 nodeType, useDynamicIsolation());
@@ -687,8 +591,8 @@ CharacteristicBuilder::populateRegularNode(
     float sharpness = 0.f;
 
     int bType = 0,
-        bIndex = pn.patchTag.boundaryIndex,
-        boundaryMask = pn.patchTag.isSingleCrease ? 0 : pn.patchTag.boundaryMask,
+        bIndex = pn.faceTags.boundaryIndex,
+        boundaryMask = pn.faceTags.isSingleCrease ? 0 : pn.faceTags.boundaryMask,
         levelVertOffset = _levelVertOffsets[pn.levelIndex];
 
     if (boundaryMask) {
@@ -705,7 +609,7 @@ CharacteristicBuilder::populateRegularNode(
         static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
         permutation = permuteRegular;
         level.gatherQuadRegularInteriorPatchPoints(pn.faceIndex, patchVerts, 0);
-        if (pn.patchTag.isSingleCrease) {
+        if (pn.faceTags.isSingleCrease) {
             int maxIsolation = _refiner.GetAdaptiveOptions().isolationLevel;
             singleCrease = true;
             boundaryMask = 1 << bIndex;
@@ -760,13 +664,12 @@ CharacteristicBuilder::populateEndCapNode(
 
     // use the end-cap builder to generate support stencils for the end-cap
     // patches (bilinear, b-spline, gregory...)
-    Vtr::internal::Level const & level = _refiner.getLevel((int)pn.levelIndex);
 
     Index levelVertOffset = _levelVertOffsets[pn.levelIndex];
 
     ConstIndexArray cvs =
-        _endcapBuilder->GatherPatchPoints(level,
-            pn.faceIndex, levelVertOffset, useInfSharpPatches(), useLegacySharpCornerPatches());
+        _endcapBuilder->GatherPatchPoints(
+            _patchBuilder, pn.levelIndex, pn.faceIndex, levelVertOffset);
 
     memcpy(supportsPtr + pn.firstSupport, cvs.begin(), cvs.size()*sizeof(Index));
 
@@ -775,7 +678,8 @@ CharacteristicBuilder::populateEndCapNode(
 
     treePtr += pn.treeOffset;
 
-    ((NodeDescriptor *)treePtr)->SetPatch(Characteristic::NODE_END, nonquad, false, pn.levelIndex, 0, u, v);
+    ((NodeDescriptor *)treePtr)->SetPatch(
+        Characteristic::NODE_END, nonquad, false, pn.levelIndex, 0, u, v);
 
     treePtr[1] = pn.firstSupport;
 }
@@ -835,14 +739,11 @@ CharacteristicBuilder::populateTerminalNode(
     if (useDynamicIsolation()) {
 
         // collect the support points for the dynamic end-cap covering this face
-        int levelIndex = (int)pn.levelIndex,
-            levelVertOffset = _levelVertOffsets[levelIndex];
-
-        Vtr::internal::Level const & level = _refiner.getLevel(levelIndex);
+        int levelVertOffset = _levelVertOffsets[pn.levelIndex];
 
         ConstIndexArray cvs =
-            _endcapBuilder->GatherPatchPoints(level,
-                pn.faceIndex, levelVertOffset, useInfSharpPatches(), useLegacySharpCornerPatches());
+            _endcapBuilder->GatherPatchPoints(
+                _patchBuilder, pn.levelIndex, pn.faceIndex, levelVertOffset);
 
         memcpy(supportsPtr + pn.firstSupport + 25, cvs.begin(), cvs.size()*sizeof(Index));
     }
@@ -870,14 +771,11 @@ CharacteristicBuilder::populateRecursiveNode(
 
     if (useDynamicIsolation()) {
 
-        int levelIndex = (int)pn.levelIndex,
-            levelVertOffset = _levelVertOffsets[levelIndex];
-
-        Vtr::internal::Level const & level = _refiner.getLevel(levelIndex);
+        int levelVertOffset = _levelVertOffsets[pn.levelIndex];
 
         ConstIndexArray cvs =
-            _endcapBuilder->GatherPatchPoints(level,
-                pn.faceIndex, levelVertOffset, useInfSharpPatches(), useLegacySharpCornerPatches());
+            _endcapBuilder->GatherPatchPoints(
+                _patchBuilder, pn.levelIndex, pn.faceIndex, levelVertOffset);
 
         memcpy(supportsPtr + pn.firstSupport, cvs.begin(), cvs.size()*sizeof(Index));
 
@@ -986,7 +884,7 @@ CharacteristicBuilder::FinalizeSupportStencils() {
     // factorizing the entire mesh, including all redundant topologies
 
     StencilTable const * supportStencils =
-        generateStencilTable(_refiner, *_endcapBuilder);
+        createStencilTable(_refiner, *_endcapBuilder);
     assert(supportStencils);
 
     int numContexts = (int)_buildContexts.size(),
@@ -1036,6 +934,7 @@ CharacteristicBuilder::FinalizeSupportStencils() {
 
                     Index index = stencil.GetVertexIndices()[k];
 
+// XXXX manuelk debug
 if (neighborhood->Remap(index)==(LocalIndex)INDEX_INVALID) {
      printf("index=%d\n", index);
      neighborhood->Print();

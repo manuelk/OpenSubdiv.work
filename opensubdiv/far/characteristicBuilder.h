@@ -28,7 +28,7 @@
 #include "../version.h"
 
 #include "../far/characteristicMap.h"
-#include "../far/patchFaceTag.h"
+#include "../far/patchBuilder.h"
 #include "../far/topologyRefiner.h"
 #include "../far/types.h"
 
@@ -87,6 +87,26 @@ public:
 private:
 
     //
+    // Face Tags
+    //
+
+    struct FaceTags {
+
+        unsigned int hasPatch        : 1, 
+                     isRegular       : 1,
+                     transitionMask  : 4,
+                     boundaryMask    : 4,
+                     boundaryIndex   : 2,
+                     boundaryCount   : 3,
+                     hasBoundaryEdge : 3,
+                     isSingleCrease  : 1;
+
+        void Clear() { std::memset(this, 0, sizeof(*this)); }
+    };
+
+    void setFaceTags(FaceTags & faceTags, int levelIndex, Index faceIndex) const;
+
+    //
     // Proto Nodes
     //
 
@@ -94,7 +114,7 @@ private:
 
         Index faceIndex;       // index of face in Vtr::level
 
-        PatchFaceTag patchTag; // patch tags for the face
+        FaceTags faceTags;
 
         int treeOffset,        // linear node offset in characteristic tree
             firstSupport;      // index of first support point for the node
@@ -209,6 +229,8 @@ private:
     TopologyRefiner const & _refiner;
 
     CharacteristicMap const & _charmap;
+
+    PatchBuilder _patchBuilder;
 
     std::vector<Index> _levelVertOffsets;
 };

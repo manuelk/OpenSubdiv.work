@@ -43,13 +43,17 @@ namespace internal {
 
 // PatchBuilder
 //
-// Helper class aggregating transient contextual data structures during
-// the creation of a patch table.
-// This helps keeping the factory class stateless.
+// Private helper class aggregating transient contextual data structures during
+// the creation of feature-adaptive patches (this helps keeping the factory
+// classes stateless).
 //
 class PatchBuilder {
 
 public:
+
+    PatchBuilder(TopologyRefiner const & refiner,
+        int numFVarChannels, int const * fvarChannelIndices,
+            bool useInfSharpPatch, bool generateLegacySharpCornerPatches);
 
     TopologyRefiner const & GetTopologyRefiner() const {
         return _refiner;
@@ -58,12 +62,19 @@ public:
     std::vector<int> const & GetFVarChannelsIndices() const {
         return _fvarChannelIndices;
     }
+    bool UseInfSharpPatch() const {
+        return _useInfSharpPatch;
+    }
+
+    bool GenerateLegacySharpCornerPatches() const {
+        return _generateLegacySharpCornerPatches;
+    }
+
+    Vtr::internal::Level const & GetVtrLevel(int levelIndex) const;
+
+
 
     // Methods to query patch properties for classification and construction.
-    PatchBuilder(TopologyRefiner const & refiner,
-        int numFVarChannels, int const * fvarChannelIndices,
-            bool useInfSharpPatch, bool generateLegacySharpCornerPatches);
-
     bool IsPatchEligible(int levelIndex, Index faceIndex) const;
 
     bool IsPatchSmoothCorner(int levelIndex, Index faceIndex, int fvcFactory = -1) const;
@@ -74,6 +85,7 @@ public:
 
     void GetIrregularPatchCornerSpans(int levelIndex, Index faceIndex,
         Vtr::internal::Level::VSpan cornerSpans[4], int fvcFactory = -1) const;
+
 
     // Additional simple queries -- most regarding face-varying channels that hide
     // the mapping between channels in the source Refiner and corresponding channels
@@ -98,9 +110,10 @@ protected:
     // or empty if we are not populating face-varying data.
     std::vector<int> _fvarChannelIndices;
 
-    bool _useInfSharpPatch,
-         _generateLegacySharpCornerPatches;
+    bool _useInfSharpPatch,                  // Use infinitely-sharp patch
+         _generateLegacySharpCornerPatches;  // Generate sharp regular patches at smooth corners (legacy)
 };
+
 
 } // end namespace internal
 

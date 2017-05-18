@@ -218,11 +218,10 @@ protected:
     friend class EndCapBilinearBasisPatchFactory;
     friend class EndCapGregoryBasisPatchFactory;
     friend class EndCapLegacyGregoryPatchFactory;
-    friend class internal::PatchBuilder;
-    friend class PatchFaceTag;
     friend class PtexIndices;
     friend class PrimvarRefiner;
     friend class internal::CharacteristicBuilder;
+    friend class internal::PatchBuilder;
 
     Vtr::internal::Level & getLevel(int l) { return *_levels[l]; }
     Vtr::internal::Level const & getLevel(int l) const { return *_levels[l]; }

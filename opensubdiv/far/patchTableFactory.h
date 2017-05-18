@@ -35,7 +35,6 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 //  Forward declarations (for internal implementation purposes):
-class PatchFaceTag;
 class PtexIndices;
 class TopologyRefiner;
 
@@ -135,6 +134,33 @@ private:
     static PatchParam computePatchParam(BuilderContext const & context,
                                         int level, int face,
                                         int boundaryMask, int transitionMask);
+
+public:
+    //  PatchFaceTag
+    //  This simple struct was previously used within the factory to take inventory of
+    //  various kinds of patches to fully allocate buffers prior to populating them.  It
+    //  was not intended to be exposed as part of the public interface.
+    //
+    //  It is no longer used internally and is being kept here to respect preservation
+    //  of the public interface, but it will be deprecated at the earliest opportunity.
+    //
+    struct PatchFaceTag {
+    public:
+        unsigned int   _hasPatch        : 1;
+        unsigned int   _isRegular       : 1;
+        unsigned int   _transitionMask  : 4;
+        unsigned int   _boundaryMask    : 4;
+        unsigned int   _boundaryIndex   : 2;
+        unsigned int   _boundaryCount   : 3;
+        unsigned int   _hasBoundaryEdge : 3;
+        unsigned int   _isSingleCrease  : 1;
+
+        void clear();
+        void assignBoundaryPropertiesFromEdgeMask(int boundaryEdgeMask);
+        void assignBoundaryPropertiesFromVertexMask(int boundaryVertexMask);
+        void assignTransitionPropertiesFromEdgeMask(int boundaryVertexMask);
+    };
+    typedef std::vector<PatchFaceTag> PatchTagVector;
 };
 
 } // end namespace Far
