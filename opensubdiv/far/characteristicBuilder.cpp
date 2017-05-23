@@ -150,38 +150,6 @@ struct EndCapBuilder {
 //  Helper functions:
 //
 
-static inline void
-offsetAndPermuteIndices(Index const indices[], int count,
-                        Index offset, int const permutation[],
-                        Index result[]) {
-
-    // The patch vertices for boundary and corner patches
-    // are assigned index values even though indices will
-    // be undefined along boundary and corner edges.
-    // When the resulting patch table is going to be used
-    // as indices for drawing, it is convenient for invalid
-    // indices to be replaced with known good values, such
-    // as the first un-permuted index, which is the index
-    // of the first vertex of the patch face.
-    Index knownGoodIndex = indices[0];
-
-    if (permutation) {
-        for (int i = 0; i < count; ++i) {
-            if (permutation[i] < 0) {
-                result[i] = offset + knownGoodIndex;
-            } else {
-                result[i] = offset + indices[permutation[i]];
-            }
-        }
-    } else if (offset) {
-        for (int i = 0; i < count; ++i) {
-            result[i] = offset + indices[i];
-        }
-    } else {
-        std::memcpy(result, indices, count * sizeof(Index));
-    }
-}
-
 // convert CCW winding to match bitwise ^= traversal
 //
 //  Sequential      ^ Bitwise     traversal pseudo-code
@@ -641,7 +609,7 @@ CharacteristicBuilder::populateRegularNode(
     short u, v;
     bool nonquad = computeSubPatchDomain(pn.levelIndex, pn.faceIndex, &u, &v);
 
-    offsetAndPermuteIndices(patchVerts,
+    PatchBuilder::OffsetAndPermuteIndices(patchVerts,
         16, levelVertOffset, permutation, supportsPtr + pn.firstSupport);
 
     // copy to buffers
@@ -719,7 +687,8 @@ CharacteristicBuilder::populateTerminalNode(
 
             static int const permuteRegular[16] = { 5, 6, 7, 8, 4, 0, 1, 9, 15, 3, 2, 10, 14, 13, 12, 11 };
             int levelVertOffset = _levelVertOffsets[childLevelIndex];
-            offsetAndPermuteIndices(localVerts, 16, levelVertOffset, permuteRegular, patchVerts);
+            PatchBuilder::OffsetAndPermuteIndices(localVerts,
+                16, levelVertOffset, permuteRegular, patchVerts);
 
             // merge non-overlapping indices into a 5x5 array
                    if (i == ((pn.evIndex+2)%4)) {
