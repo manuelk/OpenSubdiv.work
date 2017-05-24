@@ -23,7 +23,7 @@
 //
 
 #include "../far/subdivisionPlanTable.h"
-#include "../far/characteristicMap.h"
+#include "../far/topologyMap.h"
 #include "../far/characteristicBuilder.h"
 #include "../far/topologyRefiner.h"
 
@@ -33,7 +33,7 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 SubdivisionPlanTable::SubdivisionPlanTable(
-    CharacteristicMap const & charmap) : _charmap(charmap) {
+    TopologyMap const & topomap) : _topomap(topomap) {
 }
 
 int

@@ -22,7 +22,7 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
-#include "../far/characteristicMap.h"
+#include "../far/topologyMap.h"
 #include "../far/characteristicBuilder.h"
 #include "../far/error.h"
 #include "../far/neighborhoodBuilder.h"
@@ -35,7 +35,7 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 void
-CharacteristicMap::addCharacteristicToHash(
+TopologyMap::addCharacteristicToHash(
     TopologyLevel const & level, NeighborhoodBuilder & neighborhoodBuilder,
         int faceIndex, int charIndex, int valence) {
 
@@ -84,7 +84,7 @@ CharacteristicMap::addCharacteristicToHash(
 }
 
 Index
-CharacteristicMap::findCharacteristic(
+TopologyMap::findCharacteristic(
     Neighborhood const & neighborhood, int * rotation) const {
 
     unsigned int hash = neighborhood.GetHash();
@@ -115,18 +115,18 @@ CharacteristicMap::findCharacteristic(
 }
 
 bool
-CharacteristicMap::supportsEndCaps(EndCapType type) {
+TopologyMap::supportsEndCaps(EndCapType type) {
 
     // XXXX we do not support those end-cap types yet
     if (type==ENDCAP_LEGACY_GREGORY) {
-        Error(FAR_CODING_ERROR, "Failure in CharacteristicMap::MapTopology() -- "
+        Error(FAR_CODING_ERROR, "Failure in TopologyMap::MapTopology() -- "
             "unsupported EndCapType");
         return false;
     }
     return true;
 }
 
-CharacteristicMap::CharacteristicMap(Options options) :
+TopologyMap::TopologyMap(Options options) :
     _options(options), _numMaxSupports(0) {
 
     _characteristicsHash.resize(_options.hashSize, INDEX_INVALID);
@@ -144,7 +144,7 @@ appendPlanControlVertices(
 }
 
 SubdivisionPlanTable const *
-CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
+TopologyMap::HashTopology(TopologyRefiner const & refiner) {
 
     if (!supportsEndCaps(_options.GetEndCapType()) || _options.hashSize<=0) {
         return 0;
@@ -180,6 +180,8 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
     for (int faceIndex=0, firstControl=0; faceIndex < nfaces; ++faceIndex) {
 
         if (coarseLevel.IsFaceHole(faceIndex)) {
+            // although holes do not render, we may want to have a place-holder
+            // in the table to maintain primitive index consistency
             plans.push_back(SubdivisionPlan(0, INDEX_INVALID, INDEX_INVALID));
             continue;
         }
@@ -260,7 +262,7 @@ CharacteristicMap::HashTopology(TopologyRefiner const & refiner) {
 }
 
 int
-CharacteristicMap::GetCharacteristicTreeSizeTotal() const {
+TopologyMap::GetCharacteristicTreeSizeTotal() const {
 
     int size = 0;
     for (int i=0; i<GetNumCharacteristics(); ++i) {
@@ -271,10 +273,10 @@ CharacteristicMap::GetCharacteristicTreeSizeTotal() const {
 }
 
 void
-CharacteristicMap::WriteCharacteristicsDigraphs(
+TopologyMap::WriteCharacteristicsDigraphs(
     FILE * fout, char const * title, bool showIndices) const {
 
-    fprintf(fout, "digraph CharacteristicMap {\n");
+    fprintf(fout, "digraph TopologyMap {\n");
 
     if (title) {
         fprintf(fout, "  label = \"%s\";\n", title);

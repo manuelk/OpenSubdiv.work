@@ -35,8 +35,8 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 
-// Topoloogy neighborhood descriptor : uniquely identifies topological
-// configurations of a mesh
+// Topoloogy neighborhood descriptor : uniquely identifies the topological
+// configuration of a face, including crease tags.
 //
 class Neighborhood {
 

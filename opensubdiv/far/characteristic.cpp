@@ -24,7 +24,7 @@
 
 #include "../far/characteristic.h"
 #include "../far/characteristicBuilder.h"
-#include "../far/characteristicMap.h"
+#include "../far/topologyMap.h"
 #include "../far/neighborhood.h"
 #include "../far/patchBasis.h"
 
@@ -123,26 +123,26 @@ Characteristic::Node::GetNumSupports(int quadrant, short maxLevel) const {
     NodeDescriptor desc = GetDescriptor();
 
     NodeType type = desc.GetType();
-    
+
     if (desc.GetDepth()>=maxLevel &&
         (type==NODE_RECURSIVE || type==NODE_TERMINAL)) {
         // if we hit the dynamic isolation level limit, then force the basis
         // to end-cap patch for terminal & recursive nodes
         type = NODE_END;
-    }  
-    
+    }
+
     switch (type) {
         case NODE_REGULAR:
             return 16;
-        case NODE_TERMINAL: 
+        case NODE_TERMINAL:
             // note : terminal nodes hold 25 supports, but the public-facing
             // API client code to select which regular patch to use and
             // automatically reduces the 25-set to 16 indices
             return desc.GetEvIndex()!=(short)quadrant ? 16 : 0;
         case NODE_END: {
-            CharacteristicMap const & charmap =
-                GetCharacteristic()->GetCharacteristicMap();
-            return getNumEndCapSupports(charmap.GetEndCapType());
+            TopologyMap const & topomap =
+                GetCharacteristic()->GetTopologyMap();
+            return getNumEndCapSupports(topomap.GetEndCapType());
         };
         default:
             return 0;
@@ -279,7 +279,7 @@ Characteristic::EvaluateBasis(float s, float t,
 
     NodeType type = desc.GetType();
 
-    
+
     int depth = desc.GetDepth(); // - (desc.NonQuadRoot() ? 1 : 0);
 
     PatchParamBase param;
@@ -344,12 +344,12 @@ Characteristic::EvaluateBasis(float s, float t,
 
 inline bool
 Characteristic::hasDynamicIsolation() const {
-    return (bool)_characteristicMap.GetOptions().useDynamicIsolation;
+    return (bool)_topologyMap.GetOptions().useDynamicIsolation;
 }
 
 inline EndCapType
 Characteristic::getEndCapType() const {
-    return GetCharacteristicMap().GetEndCapType();
+    return GetTopologyMap().GetEndCapType();
 }
 
 //
@@ -369,7 +369,7 @@ printNodeIndices(FILE * fout, Characteristic::Node node) {
 
     Index firstSupport = node.getFirstSupportIndex();
     for (int i=0; i<numSupports, ++i) {
-        Characteristic::Support support = ch->GetSupport(firstSupport+1);        
+        Characteristic::Support support = ch->GetSupport(firstSupport+1);
         //if (i>0 && ((i%stride)!=0))
         //    fprintf(fout, " ");
         //if ((i%stride)==0)

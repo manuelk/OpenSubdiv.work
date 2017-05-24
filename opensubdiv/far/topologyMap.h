@@ -23,8 +23,8 @@
 //
 
 
-#ifndef OPENSUBDIV3_FAR_CHARACTERISTIC_MAP_H
-#define OPENSUBDIV3_FAR_CHARACTERISTIC_MAP_H
+#ifndef OPENSUBDIV3_FAR_TOPOLOGY_MAP_H
+#define OPENSUBDIV3_FAR_TOPOLOGY_MAP_H
 
 #include "../version.h"
 
@@ -52,7 +52,7 @@ class TopologyRefiner;
 ///
 ///  \brief Stores topology characteristic plans
 ///
-class CharacteristicMap {
+class TopologyMap {
 
 public:
 
@@ -82,7 +82,7 @@ public:
     };
 
     /// \brief Constructor
-    CharacteristicMap(Options options=Options());
+    TopologyMap(Options options=Options());
 
     //// \brief Returns the map's configuration options
     Options GetOptions() const { return _options; }
@@ -156,4 +156,4 @@ private:
 using namespace OPENSUBDIV_VERSION;
 } // end namespace OpenSubdiv
 
-#endif /* OPENSUBDIV3_FAR_CHARACTERISTIC_MAP_H */
+#endif /* OPENSUBDIV3_FAR_TOPOLOGY_MAP_H */

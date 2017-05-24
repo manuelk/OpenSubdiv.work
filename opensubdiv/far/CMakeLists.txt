@@ -26,7 +26,6 @@
 # source & headers
 set(SOURCE_FILES
     characteristic.cpp
-    characteristicMap.cpp
     characteristicBuilder.cpp
     error.cpp
     endCapBilinearBasisPatchFactory.cpp
@@ -46,6 +45,7 @@ set(SOURCE_FILES
     stencilTable.cpp
     stencilTableFactory.cpp
     stencilBuilder.cpp
+    topologyMap.cpp
     subdivisionPlanTable.cpp
     topologyDescriptor.cpp
     topologyRefiner.cpp
@@ -67,7 +67,6 @@ set(PRIVATE_HEADER_FILES
 
 set(PUBLIC_HEADER_FILES
     characteristic.h
-    characteristicMap.h
     error.h
     neighborhood.h
     patchDescriptor.h
@@ -82,6 +81,7 @@ set(PUBLIC_HEADER_FILES
     subdivisionPlanTable.h
     topologyDescriptor.h
     topologyLevel.h
+    topologyMap.cpp
     topologyRefiner.h
     topologyRefinerFactory.h
     types.h

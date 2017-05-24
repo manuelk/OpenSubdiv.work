@@ -27,7 +27,7 @@
 
 #include "../version.h"
 
-#include "../far/characteristicMap.h"
+#include "../far/characteristic.h"
 #include "../far/patchBuilder.h"
 #include "../far/topologyRefiner.h"
 #include "../far/types.h"
@@ -41,7 +41,7 @@ namespace Far {
 
 class Neighborhood;
 class StencilTable;
-class Characteristic;
+class TopologyMap;
 
 namespace internal {
 
@@ -70,7 +70,7 @@ public:
 
     // Constructor
     CharacteristicBuilder(
-        TopologyRefiner const & refiner, CharacteristicMap const & charmap);
+        TopologyRefiner const & refiner, TopologyMap const & topomap);
 
     // Destructor
     ~CharacteristicBuilder();
@@ -92,7 +92,7 @@ private:
 
     struct FaceTags {
 
-        unsigned int hasPatch        : 1, 
+        unsigned int hasPatch        : 1,
                      isRegular       : 1,
                      transitionMask  : 4,
                      boundaryMask    : 4,
@@ -181,7 +181,7 @@ private:
 
     EndCapBuilder * _endcapBuilder;
 
-    EndCapType getEndCapType() const { return _charmap.GetOptions().GetEndCapType(); }
+    EndCapType getEndCapType() const;
 
 private:
 
@@ -210,17 +210,17 @@ private:
 
     // misc. helpers
 
-    short getMaxIsolationLevel() const { return _refiner.GetAdaptiveOptions().isolationLevel; }
+    short getMaxIsolationLevel() const;
 
-    bool useTerminalNodes() const { return _charmap.GetOptions().useTerminalNode; }
+    bool useTerminalNodes() const;
 
-    bool useDynamicIsolation() const { return _charmap.GetOptions().useDynamicIsolation; }
+    bool useDynamicIsolation() const;
 
-    bool useLegacySharpCornerPatches() const { return _charmap.GetOptions().generateLegacySharpCornerPatches; }
+    bool useLegacySharpCornerPatches() const;
 
-    bool useSingleCreasePatches() const { return _refiner.GetAdaptiveOptions().useSingleCreasePatch; }
+    bool useSingleCreasePatches() const;
 
-    bool useInfSharpPatches() const { return _refiner.GetAdaptiveOptions().useInfSharpPatch; }
+    bool useInfSharpPatches() const;
 
     bool computeSubPatchDomain(int levelIndex, Index faceIndex, short * s, short * t) const;
 
@@ -228,7 +228,7 @@ private:
 
     TopologyRefiner const & _refiner;
 
-    CharacteristicMap const & _charmap;
+    TopologyMap const & _topomap;
 
     PatchBuilder _patchBuilder;
 

@@ -27,7 +27,7 @@
 
 #include "../version.h"
 
-#include "../far/characteristicMap.h"
+#include "../far/topologyMap.h"
 #include "../far/types.h"
 
 #include <vector>
@@ -90,7 +90,7 @@ public:
     Characteristic const * GetPlanCharacteristic(Index planIndex) const {
         Index charIndex = _plans[planIndex].charIndex;
         return charIndex!=INDEX_INVALID ?
-            _charmap.GetCharacteristic(charIndex) : 0;
+            _topomap.GetCharacteristic(charIndex) : 0;
     }
 
     /// \brief Returns the index of the vertex in the control mesh corresponding
@@ -106,9 +106,9 @@ public:
             &_controlVertices[plan.firstControl], plan.numControls);
     }
 
-    /// \brief Returns the CharacteristicMap associated with the plans in the table
-    CharacteristicMap const & GetCharacteristicMap() const {
-        return _charmap;
+    /// \brief Returns the TopologyMap associated with the plans in the table
+    TopologyMap const & GetTopologyMap() const {
+        return _topomap;
     }
 
     /// \brief Returns a vector with all the plans in the table
@@ -124,9 +124,9 @@ public:
 
 private:
 
-    friend class CharacteristicMap;
+    friend class TopologyMap;
 
-    SubdivisionPlanTable(CharacteristicMap const & charmap);
+    SubdivisionPlanTable(TopologyMap const & topomap);
 
     static int countNumPlans(TopologyLevel const & coarseLevel, int regFaceSize);
 
@@ -136,7 +136,7 @@ private:
 
     std::vector<Index> _controlVertices;
 
-    CharacteristicMap const & _charmap;
+    TopologyMap const & _topomap;
 };
 
 

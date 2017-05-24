@@ -148,8 +148,8 @@ public:
 // Constructor
 PatchTableFactory::BuilderContext::BuilderContext(
     TopologyRefiner const & refiner, Options opts) :
-        PatchBuilder(refiner, 
-                     opts.generateFVarTables ? opts.numFVarChannels : 0, 
+        PatchBuilder(refiner,
+                     opts.generateFVarTables ? opts.numFVarChannels : 0,
                      opts.fvarChannelIndices,
                      opts.useInfSharpPatch,
                      opts.generateLegacySharpCornerPatches),
@@ -310,7 +310,7 @@ PatchTableFactory::allocateFVarChannels(
     std::vector<int> const & fvarChannelIndices = context.GetFVarChannelsIndices();
 
     int npatches = table->GetNumPatchesTotal();
-    
+
     table->allocateFVarPatchChannels((int)fvarChannelIndices.size());
 
     // Initialize each channel
@@ -909,7 +909,7 @@ PatchTableFactory::populateAdaptivePatches(
                     }
                 }
             }
-            
+
             //  The single-crease patch is an interior patch so ignore boundary mask when gathering:
             if (isRegSingleCrease) {
                 arrayBuilder->iptr +=

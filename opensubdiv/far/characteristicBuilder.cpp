@@ -22,14 +22,14 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
-#include "../far/CharacteristicBuilder.h"
-#include "../far/characteristicMap.h"
+#include "../far/characteristicBuilder.h"
 #include "../far/endCapBilinearBasisPatchFactory.h"
 #include "../far/endCapBSplineBasisPatchFactory.h"
 #include "../far/endCapGregoryBasisPatchFactory.h"
 #include "../far/neighborhood.h"
 #include "../far/patchFaceTag.h"
 #include "../far/stencilTableFactory.h"
+#include "../far/topologyMap.h"
 #include "../far/topologyRefinerFactory.h"
 #include "../vtr/level.h"
 #include "../vtr/fvarLevel.h"
@@ -250,6 +250,42 @@ createStencilTable(
 // Characteristic builder implementation
 //
 
+EndCapType
+CharacteristicBuilder::getEndCapType() const {
+    return _topomap.GetOptions().GetEndCapType();
+}
+
+short
+CharacteristicBuilder::getMaxIsolationLevel() const {
+    return _refiner.GetAdaptiveOptions().isolationLevel;
+}
+
+bool
+CharacteristicBuilder::useTerminalNodes() const {
+    return _topomap.GetOptions().useTerminalNode;
+}
+
+bool
+CharacteristicBuilder::useDynamicIsolation() const {
+    return _topomap.GetOptions().useDynamicIsolation;
+}
+
+bool
+CharacteristicBuilder::useLegacySharpCornerPatches() const {
+    return _topomap.GetOptions().generateLegacySharpCornerPatches;
+}
+
+bool
+CharacteristicBuilder::useSingleCreasePatches() const {
+    return _refiner.GetAdaptiveOptions().useSingleCreasePatch;
+}
+
+bool
+CharacteristicBuilder::useInfSharpPatches() const {
+    return _refiner.GetAdaptiveOptions().useInfSharpPatch;
+}
+
+
 void CharacteristicBuilder::setFaceTags(
     FaceTags & tags, int levelIndex, Index faceIndex) const {
 
@@ -312,9 +348,9 @@ CharacteristicBuilder::getNodeChild(ProtoNode const & pn, short childIndex) {
 }
 
 CharacteristicBuilder::CharacteristicBuilder(TopologyRefiner const & refiner,
-    CharacteristicMap const & charmap) :
+    TopologyMap const & topomap) :
         _refiner(refiner),
-        _charmap(charmap),
+        _topomap(topomap),
         // no support yet for face-varying, so numChannel & channelIndices are set to 0
         _patchBuilder(refiner, 0, 0, useInfSharpPatches(), useLegacySharpCornerPatches()) {
 
@@ -816,7 +852,7 @@ CharacteristicBuilder::Create(
 
     bool nonquad = levelIndex!=0;
     Characteristic * ch =
-        new Characteristic(_charmap, neighborhood->GetNumVertices(), nonquad);
+        new Characteristic(_topomap, neighborhood->GetNumVertices(), nonquad);
 
     // compute serial offsets for the Characteristic::Nodes tree
     int treeSize = 0, numSupportsTotal = 0;

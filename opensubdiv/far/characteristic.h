@@ -39,7 +39,7 @@ namespace internal {
     class CharacteristicBuilder;
 }
 
-class CharacteristicMap;
+class TopologyMap;
 class Neighborhood;
 
 ///
@@ -114,7 +114,7 @@ public:
     bool IsNonQuadPatch() const { return _nonquad; }
 
     /// \brief Returns the map this characteristic belongs to
-    CharacteristicMap const & GetCharacteristicMap() const { return _characteristicMap; }
+    TopologyMap const & GetTopologyMap() const { return _topologyMap; }
 
     /// \brief Evaluate basis functions for position and first derivatives at a
     /// given (s,t) parametric location of a patch.
@@ -500,19 +500,19 @@ private:
 private:
 
     friend class internal::CharacteristicBuilder;
-    friend class CharacteristicMap;
+    friend class TopologyMap;
     friend class SubdivisionPlanTable;
 
-    Characteristic(CharacteristicMap const & charmap,
+    Characteristic(TopologyMap const & topomap,
                    int numControlVertices,
                    bool nonquad) :
-        _characteristicMap(charmap),
+        _topologyMap(topomap),
         _numControlVertices(numControlVertices),
         _nonquad(nonquad) { }
 
     bool _nonquad;
 
-    CharacteristicMap const & _characteristicMap;
+    TopologyMap const & _topologyMap;
 };
 
 

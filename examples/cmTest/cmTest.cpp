@@ -265,7 +265,7 @@ getAdaptiveColor(Far::Characteristic::Node node, int maxLevel) {
         }
     } else if (desc.GetType()==Far::Characteristic::NODE_END) {
         Far::EndCapType endtype =
-            node.GetCharacteristic()->GetCharacteristicMap().GetEndCapType();
+            node.GetCharacteristic()->GetTopologyMap().GetEndCapType();
         switch (endtype) {
             case Far::ENDCAP_BILINEAR_BASIS : break;
             case Far::ENDCAP_BSPLINE_BASIS : break;
@@ -281,7 +281,7 @@ getAdaptiveColor(Far::Characteristic::Node node, int maxLevel) {
     } else if (desc.GetType()==Far::Characteristic::NODE_RECURSIVE) {
         if (desc.GetDepth()<maxLevel) {
             Far::EndCapType endtype =
-                node.GetCharacteristic()->GetCharacteristicMap().GetEndCapType();
+                node.GetCharacteristic()->GetTopologyMap().GetEndCapType();
             switch (endtype) {
                 case Far::ENDCAP_BILINEAR_BASIS : break;
                 case Far::ENDCAP_BSPLINE_BASIS : break;
@@ -310,7 +310,7 @@ int g_currentPlanIndex = -1,
     g_currentNodeIndex = 0,
     g_currentQuadrantIndex = 0;
 
-size_t g_currentCharmapSize = 0,
+size_t g_currentTopomapSize = 0,
        g_currentPlansTableSize = 0;
 
 Far::Characteristic::Node g_currentNode;
@@ -421,7 +421,7 @@ createPlanNumbers(Far::SubdivisionPlanTable const & plansTable,
 
 //------------------------------------------------------------------------------
 static void
-writeDigraph(Far::CharacteristicMap const & charmap, int charIndex) {
+writeDigraph(Far::TopologyMap const & topomap, int charIndex) {
 
     static int counter=0;
     char fname[64];
@@ -434,16 +434,16 @@ writeDigraph(Far::CharacteristicMap const & charmap, int charIndex) {
 
     char const * shapename = g_shapes[g_currentShape].name.c_str();
 
-    if (charIndex>=0 && charIndex<charmap.GetNumCharacteristics()) {
+    if (charIndex>=0 && charIndex<topomap.GetNumCharacteristics()) {
 
-        Far::Characteristic const * ch = charmap.GetCharacteristic(charIndex);
+        Far::Characteristic const * ch = topomap.GetCharacteristic(charIndex);
 
         bool showIndices = true,
              isSubgraph = false;
         ch->WriteTreeDigraph(fout, charIndex, showIndices, isSubgraph);
     } else {
         bool showIndices = true;
-        charmap.WriteCharacteristicsDigraphs(fout, shapename, showIndices);
+        topomap.WriteCharacteristicsDigraphs(fout, shapename, showIndices);
     }
     fclose(fout);
     fprintf(stdout, "Saved %s\n", fname);
@@ -452,11 +452,11 @@ writeDigraph(Far::CharacteristicMap const & charmap, int charIndex) {
 
 //------------------------------------------------------------------------------
 static size_t
-computeCharacteristicMapSize(Far::CharacteristicMap const & charmap) {
+computeTopologyMapSize(Far::TopologyMap const & topomap) {
     size_t result=0;
-    for (int charIndex=0; charIndex<charmap.GetNumCharacteristics(); ++charIndex) {
+    for (int charIndex=0; charIndex<topomap.GetNumCharacteristics(); ++charIndex) {
 
-        Far::Characteristic const * ch = charmap.GetCharacteristic(charIndex);
+        Far::Characteristic const * ch = topomap.GetCharacteristic(charIndex);
 
         result += ch->GetTreeSize() * sizeof(int);
 
@@ -634,18 +634,18 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     g_controlMeshDisplay.SetTopology(refiner->GetLevel(0));
 
     // build characteristics map
-    Far::CharacteristicMap::Options options;
+    Far::TopologyMap::Options options;
     options.endCapType = g_endCap;
     options.useTerminalNode = g_useTerminalNodes;
     options.useDynamicIsolation = g_useDynamicIsolation;
     options.generateLegacySharpCornerPatches = g_smoothCornerPatch;
     options.hashSize = 5000;
-    Far::CharacteristicMap * charmap = new Far::CharacteristicMap(options);
+    Far::TopologyMap * topomap = new Far::TopologyMap(options);
 
     delete g_plansTable;
-    g_plansTable = charmap->HashTopology(*refiner);
+    g_plansTable = topomap->HashTopology(*refiner);
 
-    g_currentCharmapSize = computeCharacteristicMapSize(*charmap);
+    g_currentTopomapSize = computeTopologyMapSize(*topomap);
     g_currentPlansTableSize = computePlansTableSize(*g_plansTable);
 
     // copy coarse vertices positions
@@ -689,7 +689,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
           * col = &colors[0];
 
     std::vector<Vertex> supports;
-    supports.resize(charmap->GetNumMaxSupports());
+    supports.resize(topomap->GetNumMaxSupports());
 
     // interpolate limits
 
@@ -1053,7 +1053,7 @@ if (g_saveSVG) {
         g_hud.DrawString(10, -20,  "FPS        : %3.1f", fps);
 
         g_hud.DrawString(-280, -120, "Chars : %d (%s)",
-            g_plansTable ? g_plansTable->GetCharacteristicMap().GetNumCharacteristics() : -1, formatMemorySize(g_currentCharmapSize));
+            g_plansTable ? g_plansTable->GetTopologyMap().GetNumCharacteristics() : -1, formatMemorySize(g_currentTopomapSize));
 
         g_hud.DrawString(-280, -100, "Plans : %d (%s)",
             g_plansTable ? (int)g_plansTable->GetSubdivisionPlans().size() : 0, formatMemorySize(g_currentPlansTableSize));
@@ -1235,7 +1235,7 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int mods) {
         case 'Q': g_running = 0; break;
         case 'F': fitFrame(); break;
 
-        case 'D': writeDigraph(g_plansTable->GetCharacteristicMap(),
+        case 'D': writeDigraph(g_plansTable->GetTopologyMap(),
             mods==GLFW_MOD_SHIFT ? -1 : g_currentPlanIndex);
             break;
 
@@ -1432,7 +1432,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    static const char windowTitle[] = "OSD CharacteristicMap test harness";
+    static const char windowTitle[] = "OSD TopologyMap test harness";
 
     GLUtils::SetMinimumGLVersion(argc, argv);
 
