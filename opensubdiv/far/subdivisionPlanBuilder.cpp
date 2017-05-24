@@ -22,7 +22,7 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
-#include "../far/characteristicBuilder.h"
+#include "../far/subdivisionPlanBuilder.h"
 #include "../far/endCapBilinearBasisPatchFactory.h"
 #include "../far/endCapBSplineBasisPatchFactory.h"
 #include "../far/endCapGregoryBasisPatchFactory.h"
@@ -247,46 +247,46 @@ createStencilTable(
 }
 
 //
-// Characteristic builder implementation
+// SubdivisionPlan builder implementation
 //
 
 EndCapType
-CharacteristicBuilder::getEndCapType() const {
+SubdivisionPlanBuilder::getEndCapType() const {
     return _topomap.GetOptions().GetEndCapType();
 }
 
 short
-CharacteristicBuilder::getMaxIsolationLevel() const {
+SubdivisionPlanBuilder::getMaxIsolationLevel() const {
     return _refiner.GetAdaptiveOptions().isolationLevel;
 }
 
 bool
-CharacteristicBuilder::useTerminalNodes() const {
+SubdivisionPlanBuilder::useTerminalNodes() const {
     return _topomap.GetOptions().useTerminalNode;
 }
 
 bool
-CharacteristicBuilder::useDynamicIsolation() const {
+SubdivisionPlanBuilder::useDynamicIsolation() const {
     return _topomap.GetOptions().useDynamicIsolation;
 }
 
 bool
-CharacteristicBuilder::useLegacySharpCornerPatches() const {
+SubdivisionPlanBuilder::useLegacySharpCornerPatches() const {
     return _topomap.GetOptions().generateLegacySharpCornerPatches;
 }
 
 bool
-CharacteristicBuilder::useSingleCreasePatches() const {
+SubdivisionPlanBuilder::useSingleCreasePatches() const {
     return _refiner.GetAdaptiveOptions().useSingleCreasePatch;
 }
 
 bool
-CharacteristicBuilder::useInfSharpPatches() const {
+SubdivisionPlanBuilder::useInfSharpPatches() const {
     return _refiner.GetAdaptiveOptions().useInfSharpPatch;
 }
 
 
-void CharacteristicBuilder::setFaceTags(
+void SubdivisionPlanBuilder::setFaceTags(
     FaceTags & tags, int levelIndex, Index faceIndex) const {
 
     tags.Clear();
@@ -335,19 +335,19 @@ void CharacteristicBuilder::setFaceTags(
 }
 
 
-typedef Characteristic::NodeDescriptor NodeDescriptor;
+typedef SubdivisionPlan::NodeDescriptor NodeDescriptor;
 
-inline CharacteristicBuilder::ProtoNode const &
-CharacteristicBuilder::getNodeChild(ProtoNode const & pn, short childIndex) const {
-    return const_cast<CharacteristicBuilder *>(this)->getNodeChild(pn, childIndex);
+inline SubdivisionPlanBuilder::ProtoNode const &
+SubdivisionPlanBuilder::getNodeChild(ProtoNode const & pn, short childIndex) const {
+    return const_cast<SubdivisionPlanBuilder *>(this)->getNodeChild(pn, childIndex);
 }
 
-inline CharacteristicBuilder::ProtoNode &
-CharacteristicBuilder::getNodeChild(ProtoNode const & pn, short childIndex) {
+inline SubdivisionPlanBuilder::ProtoNode &
+SubdivisionPlanBuilder::getNodeChild(ProtoNode const & pn, short childIndex) {
     return _nodeStore[pn.levelIndex+1][pn.children[childIndex]];
 }
 
-CharacteristicBuilder::CharacteristicBuilder(TopologyRefiner const & refiner,
+SubdivisionPlanBuilder::SubdivisionPlanBuilder(TopologyRefiner const & refiner,
     TopologyMap const & topomap) :
         _refiner(refiner),
         _topomap(topomap),
@@ -377,12 +377,12 @@ CharacteristicBuilder::CharacteristicBuilder(TopologyRefiner const & refiner,
     _endcapBuilder = new EndCapBuilder(refiner, getEndCapType());
 }
 
-CharacteristicBuilder::~CharacteristicBuilder() {
+SubdivisionPlanBuilder::~SubdivisionPlanBuilder() {
     delete _endcapBuilder;
 }
 
 bool
-CharacteristicBuilder::computeSubPatchDomain(
+SubdivisionPlanBuilder::computeSubPatchDomain(
     int levelIndex, Index faceIndex, short * s, short * t) const {
 
     // Move up the hierarchy accumulating u,v indices to the coarse level:
@@ -423,14 +423,14 @@ CharacteristicBuilder::computeSubPatchDomain(
 
 
 void
-CharacteristicBuilder::resetNodeStore() {
+SubdivisionPlanBuilder::resetNodeStore() {
     for (short level=0; level<numLevelMax; ++level) {
         _nodeStore[level].clear();
     }
 }
 
 int
-CharacteristicBuilder::identifyNode(int levelIndex, Index faceIndex) {
+SubdivisionPlanBuilder::identifyNode(int levelIndex, Index faceIndex) {
 
     ProtoNode node;
 
@@ -442,7 +442,7 @@ CharacteristicBuilder::identifyNode(int levelIndex, Index faceIndex) {
 
     if (node.faceTags.hasPatch) {
         node.nodeType = node.faceTags.isRegular ?
-            Characteristic::NODE_REGULAR : Characteristic::NODE_END;
+            SubdivisionPlan::NODE_REGULAR : SubdivisionPlan::NODE_END;
         node.numChildren = 0;
     } else {
         ConstIndexArray children =
@@ -450,7 +450,7 @@ CharacteristicBuilder::identifyNode(int levelIndex, Index faceIndex) {
         for (int i=0; i<children.size(); ++i) {
             node.children[i] = identifyNode(levelIndex+1, children[i]);
         }
-        node.nodeType = Characteristic::NODE_RECURSIVE;
+        node.nodeType = SubdivisionPlan::NODE_RECURSIVE;
         node.numChildren = (int)children.size();
     }
 
@@ -459,7 +459,7 @@ CharacteristicBuilder::identifyNode(int levelIndex, Index faceIndex) {
 }
 
 bool
-CharacteristicBuilder::nodeIsTerminal(ProtoNode const & pn, int * evIndex) const {
+SubdivisionPlanBuilder::nodeIsTerminal(ProtoNode const & pn, int * evIndex) const {
 
     if (pn.numChildren!=4) {
         return false;
@@ -498,7 +498,7 @@ CharacteristicBuilder::nodeIsTerminal(ProtoNode const & pn, int * evIndex) const
 }
 
 void
-CharacteristicBuilder::identifyTerminalNodes() {
+SubdivisionPlanBuilder::identifyTerminalNodes() {
 
     for (short level=0; level<getMaxIsolationLevel(); ++level) {
         for (int pnIndex=0; pnIndex<(int)_nodeStore[level].size(); ++pnIndex) {
@@ -512,28 +512,28 @@ CharacteristicBuilder::identifyTerminalNodes() {
                     child.active = (i==evIndex) ? true : false;
                 }
                 pn.evIndex = evIndex;
-                pn.nodeType = Characteristic::NODE_TERMINAL;
+                pn.nodeType = SubdivisionPlan::NODE_TERMINAL;
             }
         }
     }
 }
 
 int
-CharacteristicBuilder::computeNumSupports(
-    Characteristic::NodeType nodeType, bool useDynamicIsolation) const {
+SubdivisionPlanBuilder::computeNumSupports(
+    SubdivisionPlan::NodeType nodeType, bool useDynamicIsolation) const {
 
-    typedef Characteristic::Node Node;
+    typedef SubdivisionPlan::Node Node;
 
-    if (nodeType == Characteristic::NODE_REGULAR) {
+    if (nodeType == SubdivisionPlan::NODE_REGULAR) {
         return 16;
-    } else if (nodeType == Characteristic::NODE_END) {
+    } else if (nodeType == SubdivisionPlan::NODE_END) {
         return Node::getNumEndCapSupports(getEndCapType());
-    } else if (nodeType == Characteristic::NODE_RECURSIVE) {
+    } else if (nodeType == SubdivisionPlan::NODE_RECURSIVE) {
         return useDynamicIsolation ?
             Node::getNumEndCapSupports(getEndCapType()) : 0;
     } else {
         int nsupports = 0;
-        if (nodeType == Characteristic::NODE_TERMINAL) {
+        if (nodeType == SubdivisionPlan::NODE_TERMINAL) {
             nsupports += 25;
         }
         if (useDynamicIsolation) {
@@ -546,10 +546,10 @@ CharacteristicBuilder::computeNumSupports(
 }
 
 void
-CharacteristicBuilder::computeNodeOffsets(
+SubdivisionPlanBuilder::computeNodeOffsets(
     int * treeSizeOut, short * numSupportsOut, int * numSupportsTotalOut) {
 
-    typedef Characteristic::Node Node;
+    typedef SubdivisionPlan::Node Node;
 
     int numEndCapSupports = Node::getNumEndCapSupports(getEndCapType());
 
@@ -567,8 +567,8 @@ CharacteristicBuilder::computeNodeOffsets(
             pn.treeOffset = treeSize;
             pn.firstSupport = numSupports;
 
-            Characteristic::NodeType nodeType =
-                (Characteristic::NodeType)pn.nodeType;
+            SubdivisionPlan::NodeType nodeType =
+                (SubdivisionPlan::NodeType)pn.nodeType;
 
             treeSize += Node::getNodeSize(
                 nodeType, (bool)pn.faceTags.isSingleCrease);
@@ -583,7 +583,7 @@ CharacteristicBuilder::computeNodeOffsets(
 }
 
 void
-CharacteristicBuilder::populateRegularNode(
+SubdivisionPlanBuilder::populateRegularNode(
     ProtoNode const & pn, int * treePtr, Index * supportsPtr) const {
 
     Level const & level = _refiner.getLevel(pn.levelIndex);
@@ -651,7 +651,7 @@ CharacteristicBuilder::populateRegularNode(
     // copy to buffers
     treePtr += pn.treeOffset;
 
-    ((NodeDescriptor *)treePtr)->SetPatch(Characteristic::NODE_REGULAR,
+    ((NodeDescriptor *)treePtr)->SetPatch(SubdivisionPlan::NODE_REGULAR,
         nonquad, singleCrease, pn.levelIndex, boundaryMask, u, v);
 
     treePtr[1] = pn.firstSupport;
@@ -663,7 +663,7 @@ CharacteristicBuilder::populateRegularNode(
 
 
 void
-CharacteristicBuilder::populateEndCapNode(
+SubdivisionPlanBuilder::populateEndCapNode(
     ProtoNode const & pn, int * treePtr, Index * supportsPtr) const {
 
     // use the end-cap builder to generate support stencils for the end-cap
@@ -683,13 +683,13 @@ CharacteristicBuilder::populateEndCapNode(
     treePtr += pn.treeOffset;
 
     ((NodeDescriptor *)treePtr)->SetPatch(
-        Characteristic::NODE_END, nonquad, false, pn.levelIndex, 0, u, v);
+        SubdivisionPlan::NODE_END, nonquad, false, pn.levelIndex, 0, u, v);
 
     treePtr[1] = pn.firstSupport;
 }
 
 void
-CharacteristicBuilder::populateTerminalNode(
+SubdivisionPlanBuilder::populateTerminalNode(
     ProtoNode const & pn, int * treePtr, Index * supportsPtr) const {
 
     // xxxx manuelk right now terminal nodes are recursive : paper suggests
@@ -769,7 +769,7 @@ CharacteristicBuilder::populateTerminalNode(
 }
 
 void
-CharacteristicBuilder::populateRecursiveNode(
+SubdivisionPlanBuilder::populateRecursiveNode(
     ProtoNode const & pn, int * treePtr, Index * supportsPtr) const {
 
     treePtr += pn.treeOffset;
@@ -806,7 +806,7 @@ CharacteristicBuilder::populateRecursiveNode(
 }
 
 void
-CharacteristicBuilder::populateNodes(int * treePtr, Index * supportsPtr) const {
+SubdivisionPlanBuilder::populateNodes(int * treePtr, Index * supportsPtr) const {
 
     // populate tree & collect support stencil indices
     for (short level=0; level<_refiner.GetNumLevels(); ++level) {
@@ -819,27 +819,27 @@ CharacteristicBuilder::populateNodes(int * treePtr, Index * supportsPtr) const {
                 continue;
             }
 
-            switch ((Characteristic::NodeType)pn.nodeType) {
-                case Characteristic::NODE_REGULAR:
+            switch ((SubdivisionPlan::NodeType)pn.nodeType) {
+                case SubdivisionPlan::NODE_REGULAR:
                     populateRegularNode(pn, treePtr, supportsPtr); break;
-                case Characteristic::NODE_END:
+                case SubdivisionPlan::NODE_END:
                     populateEndCapNode(pn, treePtr, supportsPtr); break;
-                case Characteristic::NODE_TERMINAL:
+                case SubdivisionPlan::NODE_TERMINAL:
                     populateTerminalNode(pn, treePtr, supportsPtr); break;
-                case Characteristic::NODE_RECURSIVE:
+                case SubdivisionPlan::NODE_RECURSIVE:
                     populateRecursiveNode(pn, treePtr, supportsPtr); break;
             }
         }
     }
 }
 
-Characteristic const *
-CharacteristicBuilder::Create(
+SubdivisionPlan const *
+SubdivisionPlanBuilder::Create(
     Index levelIndex, Index faceIndex, Neighborhood const * neighborhood) {
 
     assert(neighborhood);
 
-    // make sure the proto-node store is empty for each new characteristic
+    // make sure the proto-node store is empty for each new plan
     resetNodeStore();
 
     // traverse topology recursively & collect proto-nodes
@@ -851,24 +851,24 @@ CharacteristicBuilder::Create(
     }
 
     bool nonquad = levelIndex!=0;
-    Characteristic * ch =
-        new Characteristic(_topomap, neighborhood->GetNumVertices(), nonquad);
+    SubdivisionPlan *plan =
+        new SubdivisionPlan(_topomap, neighborhood->GetNumVertices(), nonquad);
 
-    // compute serial offsets for the Characteristic::Nodes tree
+    // compute serial offsets for the SubdivisionPlan::Nodes tree
     int treeSize = 0, numSupportsTotal = 0;
-    computeNodeOffsets(&treeSize, ch->_numSupports, &numSupportsTotal);
+    computeNodeOffsets(&treeSize, plan->_numSupports, &numSupportsTotal);
 
 
     BuildContext * context = new BuildContext;
-    context->characteristic = ch;
+    context->plan = plan;
     context->neighborhood = neighborhood;
     context->levelIndex = levelIndex;
     context->faceIndex = faceIndex;
     context->numSupportsTotal = numSupportsTotal;
 
-    // populate the characteristic's tree & collect support indices
-    ch->_tree.resize(treeSize);
-    int * treePtr = &ch->_tree[0];
+    // populate the plan's tree & collect support indices
+    plan->_tree.resize(treeSize);
+    int * treePtr = &plan->_tree[0];
 
     context->supportIndices.resize(numSupportsTotal, INDEX_INVALID);
     Index * supportsPtr = &context->supportIndices[0];
@@ -878,11 +878,11 @@ CharacteristicBuilder::Create(
     // save the context for the "finalize" step
     _buildContexts.push_back(context);
 
-    return ch;
+    return plan;
 }
 
 int
-CharacteristicBuilder::FinalizeSupportStencils() {
+SubdivisionPlanBuilder::FinalizeSupportStencils() {
 
     // XXXX manuelk : need to switch this for a code path that only computes
     // the stencils needed for the neighborhoods not yet in the map instead of
@@ -899,7 +899,7 @@ CharacteristicBuilder::FinalizeSupportStencils() {
 
         BuildContext const * context = _buildContexts[contextIndex];
 
-        Characteristic * ch = context->characteristic;
+        SubdivisionPlan * plan = context->plan;
 
         // count the total number of influence weights & indices for the supports
         int numSupports = context->numSupportsTotal,
@@ -911,10 +911,10 @@ CharacteristicBuilder::FinalizeSupportStencils() {
         }
 
         // generate the support stencil weights
-        ch->_sizes.resize(numSupports);
-        ch->_offsets.resize(numSupports);
-        ch->_indices.resize(numWeights);
-        ch->_weights.resize(numWeights);
+        plan->_sizes.resize(numSupports);
+        plan->_offsets.resize(numSupports);
+        plan->_indices.resize(numWeights);
+        plan->_weights.resize(numWeights);
 
         Neighborhood const * neighborhood = context->neighborhood;
 
@@ -925,16 +925,16 @@ CharacteristicBuilder::FinalizeSupportStencils() {
             if (stencilIndex==INDEX_INVALID) {
                 // XXXX manuelk we could probably skip those if we adjust
                 // offsets computations accordingly
-                ch->_sizes[i] = stencilSize;
-                ch->_offsets[i] = offset;
+                plan->_sizes[i] = stencilSize;
+                plan->_offsets[i] = offset;
             } else {
 
                 Stencil stencil = supportStencils->GetStencil(stencilIndex);
                 assert(stencil.GetSize()>0);
 
                 stencilSize = stencil.GetSize();
-                ch->_sizes[i] = stencilSize;
-                ch->_offsets[i] = offset;
+                plan->_sizes[i] = stencilSize;
+                plan->_offsets[i] = offset;
                 for (int k=0; k<stencilSize; ++k) {
 
                     Index index = stencil.GetVertexIndices()[k];
@@ -947,8 +947,8 @@ if (neighborhood->Remap(index)==(LocalIndex)INDEX_INVALID) {
 }
                     assert(index!=INDEX_INVALID &&
                         neighborhood->Remap(index)!=(LocalIndex)INDEX_INVALID);
-                    ch->_indices[offset+k] = neighborhood->Remap(index);
-                    ch->_weights[offset+k] = stencil.GetWeights()[k];
+                    plan->_indices[offset+k] = neighborhood->Remap(index);
+                    plan->_weights[offset+k] = stencil.GetWeights()[k];
                 }
                 offset += stencilSize;
             }

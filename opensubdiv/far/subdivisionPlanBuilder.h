@@ -22,12 +22,12 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
-#ifndef OPENSUBDIV3_FAR_CHARACTERISTIC_BUILDER_H
-#define OPENSUBDIV3_FAR_CHARACTERISTIC_BUILDER_H
+#ifndef OPENSUBDIV3_FAR_SUBDIVISION_PLAN_BUILDER_H
+#define OPENSUBDIV3_FAR_SUBDIVISION_PLAN_BUILDER_H
 
 #include "../version.h"
 
-#include "../far/characteristic.h"
+#include "../far/subdivisionPlan.h"
 #include "../far/patchBuilder.h"
 #include "../far/topologyRefiner.h"
 #include "../far/types.h"
@@ -56,32 +56,32 @@ struct EndCapBuilder;
 //   - the end-cap builders similarly need to first gather all end-caps
 //     on the mesh before executing a "finalize" process
 // Because of these limitations, we are forced to generate many redundant
-// stencils for a given mesh. We also have to keep a list of all the
-// characteristics that a mesh adds to the characteristic map, so that we can
-// apply the "finalize" step and release transient resources.
+// stencils for a given mesh. We also have to keep a list of all the plans that
+// a mesh adds to the subdivision plans map, so that we can apply the "finalize"
+// step and release transient resources.
 //
 // With more agile stencil and end-cap builders we will be able to remove
 // the FinalizeSupportStencils() call from this API, along with the attending
 // garbage collection.
 //
-class CharacteristicBuilder {
+class SubdivisionPlanBuilder {
 
 public:
 
     // Constructor
-    CharacteristicBuilder(
+    SubdivisionPlanBuilder(
         TopologyRefiner const & refiner, TopologyMap const & topomap);
 
     // Destructor
-    ~CharacteristicBuilder();
+    ~SubdivisionPlanBuilder();
 
-    // Returns a new characteristic for the given topological neighborhood
-    // note : the characteristic will not be functional until
-    //        FinalizeSupportStencils() has been called
-    Characteristic const * Create(
+    // Returns a new plan for the given topological neighborhood
+    // note : the plan will not be functional until FinalizeSupportStencils()
+    // has been called
+    SubdivisionPlan const * Create(
         Index levelIndex, Index faceIndex, Neighborhood const * neighborhood);
 
-    // Finalizes the characteristics created by this builder
+    // Finalizes the plans supports created by this builder
     int FinalizeSupportStencils();
 
 private:
@@ -116,12 +116,12 @@ private:
 
         FaceTags faceTags;
 
-        int treeOffset,        // linear node offset in characteristic tree
+        int treeOffset,        // linear node offset in plan's tree
             firstSupport;      // index of first support point for the node
 
         unsigned int active      : 1,  // skip inactive nodes
                      levelIndex  : 4,  // index of Vtr::level
-                     nodeType    : 2,  // Characteristic::NodeType
+                     nodeType    : 2,  // SubdivisionPlan::NodeType
                      evIndex     : 2,  // index of xordinary vertex for terminal nodes
                      numChildren : 3;  // number of children linked to the node
 
@@ -134,7 +134,7 @@ private:
     static int const numLevelMax = 11;
     ProtoNodeVector _nodeStore[numLevelMax];
 
-    // reset the store before starting a new characteristic tree
+    // reset the store before starting a new plan's tree
     void resetNodeStore();
 
     // returns a child of the node (undetermined if child does not exist !)
@@ -171,7 +171,7 @@ private:
     void populateRecursiveNode(ProtoNode const & pn, int * treePtr, Index * supportsPtr) const;
 
     // returns the numbers of supports required for a given sub-patch node
-    int computeNumSupports(Characteristic::NodeType nodeType, bool useDynamicIsolation) const;
+    int computeNumSupports(SubdivisionPlan::NodeType nodeType, bool useDynamicIsolation) const;
 
 private:
 
@@ -193,13 +193,13 @@ private:
     // FinalizeSupportStencils(), where it is destroyed.
     struct BuildContext {
 
-        Characteristic * characteristic;   // characteristic created by the builder
+        SubdivisionPlan * plan;            // plan created by the builder
 
         Neighborhood const * neighborhood; // remaps control verts indices
 
         int levelIndex,       // level of control face (0 for regular, 1 for non-quad)
             faceIndex,        // Vtr::level index of control face
-            numSupportsTotal; // total number of supports for the characteristic
+            numSupportsTotal; // total number of supports for the plan
 
         std::vector<Index> supportIndices;  //  stencil indices of supports
     };
@@ -240,5 +240,5 @@ private:
 } // end namespace OPENSUBDIV_VERSION
 } // end namespace OpenSubdiv
 
-#endif /* OPENSUBDIV3_FAR_CHARACTERISTIC_BUILDER_H */
+#endif /* OPENSUBDIV3_FAR_SUBDIVISION_PLAN_BUILDER_H */
 

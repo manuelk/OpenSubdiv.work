@@ -22,8 +22,8 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
-#ifndef OPENSUBDIV3_FAR_SUBDIVISION_PLAN_H
-#define OPENSUBDIV3_FAR_SUBDIVISION_PLAN_H
+#ifndef OPENSUBDIV3_FAR_SUBDIVISION_PLAN_TABLE_H
+#define OPENSUBDIV3_FAR_SUBDIVISION_PLAN_TABLE_H
 
 #include "../version.h"
 
@@ -39,33 +39,29 @@ namespace Far {
 
 class TopologyRefiner;
 
-struct SubdivisionPlan {
+struct FacePlan {
 
-    SubdivisionPlan(int _numControls, int _firstControl, int _charIndex) :
-        numControls(_numControls), firstControl(_firstControl), charIndex(_charIndex) { }
+    FacePlan(int _numControls, int _firstControl, int _planIndex) :
+        numControls(_numControls), firstControl(_firstControl), planIndex(_planIndex) { }
 
     int numControls,
         firstControl,
-        charIndex;
+        planIndex;
 };
 
-typedef std::vector<SubdivisionPlan> SubdivisionPlanVector;
+typedef std::vector<FacePlan> FacePlanVector;
 
 ///
 ///  \brief Stores subdivision plans
 ///
-/// The subdivision plan is a data structure that represents a feature-adaptive
-/// subdivision hierarchy for the face, down to some fixed, maximum depth.
-/// Specifically, it comprises:
-///   - an index to a topology characteristic containing:
-///     - an optimized quadtree representing the adaptive subdivision hierarchy
-///       of the face.
-///     - an ordered list of stencils for support control points
-///   - an ordered list of base control vertices
-/// The plan for a face depends only on the configuration of elements that can
-/// exert an influence on the limit surface within its local domain. This
-/// includes the topology of the face and its 1-ring, sharpness tags for
-/// incident edges and vertices, and boundary rules.
+/// The subdivision plan table matches each face of a coarse mesh with its
+/// unique subbdivision plan in a TopologyMap and the 1-ring of the face.
+/// This information is all that is required to perform arbitrary limit
+/// surface evaluations.
+///
+/// Specifically, each face is associated with:
+///   - an index to a subdivision plan in the reference TopologyMap
+///   - an ordered list of supporting control vertices
 ///
 class SubdivisionPlanTable {
 
@@ -78,19 +74,19 @@ public:
 
     /// \brief Returns true if the the plan has no surface (hole)
     bool PlanIsHole(Index planIndex) const {
-        return _plans[planIndex].charIndex == INDEX_INVALID;
+        return _plans[planIndex].planIndex == INDEX_INVALID;
     }
 
     /// \brief Returns the plan at index
-    SubdivisionPlan const & GetPlan(Index planIndex) const {
+    FacePlan const & GetPlan(Index planIndex) const {
         return _plans[planIndex];
     }
 
-    /// \brief Returns the Characteristic associated with the plan
-    Characteristic const * GetPlanCharacteristic(Index planIndex) const {
-        Index charIndex = _plans[planIndex].charIndex;
-        return charIndex!=INDEX_INVALID ?
-            _topomap.GetCharacteristic(charIndex) : 0;
+    /// \brief Returns the subdivision plan associated with the face
+    SubdivisionPlan const * GetSubdivisionPlan(Index faceIndex) const {
+        Index planIndex = _plans[faceIndex].planIndex;
+        return planIndex!=INDEX_INVALID ?
+            _topomap.GetSubdivisionPlan(planIndex) : 0;
     }
 
     /// \brief Returns the index of the vertex in the control mesh corresponding
@@ -101,7 +97,7 @@ public:
 
     /// \brief Returns the array of control vertex indices for the plan planIndex
     ConstIndexArray GetPlanControlVertices(Index planIndex) const {
-        SubdivisionPlan const & plan = _plans[planIndex];
+        FacePlan const & plan = _plans[planIndex];
         return ConstIndexArray(
             &_controlVertices[plan.firstControl], plan.numControls);
     }
@@ -112,7 +108,7 @@ public:
     }
 
     /// \brief Returns a vector with all the plans in the table
-    SubdivisionPlanVector const & GetSubdivisionPlans() const {
+    FacePlanVector const & GetFacePlans() const {
         return _plans;
     }
 
@@ -132,7 +128,7 @@ private:
 
 private:
 
-    SubdivisionPlanVector _plans;
+    FacePlanVector _plans;
 
     std::vector<Index> _controlVertices;
 
@@ -146,4 +142,4 @@ private:
 using namespace OPENSUBDIV_VERSION;
 } // end namespace OpenSubdiv
 
-#endif /* OPENSUBDIV3_FAR_SUBDIVISION_PLAN_H */
+#endif /* OPENSUBDIV3_FAR_SUBDIVISION_PLAN_TABLE_H */

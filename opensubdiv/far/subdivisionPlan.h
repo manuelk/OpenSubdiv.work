@@ -23,8 +23,8 @@
 //
 
 
-#ifndef OPENSUBDIV3_FAR_CHARACTERISTIC_H
-#define OPENSUBDIV3_FAR_CHARACTERISTIC_H
+#ifndef OPENSUBDIV3_FAR_SUBDIVISION_PLAN_H
+#define OPENSUBDIV3_FAR_SUBDIVISION_PLAN_H
 
 #include "../version.h"
 
@@ -36,14 +36,27 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 namespace internal {
-    class CharacteristicBuilder;
+    class SubdivisionPlanBuilder;
 }
 
 class TopologyMap;
 class Neighborhood;
 
 ///
-///  \brief Stores a subdivision "characteristic"
+///  \brief Stores a subdivision plan
+///
+/// The subdivision plan is a data structure that represents a feature-adaptive
+/// subdivision hierarchy for the face, down to some fixed, maximum depth.
+///
+/// Specifically, it comprises:
+///     - an optimized quadtree representing the adaptive subdivision hierarchy
+///       of the face.
+///     - an ordered list of stencils for support control points
+///
+/// * The plan for a face depends only on the configuration of elements that
+///   can exert an influence on the limit surface within its local domain. This
+///   includes the topology of the face and its 1-ring, sharpness tags for
+///   incident edges and vertices, and boundary rules.
 ///
 /// * Topology trees :
 ///   A tree representation of the hierarchies of feature adaptive sub-patches.
@@ -58,7 +71,7 @@ class Neighborhood;
 ///
 ///   * End nodes :
 ///     Nodes describing the surface around isolated features. While all "End-cap"
-///     patches in a characteristic map must be of the same type, user can select
+///     patches in a plans map must be of the same type, user can select
 ///     different types (bilinear, B-spline, gregory).
 ///     XXXX manuelk TODO bilinear
 ///
@@ -100,20 +113,20 @@ class Neighborhood;
 ///
 ///  http://www.graphics.stanford.edu/~niessner/papers/2016/4subdiv/brainerd2016efficient.pdf
 ///
-class Characteristic {
+class SubdivisionPlan {
 
 public:
 
     class Node;
 
     /// \brief Destructor
-    ~Characteristic();
+    ~SubdivisionPlan();
 
-    /// \brief Returns true if this topology characteristic belongs to an
-    /// irregular (non-quad) face
+    /// \brief Returns true if this topology plan belongs to an irregular
+    /// (non-quad) face
     bool IsNonQuadPatch() const { return _nonquad; }
 
-    /// \brief Returns the map this characteristic belongs to
+    /// \brief Returns the map this plan belongs to
     TopologyMap const & GetTopologyMap() const { return _topologyMap; }
 
     /// \brief Evaluate basis functions for position and first derivatives at a
@@ -273,20 +286,19 @@ public:
 
         /// \brief Returns the node descriptor
         NodeDescriptor GetDescriptor() const {
-            return _characteristic->_tree[_treeOffset];
+            return _plan->_tree[_treeOffset];
         }
 
-        /// \brief Returns a pointer to the characteric that owns this node
-        Characteristic const * GetCharacteristic() const {
-            return _characteristic;
+        /// \brief Returns a pointer to the plan that owns this node
+        SubdivisionPlan const * GetSubdivisionPlan() const {
+            return _plan;
         }
 
         /// \brief Returns the number of support points required for the
         /// sub-patch pointed to by this node
         int GetNumSupports(int quadrant, short maxLevel=11) const;
 
-        /// \brief Returns the index of the requested support in the
-        /// characteristic.
+        /// \brief Returns the index of the requested support in the plan
         /// (supportIndex is relative : in range [0, GetNumSupports()])
         Index GetSupportIndex(int supportIndex, int evIndex, short maxLevel=11) const;
 
@@ -321,7 +333,7 @@ public:
     private:
 
         int const * getNodeData() const {
-            return &_characteristic->_tree[_treeOffset];
+            return &_plan->_tree[_treeOffset];
         }
 
         static int getRegularNodeSize(bool isSharp) { return isSharp ? 3 : 2; }
@@ -342,14 +354,14 @@ public:
 
         int getNodeSize() const;
 
-        friend class Characteristic;
-        friend class internal::CharacteristicBuilder;
-        friend void printCharacteristicTreeNode(FILE * fout, Node node, int charIndex);
+        friend class SubdivisionPlan;
+        friend class internal::SubdivisionPlanBuilder;
+        friend void printTreeNode(FILE * fout, Node node, int planIndex);
 
-        Node(Characteristic const * ch, int treeOffset) :
-            _characteristic(ch), _treeOffset(treeOffset) { }
+        Node(SubdivisionPlan const * plan, int treeOffset) :
+            _plan(plan), _treeOffset(treeOffset) { }
 
-        Characteristic const * _characteristic;
+        SubdivisionPlan const * _plan;
         int _treeOffset;
     };
 
@@ -382,12 +394,12 @@ public:
 
     /// \brief Writes a GraphViz 'dot' digraph of the tree
     void WriteTreeDigraph(FILE * fout,
-        int charIndex=0, bool showIndices=true, bool isSubgraph=false) const;
+        int planIndex=0, bool showIndices=true, bool isSubgraph=false) const;
     //@}
 
 private:
 
-    friend class internal::CharacteristicBuilder;
+    friend class internal::SubdivisionPlanBuilder;
 
     // The sub-patch "tree" is stored as a linear buffer of integers for
     // efficient look-up & traversal on a GPU. Use the Node class to traverse
@@ -414,7 +426,7 @@ public:
         float const      * weights;
     };
 
-    /// \brief Returns the total number of supports for this characteristic
+    /// \brief Returns the total number of supports for this plan
     int GetNumSupportsTotal() const { return (int)_sizes.size(); }
 
     /// \brief Returns the number of supports needing to be evaluated at a given level
@@ -435,7 +447,7 @@ public:
     /// \brief Returns a vector of the offsets to each support indices & weights
     std::vector<int> const & GetSupportOffsets() const { return _offsets; }
 
-    /// \brief Returns the number of control vertices in the characteristic neighborhood
+    /// \brief Returns the number of control vertices in the plan's neighborhood
     short GetNumControlVertices() const { return _numControlVertices; }
 
     //@}
@@ -499,13 +511,13 @@ private:
 
 private:
 
-    friend class internal::CharacteristicBuilder;
+    friend class internal::SubdivisionPlanBuilder;
     friend class TopologyMap;
     friend class SubdivisionPlanTable;
 
-    Characteristic(TopologyMap const & topomap,
-                   int numControlVertices,
-                   bool nonquad) :
+    SubdivisionPlan(TopologyMap const & topomap,
+                    int numControlVertices,
+                    bool nonquad) :
         _topologyMap(topomap),
         _numControlVertices(numControlVertices),
         _nonquad(nonquad) { }
@@ -520,34 +532,34 @@ private:
 // Inline implementation
 //
 
-inline Characteristic::Node
-Characteristic::Node::GetNodeChild(int childIndex) const {
+inline SubdivisionPlan::Node
+SubdivisionPlan::Node::GetNodeChild(int childIndex) const {
     int const * offsetPtr = getNodeData() + 2 + childIndex;
-    return Node(_characteristic, *offsetPtr);
+    return Node(_plan, *offsetPtr);
 }
 
 
 inline int
-Characteristic::Node::getNodeSize(
-    Characteristic::NodeType nodeType, bool isSingleCrease) {
+SubdivisionPlan::Node::getNodeSize(
+    SubdivisionPlan::NodeType nodeType, bool isSingleCrease) {
     switch (nodeType) {
-        case Characteristic::NODE_REGULAR  : return getRegularNodeSize(isSingleCrease);
-        case Characteristic::NODE_END      : return getEndCapNodeSize();
-        case Characteristic::NODE_TERMINAL : return getTerminalNodeSize();
-        case Characteristic::NODE_RECURSIVE: return getRecursiveNodeSize();
+        case SubdivisionPlan::NODE_REGULAR  : return getRegularNodeSize(isSingleCrease);
+        case SubdivisionPlan::NODE_END      : return getEndCapNodeSize();
+        case SubdivisionPlan::NODE_TERMINAL : return getTerminalNodeSize();
+        case SubdivisionPlan::NODE_RECURSIVE: return getRecursiveNodeSize();
     }
     assert(0);
     return 0;
 }
 
 inline int
-Characteristic::Node::getNodeSize() const {
+SubdivisionPlan::Node::getNodeSize() const {
     NodeDescriptor desc = GetDescriptor();
     return getNodeSize(desc.GetType(), desc.SingleCrease());
 }
 
 inline int
-Characteristic::Node::getNumEndCapSupports(EndCapType type) {
+SubdivisionPlan::Node::getNumEndCapSupports(EndCapType type) {
     switch (type) {
         case ENDCAP_BILINEAR_BASIS: return 4;
         case ENDCAP_BSPLINE_BASIS: return 16;
@@ -559,35 +571,35 @@ Characteristic::Node::getNumEndCapSupports(EndCapType type) {
 }
 
 inline int
-Characteristic::Node::getNumSupports(Characteristic::NodeType nodeType) {
+SubdivisionPlan::Node::getNumSupports(SubdivisionPlan::NodeType nodeType) {
     switch (nodeType) {
-        case Characteristic::NODE_REGULAR  : return 16;
-        case Characteristic::NODE_TERMINAL : return 25;
-        case Characteristic::NODE_RECURSIVE: return 0;
+        case SubdivisionPlan::NODE_REGULAR  : return 16;
+        case SubdivisionPlan::NODE_TERMINAL : return 25;
+        case SubdivisionPlan::NODE_RECURSIVE: return 0;
     }
     assert(0);
     return 0;
 }
 
 
-inline Characteristic::Node
-Characteristic::Node::operator ++ () {
+inline SubdivisionPlan::Node
+SubdivisionPlan::Node::operator ++ () {
     _treeOffset += getNodeSize();
-    if (_treeOffset > GetCharacteristic()->GetTreeSize()) {
+    if (_treeOffset > GetSubdivisionPlan()->GetTreeSize()) {
         _treeOffset = 0;
     }
     return *this;
 }
 
 inline bool
-Characteristic::Node::operator == (Characteristic::Node const & other) const {
-    return _characteristic == other._characteristic &&
+SubdivisionPlan::Node::operator == (SubdivisionPlan::Node const & other) const {
+    return _plan == other._plan &&
         _treeOffset == other._treeOffset;
 }
 
 
 inline void
-Characteristic::NodeDescriptor::SetPatch(unsigned short type,
+SubdivisionPlan::NodeDescriptor::SetPatch(unsigned short type,
     unsigned short nonquad, unsigned short singleCrease, unsigned short depth,
         unsigned short boundary, short u, short v) {
     assert(type==NODE_REGULAR||type==NODE_END);
@@ -601,7 +613,7 @@ Characteristic::NodeDescriptor::SetPatch(unsigned short type,
 }
 
 inline void
-Characteristic::NodeDescriptor::SetRecursive(unsigned short nonquad,
+SubdivisionPlan::NodeDescriptor::SetRecursive(unsigned short nonquad,
     unsigned short depth, short u, short v) {
     field0 = packBitfield(v,             10, 22) |
              packBitfield(u,             10, 12) |
@@ -611,7 +623,7 @@ Characteristic::NodeDescriptor::SetRecursive(unsigned short nonquad,
 }
 
 inline void
-Characteristic::NodeDescriptor::SetTerminal(unsigned short nonquad,
+SubdivisionPlan::NodeDescriptor::SetTerminal(unsigned short nonquad,
     unsigned short depth, unsigned short evIndex, short u, short v) {
     field0 = packBitfield(v,             10, 22) |
              packBitfield(u,             10, 12) |
@@ -622,7 +634,7 @@ Characteristic::NodeDescriptor::SetTerminal(unsigned short nonquad,
 }
 
 inline float
-Characteristic::NodeDescriptor::GetParamFraction( ) const {
+SubdivisionPlan::NodeDescriptor::GetParamFraction( ) const {
     if (NonQuadRoot()) {
         return 1.0f / float( 1 << (GetDepth()-1) );
     } else {
@@ -631,7 +643,7 @@ Characteristic::NodeDescriptor::GetParamFraction( ) const {
 }
 
 inline void
-Characteristic::NodeDescriptor::MapCoarseToRefined( float & u, float & v ) const {
+SubdivisionPlan::NodeDescriptor::MapCoarseToRefined( float & u, float & v ) const {
 
     float frac = GetParamFraction(),
           pu = (float)GetU()*frac,
@@ -642,7 +654,7 @@ Characteristic::NodeDescriptor::MapCoarseToRefined( float & u, float & v ) const
 }
 
 inline void
-Characteristic::NodeDescriptor::MapRefinedToCoarse( float & u, float & v ) const {
+SubdivisionPlan::NodeDescriptor::MapRefinedToCoarse( float & u, float & v ) const {
 
     float frac = GetParamFraction(),
           pu = (float)GetU()*frac,
@@ -652,8 +664,8 @@ Characteristic::NodeDescriptor::MapRefinedToCoarse( float & u, float & v ) const
     v = v * frac + pv;
 }
 
-inline Characteristic::Support
-Characteristic::GetSupport(Index supportIndex) const {
+inline SubdivisionPlan::Support
+SubdivisionPlan::GetSupport(Index supportIndex) const {
     assert(!_offsets.empty() && supportIndex<_offsets.size());
     int size = _sizes[supportIndex];
     Index offset = _offsets[supportIndex];
@@ -666,4 +678,4 @@ Characteristic::GetSupport(Index supportIndex) const {
 using namespace OPENSUBDIV_VERSION;
 } // end namespace OpenSubdiv
 
-#endif /* OPENSUBDIV3_FAR_CHARACTERISTIC_H */
+#endif /* OPENSUBDIV3_FAR_SUBDIVISION_PLAN_H */

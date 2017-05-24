@@ -246,13 +246,13 @@ static float g_patchColors[44][4] = {
 };
 
 static float const *
-getAdaptiveColor(Far::Characteristic::Node node, int maxLevel) {
+getAdaptiveColor(Far::SubdivisionPlan::Node node, int maxLevel) {
 
-    Far::Characteristic::NodeDescriptor desc = node.GetDescriptor();
+    Far::SubdivisionPlan::NodeDescriptor desc = node.GetDescriptor();
 
     int patchType = 0,
         pattern = 0;
-    if (desc.GetType()==Far::Characteristic::NODE_REGULAR) {
+    if (desc.GetType()==Far::SubdivisionPlan::NODE_REGULAR) {
 
         int edgeCount =desc.GetBoundaryCount();
         switch (edgeCount) {
@@ -263,9 +263,9 @@ getAdaptiveColor(Far::Characteristic::Node node, int maxLevel) {
         if (desc.SingleCrease()) {
             patchType = 1;
         }
-    } else if (desc.GetType()==Far::Characteristic::NODE_END) {
+    } else if (desc.GetType()==Far::SubdivisionPlan::NODE_END) {
         Far::EndCapType endtype =
-            node.GetCharacteristic()->GetTopologyMap().GetEndCapType();
+            node.GetSubdivisionPlan()->GetTopologyMap().GetEndCapType();
         switch (endtype) {
             case Far::ENDCAP_BILINEAR_BASIS : break;
             case Far::ENDCAP_BSPLINE_BASIS : break;
@@ -273,15 +273,15 @@ getAdaptiveColor(Far::Characteristic::Node node, int maxLevel) {
             default:
                 break;
         }
-    } else if (desc.GetType()==Far::Characteristic::NODE_TERMINAL) {
+    } else if (desc.GetType()==Far::SubdivisionPlan::NODE_TERMINAL) {
         patchType = 7;
         if (desc.GetDepth()>=maxLevel) {
             pattern = 1;
         }
-    } else if (desc.GetType()==Far::Characteristic::NODE_RECURSIVE) {
+    } else if (desc.GetType()==Far::SubdivisionPlan::NODE_RECURSIVE) {
         if (desc.GetDepth()<maxLevel) {
             Far::EndCapType endtype =
-                node.GetCharacteristic()->GetTopologyMap().GetEndCapType();
+                node.GetSubdivisionPlan()->GetTopologyMap().GetEndCapType();
             switch (endtype) {
                 case Far::ENDCAP_BILINEAR_BASIS : break;
                 case Far::ENDCAP_BSPLINE_BASIS : break;
@@ -313,7 +313,7 @@ int g_currentPlanIndex = -1,
 size_t g_currentTopomapSize = 0,
        g_currentPlansTableSize = 0;
 
-Far::Characteristic::Node g_currentNode;
+Far::SubdivisionPlan::Node g_currentNode;
 
 static void
 createVertNumbers(Far::TopologyRefiner const & refiner,
@@ -353,7 +353,7 @@ createFaceNumbers(Far::TopologyRefiner const & refiner,
 static void
 createNodeNumbers(Far::SubdivisionPlanTable const & plansTable,
 
-    int planIndex, Far::Characteristic::Node node, int quadrant,
+    int planIndex, Far::SubdivisionPlan::Node node, int quadrant,
         std::vector<Vertex> const & vertexBuffer) {
 
     int nsupports = node.GetNumSupports(quadrant, g_dynamicLevel);
@@ -361,14 +361,14 @@ createNodeNumbers(Far::SubdivisionPlanTable const & plansTable,
     for (int i=0; i<nsupports; ++i) {
 
         // get the stencil for this support point
-        Far::Characteristic::Support stencil = node.GetSupport(i, quadrant, g_dynamicLevel);
+        Far::SubdivisionPlan::Support stencil = node.GetSupport(i, quadrant, g_dynamicLevel);
 
         Vertex support;
         support.Clear();
         for (short k=0; k<stencil.size; ++k) {
 
             // remap the support stencil indices, which are local
-            // to the characteristic's neighborhood, to the control
+            // to the subdivision plan's neighborhood, to the control
             // mesh topology.
             Far::Index vertIndex =
                 plansTable.GetMeshControlVertexIndex(planIndex, stencil.indices[k]);
@@ -395,20 +395,20 @@ createPlanNumbers(Far::SubdivisionPlanTable const & plansTable,
         return;
     }
 
-    Far::Characteristic const * ch =
-        plansTable.GetPlanCharacteristic(planIndex);
+    Far::SubdivisionPlan const * plan =
+        plansTable.GetSubdivisionPlan(planIndex);
 
-    Far::Characteristic::Node node = ch->GetTreeNode(0);
+    Far::SubdivisionPlan::Node node = plan->GetTreeNode(0);
 
-    for (int count=0; node.GetTreeOffset()<ch->GetTreeSize(); ++node, ++count) {
+    for (int count=0; node.GetTreeOffset()<plan->GetTreeSize(); ++node, ++count) {
 
         if (count==g_currentNodeIndex) {
 
             g_currentNode = node;
 
-            Far::Characteristic::NodeDescriptor desc = node.GetDescriptor();
+            Far::SubdivisionPlan::NodeDescriptor desc = node.GetDescriptor();
 
-            if (desc.GetType()==Far::Characteristic::NODE_TERMINAL) {
+            if (desc.GetType()==Far::SubdivisionPlan::NODE_TERMINAL) {
                 createNodeNumbers(plansTable, planIndex, node, g_currentQuadrantIndex, vertexBuffer);
             } else {
                 createNodeNumbers(plansTable, planIndex, node, 0, vertexBuffer);
@@ -421,7 +421,7 @@ createPlanNumbers(Far::SubdivisionPlanTable const & plansTable,
 
 //------------------------------------------------------------------------------
 static void
-writeDigraph(Far::TopologyMap const & topomap, int charIndex) {
+writeDigraph(Far::TopologyMap const & topomap, int planIndex) {
 
     static int counter=0;
     char fname[64];
@@ -434,16 +434,16 @@ writeDigraph(Far::TopologyMap const & topomap, int charIndex) {
 
     char const * shapename = g_shapes[g_currentShape].name.c_str();
 
-    if (charIndex>=0 && charIndex<topomap.GetNumCharacteristics()) {
+    if (planIndex>=0 && planIndex<topomap.GetNumSubdivisionPlans()) {
 
-        Far::Characteristic const * ch = topomap.GetCharacteristic(charIndex);
+        Far::SubdivisionPlan const * plan = topomap.GetSubdivisionPlan(planIndex);
 
         bool showIndices = true,
              isSubgraph = false;
-        ch->WriteTreeDigraph(fout, charIndex, showIndices, isSubgraph);
+        plan->WriteTreeDigraph(fout, planIndex, showIndices, isSubgraph);
     } else {
         bool showIndices = true;
-        topomap.WriteCharacteristicsDigraphs(fout, shapename, showIndices);
+        topomap.WriteSubdivisionPlansDigraphs(fout, shapename, showIndices);
     }
     fclose(fout);
     fprintf(stdout, "Saved %s\n", fname);
@@ -454,19 +454,19 @@ writeDigraph(Far::TopologyMap const & topomap, int charIndex) {
 static size_t
 computeTopologyMapSize(Far::TopologyMap const & topomap) {
     size_t result=0;
-    for (int charIndex=0; charIndex<topomap.GetNumCharacteristics(); ++charIndex) {
+    for (int planIndex=0; planIndex<topomap.GetNumSubdivisionPlans(); ++planIndex) {
 
-        Far::Characteristic const * ch = topomap.GetCharacteristic(charIndex);
+        Far::SubdivisionPlan const * plan = topomap.GetSubdivisionPlan(planIndex);
 
-        result += ch->GetTreeSize() * sizeof(int);
+        result += plan->GetTreeSize() * sizeof(int);
 
-        result += ch->GetSupportsSizes().size() * sizeof(short);
-        result += ch->GetSupportIndices().size() * sizeof(Far::LocalIndex);
-        result += ch->GetSupportWeights().size() * sizeof(float);
-        result += ch->GetSupportOffsets().size() * sizeof(int);
+        result += plan->GetSupportsSizes().size() * sizeof(short);
+        result += plan->GetSupportIndices().size() * sizeof(Far::LocalIndex);
+        result += plan->GetSupportWeights().size() * sizeof(float);
+        result += plan->GetSupportOffsets().size() * sizeof(int);
 
-        for (int nIndex=0; nIndex<ch->GetNumNeighborhoods(); ++nIndex) {
-            Far::Neighborhood const * n = ch->GetNeighborhood(nIndex);
+        for (int nIndex=0; nIndex<plan->GetNumNeighborhoods(); ++nIndex) {
+            Far::Neighborhood const * n = plan->GetNeighborhood(nIndex);
             result += n->GetSizeWithRemap();
         }
     }
@@ -476,7 +476,7 @@ computeTopologyMapSize(Far::TopologyMap const & topomap) {
 static size_t
 computePlansTableSize(Far::SubdivisionPlanTable const & plansTable) {
     size_t result = 0;
-    result += plansTable.GetSubdivisionPlans().size() * sizeof(Far::SubdivisionPlan);
+    result += plansTable.GetFacePlans().size() * sizeof(Far::FacePlan);
     result += plansTable.GetControlVertices().size() * sizeof(Far::Index);
     return result;
 }
@@ -563,14 +563,14 @@ createTessMesh(Far::SubdivisionPlanTable const & plansTable, int nplans, int tes
 
         for (int i=0, offset=0; i<nplans; ++i) {
 
-            Far::SubdivisionPlan const & plan =
-                plansTable.GetSubdivisionPlans()[i];
+            Far::FacePlan const & fplan =
+                plansTable.GetFacePlans()[i];
 
-            if (plan.charIndex==Far::INDEX_INVALID) {
+            if (fplan.planIndex==Far::INDEX_INVALID) {
                 continue;
             }
 
-            int tf = plansTable.GetPlanCharacteristic(i)->IsNonQuadPatch() ?
+            int tf = plansTable.GetSubdivisionPlan(i)->IsNonQuadPatch() ?
                 tessFactor / 2 + 1 : tessFactor;
 
             tessChar(tf, offset, positions, normals, colors, pos, norm, col);
@@ -633,7 +633,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     g_controlMeshVerts->UpdateData(&shape->verts[0], 0, nverts);
     g_controlMeshDisplay.SetTopology(refiner->GetLevel(0));
 
-    // build characteristics map
+    // build topology map
     Far::TopologyMap::Options options;
     options.endCapType = g_endCap;
     options.useTerminalNode = g_useTerminalNodes;
@@ -701,8 +701,8 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
             continue;
         }
 
-        Far::Characteristic const * ch =
-            g_plansTable->GetPlanCharacteristic(planIndex);
+        Far::SubdivisionPlan const * plan =
+            g_plansTable->GetSubdivisionPlan(planIndex);
 
         //
         // Evaluate all supports points for this plan.
@@ -711,17 +711,17 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         // (ie. sub-patches) that we actually want to sample, and then
         // evaluate only those support stencils.
         {
-            int nsupports = ch->GetNumSupportsTotal();
+            int nsupports = plan->GetNumSupportsTotal();
             for (int i=0; i<nsupports; ++i) {
 
                 // get the stencil for this support point
-                Far::Characteristic::Support stencil = ch->GetSupport(i);
+                Far::SubdivisionPlan::Support stencil = plan->GetSupport(i);
 
                 supports[i].Clear();
                 for (short k=0; k<stencil.size; ++k) {
 
                      // remap the support stencil indices, which are local
-                     // to the characteristic's neighborhood, to the control
+                     // to the subdivision plan's neighborhood, to the control
                      // mesh topology.
                      Far::Index vertIndex =
                          g_plansTable->GetMeshControlVertexIndex(planIndex, stencil.indices[k]);
@@ -735,7 +735,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         // evaluate sample limits
         //
 
-        int const tessFactor = ch->IsNonQuadPatch() ? g_tessLevel / 2 + 1 : g_tessLevel;
+        int const tessFactor = plan->IsNonQuadPatch() ? g_tessLevel / 2 + 1 : g_tessLevel;
 
         // interpolate vertices
         for (int y=0; y<tessFactor; ++y) {
@@ -747,8 +747,8 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
                 unsigned char quadrant=0;
 
-                Far::Characteristic::Node node =
-                    ch->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant, g_dynamicLevel);
+                Far::SubdivisionPlan::Node node =
+                    plan->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant, g_dynamicLevel);
 
                 //
                 // limit points : interpolate support points with basis weights
@@ -768,7 +768,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                 cross(norm, limit.deriv1, limit.deriv2 );
                 normalize(norm);
 
-                Far::Characteristic::NodeDescriptor desc = node.GetDescriptor();
+                Far::SubdivisionPlan::NodeDescriptor desc = node.GetDescriptor();
 
                 // color
                 switch (g_shadingMode) {
@@ -806,7 +806,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                                                      {   0.0f,    0.0f, 255.0f },
                                                      {  255.0f, 255.0f,   0.0f }};
 
-                    if (desc.GetType()==Far::Characteristic::NODE_TERMINAL) {
+                    if (desc.GetType()==Far::SubdivisionPlan::NODE_TERMINAL) {
                         memcpy(col, quadColors[quadrant], 3 * sizeof(float));
                     } else {
                         //memcpy(col, selColor, 3 * sizeof(float));
@@ -869,30 +869,30 @@ formatMemorySize(size_t memSize) {
 
 
 inline char const *
-getNodeData(Far::Characteristic::Node const & node) {
+getNodeData(Far::SubdivisionPlan::Node const & node) {
 
         static char * nodeTypes[4] =
             { "NODE_REGULAR", "NODE_RECURSIVE", "NODE_TERMINAL", "NODE_END" };
 
         static char buffer[256];
 
-        Far::Characteristic::NodeDescriptor desc =
+        Far::SubdivisionPlan::NodeDescriptor desc =
             node.GetDescriptor();
 
         char const * typeName = nodeTypes[desc.GetType()];
 
         switch (desc.GetType()) {
-            case Far::Characteristic::NODE_REGULAR :
-            case Far::Characteristic::NODE_END : {
+            case Far::SubdivisionPlan::NODE_REGULAR :
+            case Far::SubdivisionPlan::NODE_END : {
                 float sharp = desc.SingleCrease() ? node.GetSharpness() : 0.0f;
                 snprintf(buffer, 256, "type=%s nonquad=%d singleCrease=%d sharp=%f depth=%d boundary=%d u=%d v=%d",
                     nodeTypes[desc.GetType()], desc.NonQuadRoot(), desc.SingleCrease(), sharp,
                         desc.GetDepth(), desc.GetBoundaryMask(), desc.GetU(), desc.GetV());
             } break;
-            case Far::Characteristic::NODE_RECURSIVE : {
+            case Far::SubdivisionPlan::NODE_RECURSIVE : {
                 snprintf(buffer, 256, "type=%s depth=%d", nodeTypes[desc.GetType()], desc.GetDepth());
             } break;
-            case Far::Characteristic::NODE_TERMINAL : {
+            case Far::SubdivisionPlan::NODE_TERMINAL : {
                 snprintf(buffer, 256, "type=%s nonquad=%d depth=%d evIndex=%d u=%d v=%d",
                     nodeTypes[desc.GetType()], desc.NonQuadRoot(), desc.GetDepth(),
                         desc.GetEvIndex(), desc.GetU(), desc.GetV());
@@ -1032,9 +1032,9 @@ if (g_saveSVG) {
         // display node data
         if (g_plansTable && g_currentPlanIndex>=0 && g_currentNodeIndex>=0) {
 
-            Far::SubdivisionPlan const & plan = g_plansTable->GetPlan(g_currentPlanIndex);
+            Far::FacePlan const & plan = g_plansTable->GetPlan(g_currentPlanIndex);
 
-            Far::Characteristic::NodeDescriptor desc =
+            Far::SubdivisionPlan::NodeDescriptor desc =
                 g_currentNode.GetDescriptor();
 
             char const * nodeData = getNodeData(g_currentNode);
@@ -1042,7 +1042,7 @@ if (g_saveSVG) {
             int x = g_width/2-300, y = 200;
 
             g_hud.DrawString(x, y, "plan=%d ch=%d ncvs=%d node=%d {%s}",
-                g_currentPlanIndex, plan.charIndex, plan.numControls, g_currentNodeIndex, nodeData);
+                g_currentPlanIndex, plan.planIndex, plan.numControls, g_currentNodeIndex, nodeData);
         }
 
         static char const * schemeNames[3] = { "BILINEAR", "CATMARK", "LOOP" };
@@ -1053,10 +1053,10 @@ if (g_saveSVG) {
         g_hud.DrawString(10, -20,  "FPS        : %3.1f", fps);
 
         g_hud.DrawString(-280, -120, "Chars : %d (%s)",
-            g_plansTable ? g_plansTable->GetTopologyMap().GetNumCharacteristics() : -1, formatMemorySize(g_currentTopomapSize));
+            g_plansTable ? g_plansTable->GetTopologyMap().GetNumSubdivisionPlans() : -1, formatMemorySize(g_currentTopomapSize));
 
         g_hud.DrawString(-280, -100, "Plans : %d (%s)",
-            g_plansTable ? (int)g_plansTable->GetSubdivisionPlans().size() : 0, formatMemorySize(g_currentPlansTableSize));
+            g_plansTable ? (int)g_plansTable->GetFacePlans().size() : 0, formatMemorySize(g_currentPlansTableSize));
 
         g_hud.Flush();
     }

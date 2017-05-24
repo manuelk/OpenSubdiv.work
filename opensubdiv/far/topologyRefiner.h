@@ -43,7 +43,7 @@ namespace Far { namespace internal { class FeatureMask; } }
 namespace Far {
 
 namespace internal {
-    class CharacteristicBuilder;
+    class SubdivisionPlanBuilder;
     class PatchBuilder;
 }
 
@@ -220,8 +220,8 @@ protected:
     friend class EndCapLegacyGregoryPatchFactory;
     friend class PtexIndices;
     friend class PrimvarRefiner;
-    friend class internal::CharacteristicBuilder;
     friend class internal::PatchBuilder;
+    friend class internal::SubdivisionPlanBuilder;
 
     Vtr::internal::Level & getLevel(int l) { return *_levels[l]; }
     Vtr::internal::Level const & getLevel(int l) const { return *_levels[l]; }

@@ -24,7 +24,6 @@
 
 #include "../far/subdivisionPlanTable.h"
 #include "../far/topologyMap.h"
-#include "../far/characteristicBuilder.h"
 #include "../far/topologyRefiner.h"
 
 namespace OpenSubdiv {

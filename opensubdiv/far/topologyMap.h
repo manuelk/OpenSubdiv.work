@@ -28,7 +28,7 @@
 
 #include "../version.h"
 
-#include "../far/characteristic.h"
+#include "../far/subdivisionPlan.h"
 #include "../far/types.h"
 
 #include <vector>
@@ -39,7 +39,7 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 namespace internal {
-    class CharacteristicBuilder;
+    class SubdivisionPlanBuilder;
 }
 
 class Neighborhood;
@@ -50,7 +50,7 @@ class TopologyLevel;
 class TopologyRefiner;
 
 ///
-///  \brief Stores topology characteristic plans
+///  \brief Hashed dictionary of subdivision plans
 ///
 class TopologyMap {
 
@@ -92,34 +92,34 @@ public:
     /// Note : the refiner must be adaptively refined !
     SubdivisionPlanTable const * HashTopology(TopologyRefiner const & refiner);
 
-    /// \brief Reurns the number of characteristics in the map
-    int GetNumCharacteristics() const {
-        return (int)_characteristics.size();
+    /// \brief Reurns the number of subdivision plans in the map
+    int GetNumSubdivisionPlans() const {
+        return (int)_plans.size();
     }
 
-    /// \brief Returns the characteristic for index
-    Characteristic const * GetCharacteristic(Index charIndex) const {
-        return _characteristics[charIndex];
+    /// \brief Returns the subdivision plan at index
+    SubdivisionPlan const * GetSubdivisionPlan(Index planIndex) const {
+        return _plans[planIndex];
     }
 
-    /// \brief Returns the maximum number of supports in a characteristic
+    /// \brief Returns the maximum number of supports in a subdivision plan
     int GetNumMaxSupports() const {
         return _numMaxSupports;
     }
 
     /// \brief Returns the capacity of the hash map
     int GetHashMapCapacity() const {
-        return (int)_characteristicsHash.capacity();
+        return (int)_plansHash.capacity();
     }
 
-    /// \brief Returns the sum of the characteristic trees sizes
-    int GetCharacteristicTreeSizeTotal() const;
+    /// \brief Returns the sum of the subdivision plan trees sizes
+    int GetSubdivisionPlanTreeSizeTotal() const;
 
     /// \brief Returns the type of end-cap patches
     EndCapType GetEndCapType() const { return EndCapType(_options.endCapType); }
 
-    /// \brief Writes a GraphViz 'dot' diagraph of all the characteristic trees
-    void WriteCharacteristicsDigraphs(FILE * fout, char const * title, bool showIndices=true) const;
+    /// \brief Writes a GraphViz 'dot' diagraph of all the subdivision plan trees
+    void WriteSubdivisionPlansDigraphs(FILE * fout, char const * title, bool showIndices=true) const;
 
 private:
 
@@ -132,22 +132,22 @@ private:
     static bool supportsEndCaps(EndCapType type);
     Options _options;
 
-    int _numMaxSupports; // maximum number of supports in a characteristic
+    int _numMaxSupports; // maximum number of supports in a subdivision plan
 
 private:
 
     //
     // Open-addressing hash
     //
-    Index findCharacteristic(Neighborhood const & n, int * rotation=0) const;
+    Index findSubdivisionPlan(Neighborhood const & n, int * rotation=0) const;
 
-    void addCharacteristicToHash(
+    void addSubdivisionPlanToHash(
         TopologyLevel const & level, NeighborhoodBuilder & neighborhoodBuilder,
-            int faceIndex, int charIndex, int valence);
+            int faceIndex, int planIndex, int valence);
 
-    std::vector<int> _characteristicsHash;
+    std::vector<int> _plansHash;
 
-    std::vector<Characteristic const *> _characteristics;
+    std::vector<SubdivisionPlan const *> _plans;
 };
 
 } // end namespace Far

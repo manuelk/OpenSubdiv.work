@@ -22,8 +22,8 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
-#include "../far/characteristic.h"
-#include "../far/characteristicBuilder.h"
+#include "../far/subdivisionPlan.h"
+#include "../far/subdivisionPlanBuilder.h"
 #include "../far/topologyMap.h"
 #include "../far/neighborhood.h"
 #include "../far/patchBasis.h"
@@ -35,13 +35,13 @@ namespace Far {
 
 
 //
-// Characteristic Node
+// Subdivision Plan Node
 //
 
 //
-// The hierarchical layout of adaptive sub-patches is encoded in "characteristic
-// tree".  The nodes of each tree are serialized in a vector of integers. There
-// are several types of nodes, each with its own encoding.
+// The hierarchical layout of adaptive sub-patches is encoded in a subdivision
+// plan tree.  The nodes of each tree are serialized in a vector of integers.
+// There are several types of nodes, each with its own encoding.
 //
 // Node types :
 //
@@ -86,7 +86,7 @@ namespace Far {
 //
 
 unsigned short
-Characteristic::NodeDescriptor::GetBoundaryCount() const {
+SubdivisionPlan::NodeDescriptor::GetBoundaryCount() const {
     // patches cannot have more than 2 boundaries : return -1 if more than 2 bits are set
     // 0000, 0001, 0010, 0011, 0100, 0101, 0110, 0111,
     // 1000, 1001, 1010, 1011, 1100, 1101, 1110, 1111
@@ -96,29 +96,29 @@ Characteristic::NodeDescriptor::GetBoundaryCount() const {
 }
 
 int
-Characteristic::Node::GetNumChildrenNodes() const {
+SubdivisionPlan::Node::GetNumChildrenNodes() const {
     NodeDescriptor desc = GetDescriptor();
     switch (desc.GetType()) {
-        case Characteristic::NODE_TERMINAL: return 1;
-        case Characteristic::NODE_RECURSIVE: return 4;
+        case SubdivisionPlan::NODE_TERMINAL: return 1;
+        case SubdivisionPlan::NODE_RECURSIVE: return 4;
         default:
             return 0;
     }
 }
 
 float
-Characteristic::Node::GetSharpness() const {
+SubdivisionPlan::Node::GetSharpness() const {
     assert(GetDescriptor().SingleCrease());
     return *(float const *)(getNodeData() + 2);
 }
 
 Index
-Characteristic::Node::getFirstSupportIndex() const {
+SubdivisionPlan::Node::getFirstSupportIndex() const {
     return *(getNodeData() + 1);
 }
 
 int
-Characteristic::Node::GetNumSupports(int quadrant, short maxLevel) const {
+SubdivisionPlan::Node::GetNumSupports(int quadrant, short maxLevel) const {
 
     NodeDescriptor desc = GetDescriptor();
 
@@ -141,7 +141,7 @@ Characteristic::Node::GetNumSupports(int quadrant, short maxLevel) const {
             return desc.GetEvIndex()!=(short)quadrant ? 16 : 0;
         case NODE_END: {
             TopologyMap const & topomap =
-                GetCharacteristic()->GetTopologyMap();
+                GetSubdivisionPlan()->GetTopologyMap();
             return getNumEndCapSupports(topomap.GetEndCapType());
         };
         default:
@@ -150,7 +150,7 @@ Characteristic::Node::GetNumSupports(int quadrant, short maxLevel) const {
 }
 
 Index
-Characteristic::Node::GetSupportIndex(int supportIndex, int evIndex, short maxLevel) const {
+SubdivisionPlan::Node::GetSupportIndex(int supportIndex, int evIndex, short maxLevel) const {
 
     Index firstSupport = getFirstSupportIndex();
 
@@ -185,27 +185,27 @@ Characteristic::Node::GetSupportIndex(int supportIndex, int evIndex, short maxLe
     return INDEX_INVALID;
 }
 
-Characteristic::Support
-Characteristic::Node::GetSupport(
+SubdivisionPlan::Support
+SubdivisionPlan::Node::GetSupport(
     int supportIndex, int evIndex, short maxLevel) const {
-    return GetCharacteristic()->GetSupport(
+    return GetSubdivisionPlan()->GetSupport(
         GetSupportIndex(supportIndex, evIndex, maxLevel));
 }
 
 //
-// Characteristic
+// Subdivision Plan
 //
 
-Characteristic::~Characteristic() {
-    // characteristics own the lifespan of their neighborhoods : we need to
+SubdivisionPlan::~SubdivisionPlan() {
+    // Plans own the lifespan of their neighborhoods : we need to
     // delete them
     for (int i=0; i<(int)_neighborhoods.size(); ++i) {
         free((void *)_neighborhoods[i]);
     }
 }
 
-Characteristic::Node
-Characteristic::GetTreeNode(float s, float t, unsigned char * quadrant, short maxLevel) const {
+SubdivisionPlan::Node
+SubdivisionPlan::GetTreeNode(float s, float t, unsigned char * quadrant, short maxLevel) const {
 
     assert(sizeof(NodeDescriptor)==sizeof(int));
 
@@ -213,7 +213,7 @@ Characteristic::GetTreeNode(float s, float t, unsigned char * quadrant, short ma
     int offset = 0, corner = 0;
     NodeDescriptor desc = _tree[offset];
 
-    Characteristic::NodeType ntype = desc.GetType();
+    SubdivisionPlan::NodeType ntype = desc.GetType();
     while (ntype==NODE_RECURSIVE || ntype==NODE_TERMINAL) {
 
         if (maxLevel>=0 && (short)desc.GetDepth()==maxLevel) {
@@ -268,8 +268,8 @@ evaluateEndCapBasis(EndCapType type, PatchParamBase param,
     }
 }
 
-Characteristic::Node
-Characteristic::EvaluateBasis(float s, float t,
+SubdivisionPlan::Node
+SubdivisionPlan::EvaluateBasis(float s, float t,
     float wP[], float wDs[], float wDt[], unsigned char * subpatch, short maxLevel) const {
 
     unsigned char quadrant = 0;
@@ -343,12 +343,12 @@ Characteristic::EvaluateBasis(float s, float t,
 
 
 inline bool
-Characteristic::hasDynamicIsolation() const {
+SubdivisionPlan::hasDynamicIsolation() const {
     return (bool)_topologyMap.GetOptions().useDynamicIsolation;
 }
 
 inline EndCapType
-Characteristic::getEndCapType() const {
+SubdivisionPlan::getEndCapType() const {
     return GetTopologyMap().GetEndCapType();
 }
 
@@ -358,44 +358,44 @@ Characteristic::getEndCapType() const {
 
 #if 0
 static void
-printNodeIndices(FILE * fout, Characteristic::Node node) {
+printNodeIndices(FILE * fout, SubdivisionPlan::Node node) {
 
-    Characteristic const * ch = node.GetCharacteristic();
+    SubdivisionPlan const * plan = node.GetSubdivisionPlan();
 
-    Characteristic::NodeDescriptor desc = node.GetDescriptor();
+    SubdivisionPlan::NodeDescriptor desc = node.GetDescriptor();
 
     int numSupports = node.getNumSupports(desc.GetType()),
         stride = (numSupports==16) ? 4 : 5;
 
     Index firstSupport = node.getFirstSupportIndex();
     for (int i=0; i<numSupports, ++i) {
-        Characteristic::Support support = ch->GetSupport(firstSupport+1);
-        //if (i>0 && ((i%stride)!=0))
-        //    fprintf(fout, " ");
-        //if ((i%stride)==0)
-        //    fprintf(fout, "\\n");
+        SubdivisionPlan::Support support = plan->GetSupport(firstSupport+1);
+        if (i>0 && ((i%stride)!=0))
+            fprintf(fout, " ");
+        if ((i%stride)==0)
+            fprintf(fout, "\\n");
     }
 }
 
 #endif
 
 inline size_t
-hashNodeID(int charIndex, Characteristic::Node node) {
-    size_t hash = node.GetTreeOffset() + ((size_t)charIndex << 32);
+hashNodeID(int planIndex, SubdivisionPlan::Node node) {
+    size_t hash = node.GetTreeOffset() + ((size_t)planIndex << 32);
     return hash;
 }
 
 static void
-printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charIndex) {
+printTreeNode(FILE * fout, SubdivisionPlan::Node node, int planIndex) {
 
-    typedef Characteristic::NodeDescriptor Descriptor;
+    typedef SubdivisionPlan::NodeDescriptor Descriptor;
 
     Descriptor const & desc = node.GetDescriptor();
 
-    size_t nodeID = hashNodeID(charIndex, node);
+    size_t nodeID = hashNodeID(planIndex, node);
 
     switch (desc.GetType()) {
-        case Characteristic::NODE_REGULAR : {
+        case SubdivisionPlan::NODE_REGULAR : {
             fprintf(fout, "  %zu [label=\"REG\\ntofs=%d\\nfsup=%d",
                 nodeID, node.GetTreeOffset(), node.getFirstSupportIndex());
             if (desc.SingleCrease()) {
@@ -404,30 +404,30 @@ printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charInde
             fprintf(fout, "\", shape=box, style=filled, color=%s]\n", desc.SingleCrease() ? "darksalmon" : "white");
         } break;
 
-        case Characteristic::NODE_END : {
+        case SubdivisionPlan::NODE_END : {
             fprintf(fout, "  %zu [label=\"END\\ntofs=%d\\nfsup=%d",
                 nodeID, node.GetTreeOffset(), node.getFirstSupportIndex());
             fprintf(fout, "\", shape=box, style=filled, color=darkorange]\n");
         } break;
 
-        case Characteristic::NODE_RECURSIVE : {
+        case SubdivisionPlan::NODE_RECURSIVE : {
             fprintf(fout, "  %zu [label=\"REC\\ntofs=%d\\nfsup=%d",
                 nodeID, node.GetTreeOffset(), node.getFirstSupportIndex());
             fprintf(fout, "\", shape=square, style=filled, color=dodgerblue]\n");
             for (int i=0; i<4; ++i) {
-                Characteristic::Node child = node.GetNodeChild(i);
-                printCharacteristicTreeNode(fout, child, charIndex);
-                fprintf(fout, "  %zu -> %zu [label=\"%d\"]\n", nodeID, hashNodeID(charIndex, child), i);
+                SubdivisionPlan::Node child = node.GetNodeChild(i);
+                printTreeNode(fout, child, planIndex);
+                fprintf(fout, "  %zu -> %zu [label=\"%d\"]\n", nodeID, hashNodeID(planIndex, child), i);
             }
         } break;
 
-        case Characteristic::NODE_TERMINAL : {
+        case SubdivisionPlan::NODE_TERMINAL : {
             fprintf(fout, "  %zu [label=\"TRM\\ntofs=%d\\nfsup=%d",
                 nodeID, node.GetTreeOffset(), node.getFirstSupportIndex());
             fprintf(fout, "\", shape=box, style=filled, color=grey]\n");
-            Characteristic::Node child = node.GetNodeChild();
-            printCharacteristicTreeNode(fout, child, charIndex);
-            fprintf(fout, "  %zu -> %zu\n", nodeID, hashNodeID(charIndex, child));
+            SubdivisionPlan::Node child = node.GetNodeChild();
+            printTreeNode(fout, child, planIndex);
+            fprintf(fout, "  %zu -> %zu\n", nodeID, hashNodeID(planIndex, child));
         } break;
         default:
             assert(0);
@@ -435,16 +435,16 @@ printCharacteristicTreeNode(FILE * fout, Characteristic::Node node, int charInde
 }
 
 void
-Characteristic::WriteTreeDigraph(FILE * fout,
-    int charIndex, bool showIndices, bool isSubgraph) const {
+SubdivisionPlan::WriteTreeDigraph(FILE * fout,
+    int planIndex, bool showIndices, bool isSubgraph) const {
 
     if (isSubgraph) {
-        fprintf(fout, "subgraph cluster_%d {\n", charIndex);
-        fprintf(fout, "  label = \"Characteristic %d\"; style=filled; color=lightgrey;\n", charIndex);
+        fprintf(fout, "subgraph cluster_%d {\n", planIndex);
+        fprintf(fout, "  label = \"Plan %d\"; style=filled; color=lightgrey;\n", planIndex);
     } else {
         fprintf(fout, "digraph {\n");
     }
-    printCharacteristicTreeNode(fout, GetTreeRootNode(), charIndex);
+    printTreeNode(fout, GetTreeRootNode(), planIndex);
     fprintf(fout, "}\n");
 }
 
@@ -453,19 +453,19 @@ Characteristic::WriteTreeDigraph(FILE * fout,
 //
 
 void
-Characteristic::reserveNeighborhoods(int count) {
+SubdivisionPlan::reserveNeighborhoods(int count) {
     _neighborhoods.reserve(count);
     _startEdges.reserve(count);
 }
 
 void
-Characteristic::addNeighborhood(Neighborhood const * n, int startEdge) {
+SubdivisionPlan::addNeighborhood(Neighborhood const * n, int startEdge) {
     _neighborhoods.push_back(n);
     _startEdges.push_back(startEdge);
 }
 
 void
-Characteristic::shrink_to_fit() {
+SubdivisionPlan::shrink_to_fit() {
 #if __cplusplus <= 199711L
     int count = GetNumNeighborhoods();
     _neighborhoods.resize(count);
@@ -477,7 +477,7 @@ Characteristic::shrink_to_fit() {
 }
 
 int
-Characteristic::FindEquivalentNeighborhood(Neighborhood const & n) const {
+SubdivisionPlan::FindEquivalentNeighborhood(Neighborhood const & n) const {
     for (int i=0; i<GetNumNeighborhoods(); ++i) {
         if (n.IsEquivalent(*_neighborhoods[i])) {
             return i;

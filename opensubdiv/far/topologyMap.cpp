@@ -23,9 +23,9 @@
 //
 
 #include "../far/topologyMap.h"
-#include "../far/characteristicBuilder.h"
 #include "../far/error.h"
 #include "../far/neighborhoodBuilder.h"
+#include "../far/subdivisionPlanBuilder.h"
 #include "../far/subdivisionPlanTable.h"
 #include "../far/topologyRefiner.h"
 
@@ -35,11 +35,11 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 void
-TopologyMap::addCharacteristicToHash(
+TopologyMap::addSubdivisionPlanToHash(
     TopologyLevel const & level, NeighborhoodBuilder & neighborhoodBuilder,
-        int faceIndex, int charIndex, int valence) {
+        int faceIndex, int planIndex, int valence) {
 
-    Characteristic * ch = (Characteristic *)_characteristics[charIndex];
+    SubdivisionPlan * ch = (SubdivisionPlan *)_plans[planIndex];
 
     ch->reserveNeighborhoods(valence);
 
@@ -55,7 +55,7 @@ TopologyMap::addCharacteristicToHash(
         }
 
         unsigned int hash = neighborhood->GetHash(),
-                     hashCount = (unsigned int)_characteristicsHash.size();
+                     hashCount = (unsigned int)_plansHash.size();
 
         for (unsigned int j=0; j<hashCount; ++j) {
 
@@ -63,10 +63,10 @@ TopologyMap::addCharacteristicToHash(
 
             assert(hashIndex<hashCount);
 
-            int existingCharIndex = _characteristicsHash[hashIndex];
+            int existingCharIndex = _plansHash[hashIndex];
 
             if (existingCharIndex == INDEX_INVALID) {
-                _characteristicsHash[hashIndex] = charIndex;
+                _plansHash[hashIndex] = planIndex;
                 break;
             }
         }
@@ -84,34 +84,34 @@ TopologyMap::addCharacteristicToHash(
 }
 
 Index
-TopologyMap::findCharacteristic(
+TopologyMap::findSubdivisionPlan(
     Neighborhood const & neighborhood, int * rotation) const {
 
     unsigned int hash = neighborhood.GetHash();
 
-    int hashCount = (int)_characteristicsHash.size(),
-        charIndex = INDEX_INVALID;
+    int hashCount = (int)_plansHash.size(),
+        planIndex = INDEX_INVALID;
 
     for (int i=0; i<hashCount; ++i) {
 
         int hashIndex = (hash + i) % hashCount;
 
-        charIndex = _characteristicsHash[hashIndex];
-        if (charIndex==INDEX_INVALID) {
-                return charIndex;
+        planIndex = _plansHash[hashIndex];
+        if (planIndex==INDEX_INVALID) {
+                return planIndex;
         }
 
-        Characteristic const * ch = _characteristics[charIndex];
+        SubdivisionPlan const * ch = _plans[planIndex];
         for (int j=0; j<ch->GetNumNeighborhoods(); ++j) {
             if (neighborhood.IsEquivalent(*ch->GetNeighborhood(j))) {
                 if (rotation) {
                     *rotation = ch->GetStartingEdge(j);
                 }
-                return charIndex;
+                return planIndex;
             }
         }
     }
-    return charIndex;
+    return planIndex;
 }
 
 bool
@@ -129,7 +129,7 @@ TopologyMap::supportsEndCaps(EndCapType type) {
 TopologyMap::TopologyMap(Options options) :
     _options(options), _numMaxSupports(0) {
 
-    _characteristicsHash.resize(_options.hashSize, INDEX_INVALID);
+    _plansHash.resize(_options.hashSize, INDEX_INVALID);
 }
 
 inline void
@@ -150,7 +150,7 @@ TopologyMap::HashTopology(TopologyRefiner const & refiner) {
         return 0;
     }
 
-    internal::CharacteristicBuilder charBuilder(refiner, *this);
+    internal::SubdivisionPlanBuilder planBuilder(refiner, *this);
 
     TopologyLevel const & coarseLevel = refiner.GetLevel(0);
 
@@ -164,14 +164,14 @@ TopologyMap::HashTopology(TopologyRefiner const & refiner) {
 
     SubdivisionPlanTable * plansTable = new SubdivisionPlanTable(*this);
 
-    SubdivisionPlanVector & plans = plansTable->_plans;
+    FacePlanVector & plans = plansTable->_plans;
     plans.reserve(nplans);
 
     std::vector<Index> & controls = plansTable->_controlVertices;
     controls.reserve(nplans*20);
 
     // hash topology : faces with redundant topological configurations share
-    // the same characteristic
+    // the same subdivision plan
     NeighborhoodBuilder neighborhoodBuilder(maxValence);
 
     std::vector<Neighborhood const *> neighborhoods;
@@ -182,7 +182,7 @@ TopologyMap::HashTopology(TopologyRefiner const & refiner) {
         if (coarseLevel.IsFaceHole(faceIndex)) {
             // although holes do not render, we may want to have a place-holder
             // in the table to maintain primitive index consistency
-            plans.push_back(SubdivisionPlan(0, INDEX_INVALID, INDEX_INVALID));
+            plans.push_back(FacePlan(0, INDEX_INVALID, INDEX_INVALID));
             continue;
         }
 
@@ -191,32 +191,32 @@ TopologyMap::HashTopology(TopologyRefiner const & refiner) {
 
         int rotation=0;
 
-        Index charIndex = findCharacteristic(*neighborhood, &rotation);
+        Index planIndex = findSubdivisionPlan(*neighborhood, &rotation);
 
-        if (charIndex==INDEX_INVALID) {
+        if (planIndex==INDEX_INVALID) {
 
             // this topological configuration does not exist in the map :
-            // create a new characteristic & add it to the map
-            charIndex = GetNumCharacteristics();
-            assert(charIndex!=INDEX_INVALID);
+            // create a new subdivision plan & add it to the map
+            planIndex = GetNumSubdivisionPlans();
+            assert(planIndex!=INDEX_INVALID);
 
             int valence = neighborhood->GetValence();
             if (valence!=regValence) {
                 ConstIndexArray childFaces =
                     coarseLevel.GetFaceChildFaces(faceIndex);
                 for (int i=0; i<valence; ++i) {
-                    Characteristic const * ch =
-                        charBuilder.Create(1, childFaces[i], neighborhood);
-                    _characteristics.push_back(ch);
+                    SubdivisionPlan const * ch =
+                        planBuilder.Create(1, childFaces[i], neighborhood);
+                    _plans.push_back(ch);
                 }
             } else {
-                Characteristic const * ch =
-                    charBuilder.Create(0, faceIndex, neighborhood);
-                _characteristics.push_back(ch);
+                SubdivisionPlan const * ch =
+                    planBuilder.Create(0, faceIndex, neighborhood);
+                _plans.push_back(ch);
             }
 
-            addCharacteristicToHash(
-                coarseLevel, neighborhoodBuilder, faceIndex, charIndex, valence);
+            addSubdivisionPlanToHash(
+                coarseLevel, neighborhoodBuilder, faceIndex, planIndex, valence);
         } else {
             if (rotation) {
                 free((void *)neighborhood);
@@ -227,13 +227,13 @@ TopologyMap::HashTopology(TopologyRefiner const & refiner) {
         }
 
         int numControlVertices =
-            GetCharacteristic(charIndex)->GetNumControlVertices();
+            GetSubdivisionPlan(planIndex)->GetNumControlVertices();
 
         ConstIndexArray fverts = coarseLevel.GetFaceVertices(faceIndex);
         if (fverts.size()==regFaceSize) {
 
             plans.push_back(
-                SubdivisionPlan(numControlVertices, firstControl, charIndex));
+                FacePlan(numControlVertices, firstControl, planIndex));
 
             appendPlanControlVertices(*neighborhood, controls);
 
@@ -243,7 +243,7 @@ TopologyMap::HashTopology(TopologyRefiner const & refiner) {
             for (int i=0; i<fverts.size(); ++i) {
 
                 plans.push_back(
-                    SubdivisionPlan(numControlVertices, firstControl, charIndex+i));
+                    FacePlan(numControlVertices, firstControl, planIndex+i));
 
                 appendPlanControlVertices(*neighborhood, controls);
                 firstControl += numControlVertices;
@@ -252,7 +252,7 @@ TopologyMap::HashTopology(TopologyRefiner const & refiner) {
     }
 
     _numMaxSupports = std::max(
-        _numMaxSupports, charBuilder.FinalizeSupportStencils());
+        _numMaxSupports, planBuilder.FinalizeSupportStencils());
 
     for (int i=0; i<(int)neighborhoods.size(); ++i) {
         free((void *)neighborhoods[i]);
@@ -262,18 +262,18 @@ TopologyMap::HashTopology(TopologyRefiner const & refiner) {
 }
 
 int
-TopologyMap::GetCharacteristicTreeSizeTotal() const {
+TopologyMap::GetSubdivisionPlanTreeSizeTotal() const {
 
     int size = 0;
-    for (int i=0; i<GetNumCharacteristics(); ++i) {
-        Characteristic const * ch = GetCharacteristic(i);
+    for (int i=0; i<GetNumSubdivisionPlans(); ++i) {
+        SubdivisionPlan const * ch = GetSubdivisionPlan(i);
         size += ch->GetTreeSize();
     }
     return size;
 }
 
 void
-TopologyMap::WriteCharacteristicsDigraphs(
+TopologyMap::WriteSubdivisionPlansDigraphs(
     FILE * fout, char const * title, bool showIndices) const {
 
     fprintf(fout, "digraph TopologyMap {\n");
@@ -283,11 +283,11 @@ TopologyMap::WriteCharacteristicsDigraphs(
         fprintf(fout, "  labelloc = \"t\";\n");
     }
 
-    for (int charIndex=0; charIndex<GetNumCharacteristics(); ++charIndex) {
+    for (int planIndex=0; planIndex<GetNumSubdivisionPlans(); ++planIndex) {
 
-        Characteristic const * ch = GetCharacteristic(charIndex);
+        SubdivisionPlan const * ch = GetSubdivisionPlan(planIndex);
         if (ch) {
-            ch->WriteTreeDigraph(fout, charIndex, showIndices, /*isSubgraph*/ true);
+            ch->WriteTreeDigraph(fout, planIndex, showIndices, /*isSubgraph*/ true);
         }
     }
     fprintf(fout, "}\n");
