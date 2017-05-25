@@ -405,7 +405,7 @@ PatchTableFactory::computePatchParam(
 
     PatchParam param;
     param.Set(ptexIndex, (short)u, (short)v, (unsigned short) depth, nonquad,
-              (unsigned short) boundaryMask, /*regular*/ false, (unsigned short) transitionMask);
+              (unsigned short) boundaryMask, (unsigned short) transitionMask);
     return param;
 }
 
@@ -1045,8 +1045,8 @@ PatchTableFactory::populateAdaptivePatches(
                     patchParam.GetDepth(),
                     patchParam.NonQuadRoot(),
                     (fvarIsRegular ? fvarBoundaryMask : 0),
-                    fvarIsRegular,
-                    patchParam.GetTransition());
+                    patchParam.GetTransition(),
+                    fvarIsRegular);
                 *arrayBuilder->fpptr[fvc]++ = fvarPatchParam;
             }
         }
@@ -1117,6 +1117,58 @@ PatchTableFactory::populateAdaptivePatches(
                                         localPointFVarStencils[fvc];
         }
     }
+}
+
+//
+//  Implementation of the PatchFaceTag:
+//
+void
+PatchTableFactory::PatchFaceTag::clear() {
+    std::memset(this, 0, sizeof(*this));
+}
+
+void
+PatchTableFactory::PatchFaceTag::assignTransitionPropertiesFromEdgeMask(int tMask) {
+    _transitionMask = tMask;
+}
+
+void
+PatchTableFactory::PatchFaceTag::assignBoundaryPropertiesFromEdgeMask(int eMask) {
+
+    static int const edgeMaskToCount[16] =
+        { 0, 1, 1, 2, 1, -1, 2, -1, 1, 2, -1, -1, 2, -1, -1, -1 };
+    static int const edgeMaskToIndex[16] =
+        { -1, 0, 1, 1, 2, -1, 2, -1, 3, 0, -1, -1, 3, -1, -1,-1 };
+
+    assert(edgeMaskToCount[eMask] != -1);
+    assert(edgeMaskToIndex[eMask] != -1);
+
+    _boundaryMask    = eMask;
+    _hasBoundaryEdge = (eMask > 0);
+
+    _boundaryCount = edgeMaskToCount[eMask];
+    _boundaryIndex = edgeMaskToIndex[eMask];
+}
+
+void
+PatchTableFactory::PatchFaceTag::assignBoundaryPropertiesFromVertexMask(int vMask) {
+
+    // This is only intended to support the case of a single boundary vertex with no
+    // boundary edges, which can only occur with an irregular vertex
+
+    static int const singleBitVertexMaskToCount[16] =
+        { 0, 1, 1, -1, 1, -1 , -1, -1, 1, -1 , -1, -1, -1, -1 , -1, -1 };
+    static int const singleBitVertexMaskToIndex[16] =
+        { 0, 0, 1, -1, 2, -1 , -1, -1, 3, -1 , -1, -1, -1, -1 , -1, -1 };
+
+    assert(_hasBoundaryEdge == false);
+    assert(singleBitVertexMaskToCount[vMask] != -1);
+    assert(singleBitVertexMaskToIndex[vMask] != -1);
+
+    _boundaryMask = vMask;
+
+    _boundaryCount = singleBitVertexMaskToCount[vMask];
+    _boundaryIndex = singleBitVertexMaskToIndex[vMask];
 }
 
 } // end namespace Far

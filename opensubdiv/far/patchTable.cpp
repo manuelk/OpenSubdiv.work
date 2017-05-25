@@ -575,8 +575,7 @@ PatchTable::EvaluateBasis(
     float wDss[], float wDst[], float wDtt[]) const {
 
     PatchDescriptor::Type patchType = GetPatchArrayDescriptor(handle.arrayIndex).GetType();
-    PatchParamBase const & param =
-        _paramTable[handle.patchIndex].GetPatchParamBase();
+    PatchParam const & param = _paramTable[handle.patchIndex];
 
     if (patchType == PatchDescriptor::REGULAR) {
         internal::GetBSplineWeights(param, s, t, wP, wDs, wDt, wDss, wDst, wDtt);
@@ -598,8 +597,7 @@ PatchTable::EvaluateBasisVarying(
     float wP[], float wDs[], float wDt[],
     float wDss[], float wDst[], float wDtt[]) const {
 
-    PatchParamBase const & param =
-        _paramTable[handle.patchIndex].GetPatchParamBase();
+    PatchParam const & param = _paramTable[handle.patchIndex];
 
     internal::GetBilinearWeights(param, s, t, wP, wDs, wDt, wDss, wDst, wDtt);
 }
@@ -614,8 +612,8 @@ PatchTable::EvaluateBasisFaceVarying(
     float wDss[], float wDst[], float wDtt[],
     int channel) const {
 
-    PatchParamBase param =
-        GetPatchFVarPatchParam(handle.arrayIndex, handle.patchIndex, channel).GetPatchParamBase();
+    PatchParam param =
+        GetPatchFVarPatchParam(handle.arrayIndex, handle.patchIndex, channel);
     PatchDescriptor::Type patchType = param.IsRegular()
             ? PatchDescriptor::REGULAR
             : GetFVarPatchDescriptor(channel).GetType();

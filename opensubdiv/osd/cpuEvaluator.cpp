@@ -183,8 +183,7 @@ CpuEvaluator::EvalPatches(const float *src, BufferDescriptor const &srcDesc,
         PatchCoord const &coord = patchCoords[i];
         PatchArray const &array = patchArrays[coord.handle.arrayIndex];
 
-        Far::PatchParamBase const & param =
-            patchParamBuffer[coord.handle.patchIndex].GetPatchParamBase();
+        Far::PatchParam const & param = patchParamBuffer[coord.handle.patchIndex];
         int patchType = param.IsRegular()
             ? Far::PatchDescriptor::REGULAR
             : array.GetPatchType();
@@ -262,8 +261,7 @@ CpuEvaluator::EvalPatches(const float *src, BufferDescriptor const &srcDesc,
         PatchCoord const &coord = patchCoords[i];
         PatchArray const &array = patchArrays[coord.handle.arrayIndex];
 
-        Far::PatchParamBase const & param =
-            patchParamBuffer[coord.handle.patchIndex].GetPatchParamBase();
+        Far::PatchParam const & param = patchParamBuffer[coord.handle.patchIndex];
         int patchType = param.IsRegular()
             ? Far::PatchDescriptor::REGULAR
             : array.GetPatchType();
@@ -364,8 +362,7 @@ CpuEvaluator::EvalPatches(const float *src, BufferDescriptor const &srcDesc,
         PatchCoord const &coord = patchCoords[i];
         PatchArray const &array = patchArrays[coord.handle.arrayIndex];
 
-        Far::PatchParamBase const & param =
-            patchParamBuffer[coord.handle.patchIndex].GetPatchParamBase();
+        Far::PatchParam const & param = patchParamBuffer[coord.handle.patchIndex];
         int patchType = param.IsRegular()
             ? Far::PatchDescriptor::REGULAR
             : array.GetPatchType();

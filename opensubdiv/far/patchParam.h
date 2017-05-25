@@ -34,8 +34,6 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Far {
 
-namespace internal {
-
 /// \brief Patch parameterization
 ///
 /// Topological refinement splits coarse mesh faces into refined faces.
@@ -82,20 +80,20 @@ namespace internal {
 ///
 /// Bitfield layout :
 ///
+///  Field0     | Bits | Content
+///  -----------|:----:|------------------------------------------------------
+///  faceId     | 28   | the faceId of the patch
+///  transition | 4    | transition edge mask encoding
+///
 ///  Field1     | Bits | Content
 ///  -----------|:----:|------------------------------------------------------
 ///  level      | 4    | the subdivision level of the patch
-///  nonquad    | 1    | whether the patch is refined from a non-quad face
+///  nonquad    | 1    | whether patch is refined from a non-quad face
 ///  regular    | 1    | whether patch is regular
 ///  unused     | 2    | unused
 ///  boundary   | 4    | boundary edge mask encoding
 ///  v          | 10   | log2 value of u parameter at first patch corner
 ///  u          | 10   | log2 value of v parameter at first patch corner
-///
-///  Field0     | Bits | Content
-///  -----------|:----:|------------------------------------------------------
-///  faceId     | 28   | the faceId of the patch
-///  transition | 4    | transition edge mask encoding
 ///
 /// Note : the bitfield is not expanded in the struct due to differences in how
 ///        GPU & CPU compilers pack bit-fields and endian-ness.
@@ -151,148 +149,7 @@ namespace internal {
  \endverbatim
 */
 
-template <class IMPL>
-struct PatchParamInterface {
-public:
-    /// \brief Returns the log2 value of the u parameter at
-    /// the first corner of the patch
-    unsigned short GetU() const { return baseData<unsigned short>(10,22); }
-
-    /// \brief Returns the log2 value of the v parameter at
-    /// the first corner of the patch
-    unsigned short GetV() const { return baseData<unsigned short>(10,12); }
-
-    /// \brief Returns the boundary edge encoding for the patch.
-    unsigned short GetBoundary() const { return baseData<unsigned short>(4,8); }
-
-    /// \brief True if the parent coarse face is a non-quad
-    bool NonQuadRoot() const { return (baseData<unsigned int>(1,4) != 0); }
-
-    /// \brief Returns the level of subdivision of the patch
-    unsigned short GetDepth() const { return baseData<unsigned short>(4,0); }
-
-    /// \brief Returns the fraction of the coarse face parametric space
-    /// covered by this refined face.
-    float GetParamFraction() const;
-
-    /// \brief Maps the (u,v) parameterization from coarse to refined
-    /// The (u,v) pair is mapped from the coarse face parameterization to
-    /// the refined face parameterization
-    ///
-    void MapCoarseToRefined( float & u, float & v ) const;
-
-    /// \brief Maps the (u,v) parameterization from refined to coarse
-    /// The (u,v) pair is mapped from the refined face parameterization to
-    /// the coarse face parameterization
-    ///
-    void MapRefinedToCoarse( float & u, float & v ) const;
-
-    /// \brief Deprecated @see PatchParam#MapCoarseToRefined
-    void Normalize( float & u, float & v ) const {
-        return MapCoarseToRefined(u, v);
-    }
-
-    /// \brief Returns whether the patch is regular
-    bool IsRegular() const { return baseData<unsigned short>(1,5) != 0; }
-
-protected:
-    unsigned int packBaseData(short u, short v,
-                              unsigned short depth, bool nonquad,
-                              unsigned short boundary, bool regular) {
-        return packBitfield(u,       10, 22) |
-               packBitfield(v,       10, 12) |
-               packBitfield(boundary, 4,  8) |
-               packBitfield(regular,  1,  5) |
-               packBitfield(nonquad,  1,  4) |
-               packBitfield(depth,    4,  0);
-    }
-
-    template <class RETURN_TYPE>
-    RETURN_TYPE baseData(int width, int offset) const {
-        unsigned int value = static_cast<IMPL const *>(this)->baseValue();
-        return (RETURN_TYPE)unpackBitfield(value, width, offset);
-    }
-};
-
-template<class IMPL>
-inline float
-PatchParamInterface<IMPL>::GetParamFraction( ) const {
-
-    if (NonQuadRoot()) {
-        return 1.0f / float( 1 << (GetDepth()-1) );
-    } else {
-        return 1.0f / float( 1 << GetDepth() );
-    }
-}
-
-template<class IMPL>
-inline void
-PatchParamInterface<IMPL>::MapCoarseToRefined( float & u, float & v ) const {
-
-    float frac = GetParamFraction();
-
-    float pu = (float)GetU()*frac;
-    float pv = (float)GetV()*frac;
-
-    u = (u - pu) / frac,
-    v = (v - pv) / frac;
-}
-
-template<class IMPL>
-inline void
-PatchParamInterface<IMPL>::MapRefinedToCoarse( float & u, float & v ) const {
-
-    float frac = GetParamFraction();
-
-    float pu = (float)GetU()*frac;
-    float pv = (float)GetV()*frac;
-
-    u = u * frac + pu,
-    v = v * frac + pv;
-}
-
-} // end namespace internal
-
-/// \brief Local patch parameterization
-///
-struct PatchParamBase : public Far::internal::PatchParamInterface<PatchParamBase> {
-public:
-    /// \brief Sets the values of the bit fields
-    ///
-    /// @param u value of the u parameter for the first corner of the face
-    /// @param v value of the v parameter for the first corner of the face
-    ///
-    /// @param depth subdivision level of the patch
-    /// @param nonquad true if the root face is not a quad
-    ///
-    /// @param boundary 4-bits identifying boundary edges
-    ///
-    void Set(short u, short v,
-             unsigned short depth, bool nonquad,
-             unsigned short boundary, bool isRegular = true) {
-        field1 = packBaseData(u, v, depth, nonquad, boundary, isRegular);
-        field1 |= packBitfield(isRegular,1,5);
-    }
-
-    /// \brief Resets everything to 0
-    void Clear() { field1 = 0; }
-
-    unsigned int field1:32;
-
-protected:
-    friend struct Far::internal::PatchParamInterface<PatchParamBase>;
-    unsigned int baseValue() const { return field1; }
-};
-
-typedef std::vector<PatchParamBase> PatchParamBaseTable;
-
-typedef Vtr::Array<PatchParamBase> PatchParamBaseArray;
-typedef Vtr::ConstArray<PatchParamBase> ConstPatchParamBaseArray;
-
-/// \brief Local patch parameterization for vertex patches
-///
-struct PatchParam : public Far::internal::PatchParamInterface<PatchParam> {
-public:
+struct PatchParam {
     /// \brief Sets the values of the bit fields
     ///
     /// @param faceid face index
@@ -306,42 +163,127 @@ public:
     /// @param boundary 4-bits identifying boundary edges
     /// @param transition 4-bits identifying transition edges
     ///
+    /// @param regular whether the patch is regular
+    ///
     void Set(Index faceid, short u, short v,
              unsigned short depth, bool nonquad,
-             unsigned short boundary, bool isRegular = false, unsigned short transition = 0) {
-        field0 = packBitfield(faceid, 28, 0) | packBitfield(transition, 4, 28);
-        field1 = packBaseData(u, v, depth, nonquad, boundary, isRegular);
-    }
+             unsigned short boundary, unsigned short transition,
+             bool regular = false);
 
     /// \brief Resets everything to 0
     void Clear() { field0 = field1 = 0; }
 
-    /// \brief Retuns the faceid
-    Index GetFaceId() const { return Index(unpackBitfield(field0,28,0)); }
+    /// \brief Returns the faceid
+    Index GetFaceId() const { return Index(unpack(field0,28,0)); }
+
+    /// \brief Returns the log2 value of the u parameter at
+    /// the first corner of the patch
+    unsigned short GetU() const { return (unsigned short)unpack(field1,10,22); }
+
+    /// \brief Returns the log2 value of the v parameter at
+    /// the first corner of the patch
+    unsigned short GetV() const { return (unsigned short)unpack(field1,10,12); }
 
     /// \brief Returns the transition edge encoding for the patch.
-    unsigned short GetTransition() const {
-        return (unsigned short)unpackBitfield(field0,4,28);
-    }
+    unsigned short GetTransition() const { return (unsigned short)unpack(field0,4,28); }
 
-    PatchParamBase GetPatchParamBase() const {
-        PatchParamBase result;
-        result.field1 = field1;
-        return result;
-    }
+    /// \brief Returns the boundary edge encoding for the patch.
+    unsigned short GetBoundary() const { return (unsigned short)unpack(field1,4,8); }
+
+    /// \brief True if the parent base face is a non-quad
+    bool NonQuadRoot() const { return (unpack(field1,1,4) != 0); }
+
+    /// \brief Returns the level of subdivision of the patch
+    unsigned short GetDepth() const { return (unsigned short)unpack(field1,4,0); }
+
+    /// \brief Returns the fraction of unit parametric space covered by this face.
+    float GetParamFraction() const;
+
+    /// \brief A (u,v) pair in the fraction of parametric space covered by this
+    /// face is mapped into a normalized parametric space.
+    ///
+    /// @param u  u parameter
+    /// @param v  v parameter
+    ///
+    void Normalize( float & u, float & v ) const;
+
+    /// \brief A (u,v) pair in a normalized parametric space is mapped back into the
+    /// fraction of parametric space covered by this face.
+    ///
+    /// @param u  u parameter
+    /// @param v  v parameter
+    ///
+    void Unnormalize( float & u, float & v ) const;
+
+    /// \brief Returns whether the patch is regular
+    bool IsRegular() const { return (unpack(field1,1,5) != 0); }
 
     unsigned int field0:32;
     unsigned int field1:32;
 
-protected:
-    friend struct Far::internal::PatchParamInterface<PatchParam>;
-    unsigned int baseValue() const { return field1; }
+private:
+    unsigned int pack(unsigned int value, int width, int offset) const {
+        return (unsigned int)((value & ((1<<width)-1)) << offset);
+    }
+
+    unsigned int unpack(unsigned int value, int width, int offset) const {
+        return (unsigned int)((value >> offset) & ((1<<width)-1));
+    }
 };
 
 typedef std::vector<PatchParam> PatchParamTable;
 
 typedef Vtr::Array<PatchParam> PatchParamArray;
 typedef Vtr::ConstArray<PatchParam> ConstPatchParamArray;
+
+inline void
+PatchParam::Set(Index faceid, short u, short v,
+                unsigned short depth, bool nonquad,
+                unsigned short boundary, unsigned short transition,
+                bool regular) {
+    field0 = pack(faceid,    28,  0) |
+             pack(transition, 4, 28);
+
+    field1 = pack(u,         10, 22) |
+             pack(v,         10, 12) |
+             pack(boundary,   4,  8) |
+             pack(regular,    1,  5) |
+             pack(nonquad,    1,  4) |
+             pack(depth,      4,  0);
+}
+
+inline float
+PatchParam::GetParamFraction( ) const {
+    if (NonQuadRoot()) {
+        return 1.0f / float( 1 << (GetDepth()-1) );
+    } else {
+        return 1.0f / float( 1 << GetDepth() );
+    }
+}
+
+inline void
+PatchParam::Normalize( float & u, float & v ) const {
+
+    float frac = GetParamFraction();
+
+    float pu = (float)GetU()*frac;
+    float pv = (float)GetV()*frac;
+
+    u = (u - pu) / frac,
+    v = (v - pv) / frac;
+}
+
+inline void
+PatchParam::Unnormalize( float & u, float & v ) const {
+
+    float frac = GetParamFraction();
+
+    float pu = (float)GetU()*frac;
+    float pv = (float)GetV()*frac;
+
+    u = u * frac + pu,
+    v = v * frac + pv;
+}
 
 } // end namespace Far
 

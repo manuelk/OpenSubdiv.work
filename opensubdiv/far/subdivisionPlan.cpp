@@ -248,7 +248,7 @@ SubdivisionPlan::GetTreeNode(float s, float t, unsigned char * quadrant, short m
 }
 
 inline void
-evaluateEndCapBasis(EndCapType type, PatchParamBase param,
+evaluateEndCapBasis(EndCapType type, PatchParam param,
     float s, float t, float wP[], float wDs[], float wDt[]) {
 
     switch (type) {
@@ -282,7 +282,7 @@ SubdivisionPlan::EvaluateBasis(float s, float t,
 
     int depth = desc.GetDepth(); // - (desc.NonQuadRoot() ? 1 : 0);
 
-    PatchParamBase param;
+    PatchParam param;
 
     if (hasDynamicIsolation() && (depth>=maxLevel) &&
         (type==NODE_RECURSIVE || type==NODE_TERMINAL)) {
@@ -293,7 +293,7 @@ SubdivisionPlan::EvaluateBasis(float s, float t,
             u = u >> 1;
             v = v >> 1;
         }
-        param.Set(u, v, depth, desc.NonQuadRoot(), 0);
+        param.Set(INDEX_INVALID, u, v, depth, desc.NonQuadRoot(), 0, 0, true);
 
         evaluateEndCapBasis(getEndCapType(), param, s, t, wP, wDs, wDt);
     } else {
@@ -301,8 +301,8 @@ SubdivisionPlan::EvaluateBasis(float s, float t,
         switch (type) {
 
             case NODE_REGULAR : {
-                param.Set(desc.GetU(), desc.GetV(), depth,
-                    desc.NonQuadRoot(), desc.GetBoundaryMask());
+                param.Set(INDEX_INVALID, desc.GetU(), desc.GetV(), depth,
+                    desc.NonQuadRoot(), desc.GetBoundaryMask(), 0, true);
 
                 if (desc.SingleCrease()) {
                     float sharpness = n.GetSharpness();
@@ -313,8 +313,8 @@ SubdivisionPlan::EvaluateBasis(float s, float t,
             } break;
 
             case NODE_END : {
-                param.Set(desc.GetU(), desc.GetV(), depth,
-                    desc.NonQuadRoot(), desc.GetBoundaryMask());
+                param.Set(INDEX_INVALID,desc.GetU(), desc.GetV(), depth,
+                    desc.NonQuadRoot(), desc.GetBoundaryMask(), 0, true);
                 evaluateEndCapBasis(getEndCapType(), param, s, t, wP, wDs, wDt);
             } break;
 
@@ -327,7 +327,7 @@ SubdivisionPlan::EvaluateBasis(float s, float t,
                     case 2 : {       v+=1; } break; // ^ bitwise winding order !!!
                     case 3 : { u+=1; v+=1; } break;
                 }
-                param.Set(u, v, depth+1, desc.NonQuadRoot(), 0);
+                param.Set(INDEX_INVALID, u, v, depth+1, desc.NonQuadRoot(), 0, 0, true);
                 internal::GetBSplineWeights(param, s, t, wP, wDs, wDt);
             } break;
 
