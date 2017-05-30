@@ -923,8 +923,8 @@ SubdivisionPlanBuilder::FinalizeSupportStencils() {
             int stencilIndex = context->supportIndices[i],
                 stencilSize = 0;
             if (stencilIndex==INDEX_INVALID) {
-                // XXXX manuelk we could probably skip those if we adjust
-                // offsets computations accordingly
+                // These plans do not render, but keeping them in the table
+                // keeps face indices consistent with the control cage.
                 plan->_sizes[i] = stencilSize;
                 plan->_offsets[i] = offset;
             } else {
@@ -958,6 +958,9 @@ if (neighborhood->Remap(index)==(LocalIndex)INDEX_INVALID) {
         numMaxSupports = std::max(numSupports, numMaxSupports);
     }
     _buildContexts.clear();
+
+    delete supportStencils;
+
     return numMaxSupports;
 }
 
