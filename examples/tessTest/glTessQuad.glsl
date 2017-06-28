@@ -84,6 +84,7 @@ layout(quads, SPACING_MODE) in;
 in vec3 tcPosition[];
 out vec3 tePosition;
 out vec4 tePatchDistance;
+out vec2 tePatchCoord;
 
 void main() {
 
@@ -93,6 +94,7 @@ void main() {
     vec3 b = mix(tcPosition[3], tcPosition[2], u);
     tePosition = mix(a, b, v);
     tePatchDistance = vec4(u, v, 1-u, 1-v);
+    tePatchCoord = vec2(u, v);
     gl_Position = ProjectionMatrix * ModelViewMatrix * vec4(tePosition, 1);
 }
 
@@ -107,8 +109,11 @@ layout(triangles) in;
 layout(triangle_strip, max_vertices = 3) out;
 in vec3 tePosition[3];
 in vec4 tePatchDistance[3];
+in vec2 tePatchCoord[3];
+
 out vec3 gFacetNormal;
 out vec4 gPatchDistance;
+out vec2 gPatchCoord;
 out vec3 gTriDistance;
 
 void main() {
@@ -118,14 +123,17 @@ void main() {
     gFacetNormal = (ModelViewMatrix * vec4(normalize(cross(A, B).xyz), 0.0)).xyz;
     
     gPatchDistance = tePatchDistance[0];
+    gPatchCoord = tePatchCoord[0];
     gTriDistance = vec3(1, 0, 0);
     gl_Position = gl_in[0].gl_Position; EmitVertex();
 
     gPatchDistance = tePatchDistance[1];
+    gPatchCoord = tePatchCoord[1];
     gTriDistance = vec3(0, 1, 0);
     gl_Position = gl_in[1].gl_Position; EmitVertex();
 
     gPatchDistance = tePatchDistance[2];
+    gPatchCoord = tePatchCoord[2];
     gTriDistance = vec3(0, 0, 1);
     gl_Position = gl_in[2].gl_Position; EmitVertex();
 
@@ -142,6 +150,7 @@ out vec4 FragColor;
 in vec3 gFacetNormal;
 in vec3 gTriDistance;
 in vec3 gPatchDistance;
+in vec2 gPatchCoord;
 in float gPrimitive;
 
 float amplify(float d, float scale, float offset) {
@@ -154,7 +163,8 @@ float amplify(float d, float scale, float offset) {
 void main() {
 
     vec3 N = normalize(gFacetNormal);
-    vec3 c = vec3(1.0, 0.5, 0.5);
+    vec3 c = vec3(gPatchCoord.x, gPatchCoord.y, 0.0);
+    //vec3 c = vec3(1.0, 0.5, 0.5);
 
     //float d1 = min(min(gTriDistance.x, gTriDistance.y), gTriDistance.z);
     //float d2 = min(min(gPatchDistance.x, gPatchDistance.y), gPatchDistance.z);

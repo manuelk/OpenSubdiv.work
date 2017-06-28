@@ -109,12 +109,12 @@ out vec4 finalColor;
 void main() {
     vec3 N = (gl_FrontFacing ? vNormal.xyz : -vNormal.xyz);
     
-    vec4 color = vec4(vColor, 1.0);
+    vec4 c = vec4(vColor, 1.0);
     //vec4 color = vec4(N, 1.0);
 
-    vec4 Cf = lighting(color, vPosition.xyz, N);
+    vec4 Cf = lighting(c, vPosition.xyz, N);
 
-    finalColor = Cf;
+    finalColor = Cf*0.000001 + c;
     //finalColor = color + 0.00001 * vec4(Cf.xyz, 1.0);
     //finalColor = color;
 }

@@ -61,8 +61,11 @@ GLFWmonitor* g_primary=0;
 #include "./glFontutils.h"
 #include "./glMesh.h"
 #include "./glTessQuad.h"
+//#include "./tessPatch.h"
+#include "./tessUtils.h"
 #include "./svg.h"
 
+#include <cmath>
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -76,20 +79,27 @@ GLFWmonitor* g_primary=0;
 
 using namespace OpenSubdiv;
 
+enum DisplayStyle { DISPLAY_STYLE_WIRE,
+                    DISPLAY_STYLE_SHADED,
+                    DISPLAY_STYLE_WIRE_ON_SHADED };
+
 GLTessQuad::SpacingMode g_spacingMode = GLTessQuad::FRACTIONAL_EVEN;
 
-float g_tessFactors[6] = { 2.5f, 2.5f, 2.5f, 2.5f, 2.5f, 2.5f };
+float g_tessFactors[6] = { 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
 
 int g_frame = 0,
     g_repeatCount = 0;
 
 bool g_saveSVG = false;
 
+int g_numPrims=0,
+    g_numVerts=0;
 
 // GUI variables
 int   g_fullscreen = 0,
       g_mbutton[3] = {0, 0, 0},
-      g_running = 1;
+      g_running = 1,
+      g_displayStyle = DISPLAY_STYLE_WIRE;
 
 float g_rotate[2] = {0, 0},
       g_dolly = 5,
@@ -146,42 +156,83 @@ GLMesh * g_tessMesh = 0;
 
 //------------------------------------------------------------------------------
 
-inline int computeNumEdgeVerts(float tessFactor) {
-    return std::max(2, (int)std::ceil(tessFactor));
-}
-
-//------------------------------------------------------------------------------
-
 GLTessQuad * g_tessQuad = 0;
 
 static void
 createMesh() {
 
-    if (1) {
-        delete g_tessQuad;
-        g_tessQuad = new GLTessQuad;
-        g_tessQuad->Init();
-        g_tessQuad->SetSpacingMode(g_spacingMode);
-        g_tessQuad->SetTessFactors(g_tessFactors+4, g_tessFactors);
-    } else {
+    //
+    // create GL tess Quad
+    //
 
-/*        
-        std::vector<float> positions(numTris * 3 * 3),
-                           normals(numTris * 3 * 3),
-                           colors(numTris * 3 * 3),
+    delete g_tessQuad;
+    g_tessQuad = new GLTessQuad;
+    g_tessQuad->Init(-1.5f);
+    g_tessQuad->SetSpacingMode(g_spacingMode);
+    g_tessQuad->SetTessFactors(g_tessFactors+4, g_tessFactors);
 
-        struct GLMesh::Topology topo;
-        topo.positions = &positions[0];
-        topo.normals   = &normals[0];
-        topo.colors    = &colors[0];
-        topo.nverts    = (int)positions.size()/3;
-*/
+    //
+    // create CPU tess Quad
+    //
 
-        GLMesh::Topology topo = GLMesh::Topology::Cube();
+    static std::vector<int> indices;
+    static std::vector<float> u, v;
 
-        delete g_tessMesh;
-        g_tessMesh = new GLMesh(topo, GLMesh::DRAW_WIREFRAME);
+    tessellate(QUAD, (SpacingMode)g_spacingMode, g_tessFactors+4, g_tessFactors, indices, u, v);
+
+    static float A[] = {-1.0f, 0.0f, -1.0f},
+                 B[] = { 1.0f, 0.0f, -1.0f},
+                 C[] = { 1.0f, 0.0f,  1.0f},
+                 D[] = {-1.0f, 0.0f,  1.0f};
+
+    float xofs = 1.5f, yofs = 0.0f, zofs = 0.0f;
+
+    int ntris = (int)indices.size()/3;
+
+    std::vector<float> positions(ntris * 3 * 3),
+                       normals(ntris * 3 * 3),
+                       colors(ntris * 3 * 3);
+
+    for (int i=0; i<(int)indices.size(); ++i) {
+
+        float s = u[indices[i]],
+              t = v[indices[i]];
+
+        float a0 = A[0] * (1.0f-s) + B[0] * s,
+              a1 = A[1] * (1.0f-s) + B[1] * s,
+              a2 = A[2] * (1.0f-s) + B[2] * s;
+
+        float b0 = D[0] * (1.0f-s) + C[0] * s,
+              b1 = D[1] * (1.0f-s) + C[1] * s,
+              b2 = D[2] * (1.0f-s) + C[2] * s;
+
+        int ofs = i * 3;
+
+        positions[ofs + 0] = a0 * (1.0f-t) + b0 * t;
+        positions[ofs + 1] = a1 * (1.0f-t) + b1 * t;
+        positions[ofs + 2] = a2 * (1.0f-t) + b2 * t;
+
+        positions[ofs + 0] += xofs;
+        positions[ofs + 1] += yofs;
+        positions[ofs + 2] += zofs;         
+
+        normals[ofs + 0] = 0.0f;
+        normals[ofs + 1] = 1.0f;
+        normals[ofs + 2] = 0.0f;
+
+        colors[ofs + 0] = s; //0.2f;
+        colors[ofs + 1] = t; //0.2f;
+        colors[ofs + 2] = 0.0f;
     }
+
+    GLMesh::Topology topo;  // = GLMesh::Topology::Cube();
+    topo.positions = &positions[0];
+    topo.normals = &normals[0];
+    topo.colors = &colors[0];
+    topo.nverts = (int)positions.size()/3;
+
+    delete g_tessMesh;
+    g_tessMesh = new GLMesh(topo, GLMesh::DRAW_WIREFRAME);
 }
 
 //------------------------------------------------------------------------------
@@ -309,13 +360,15 @@ if (g_saveSVG) {
     svg->Write();
 }
 
+    bool wireframe = g_displayStyle == DISPLAY_STYLE_WIRE;
+
     // draw the mesh
     if (g_tessMesh) {
-        g_tessMesh->Draw(g_transformUB, g_lightingUB, true);
+        g_tessMesh->Draw(g_transformUB, g_lightingUB, wireframe);
     }
 
     if (g_tessQuad) {
-        g_tessQuad->Draw(g_transformUB, true);
+        g_tessQuad->Draw(g_transformUB, wireframe);
     }
 
 if (g_saveSVG) {
@@ -347,8 +400,10 @@ if (g_saveSVG) {
 
         static char const * schemeNames[3] = { "BILINEAR", "CATMARK", "LOOP" };
 
-        g_hud.DrawString(10, -40,  "Triangles  : %d", 0);
         g_hud.DrawString(10, -20,  "FPS        : %3.1f", fps);
+
+        g_hud.DrawString(-200, -100,  "Prims  : %d", g_numPrims);
+        g_hud.DrawString(-200, -80,  "Verts  : %d", g_numVerts);
 
         g_hud.Flush();
     }
@@ -359,13 +414,23 @@ if (g_saveSVG) {
 
 //------------------------------------------------------------------------------
 static void
+callbackDisplayStyle(int b) {
+    g_displayStyle = b;
+}
+
+static void
 callbackFontScale(float value, int) {
     g_font->SetFontScale(value);
 }
 
 static void
 callbackTessFactors(float value, int data) {
-    g_tessFactors[data]=value;
+
+    if (data==6) {
+       g_tessFactors[0]=g_tessFactors[1]=g_tessFactors[2]=g_tessFactors[3]=value;
+    } else {
+       g_tessFactors[data]=value;
+    }
 
     rebuildMeshes();
 }
@@ -376,6 +441,8 @@ callbackSpacingMode(int b) {
     if (g_tessQuad) {
         g_tessQuad->SetSpacingMode(g_spacingMode);
     }
+
+    rebuildMeshes();
 }
 
 //------------------------------------------------------------------------------
@@ -485,28 +552,45 @@ initHUD() {
                     -800, -50, 100, false, callbackFontScale, 0);
 
 
-    g_hud.AddSlider("Outer 0", 0.0f, 15.0f, g_tessFactors[0],
-                    10, 10, 30, false, callbackTessFactors, 0);
 
-    g_hud.AddSlider("Outer 1", 0.0f, 15.0f, g_tessFactors[1],
-                    10, 50, 30, false, callbackTessFactors, 1);
+    g_hud.AddSlider("Outer 0", 0.0f, 64.0f, g_tessFactors[0],
+                    10, 40, 70, false, callbackTessFactors, 0);
 
-    g_hud.AddSlider("Outer 2", 0.0f, 15.0f, g_tessFactors[2],
-                    10, 90, 30, false, callbackTessFactors, 2);
+    g_hud.AddSlider("Outer 1", 0.0f, 64.0f, g_tessFactors[1],
+                    10, 80, 70, false, callbackTessFactors, 1);
 
-    g_hud.AddSlider("Outer 3", 0.0f, 15.0f, g_tessFactors[3],
-                    10, 130, 30, false, callbackTessFactors, 3);
+    g_hud.AddSlider("Outer 2", 0.0f, 64.0f, g_tessFactors[2],
+                    10, 120, 70, false, callbackTessFactors, 2);
 
-
-    g_hud.AddSlider("Inner 0", 0.0f, 15.0f, g_tessFactors[4],
-                    10, 200, 30, false, callbackTessFactors, 4);
-
-    g_hud.AddSlider("Inner 1", 0.0f, 15.0f, g_tessFactors[5],
-                    10, 240, 30, false, callbackTessFactors, 5);
+    g_hud.AddSlider("Outer 3", 0.0f, 64.0f, g_tessFactors[3],
+                    10, 160, 70, false, callbackTessFactors, 3);
 
 
-    int spacing_pulldown = g_hud.AddPullDown("Spacing Mode (M)", 300, 10, 250,
-                                                  callbackSpacingMode, 'm');
+
+    g_hud.AddSlider("Outer", 0.0f, 64.0f, g_tessFactors[0],
+                    10, 200, 70, false, callbackTessFactors, 6);
+
+
+
+    g_hud.AddSlider("Inner 0", 0.0f, 64.0f, g_tessFactors[4],
+                    10, 270, 70, false, callbackTessFactors, 4);
+
+    g_hud.AddSlider("Inner 1", 0.0f, 64.0f, g_tessFactors[5],
+                    10, 310, 70, false, callbackTessFactors, 5);
+
+
+
+
+    int displaystyle_pulldown = g_hud.AddPullDown("DisplayStyle (W)", 300, 10, 250,
+                                                  callbackDisplayStyle, 'w');
+    g_hud.AddPullDownButton(displaystyle_pulldown, "Wire",
+        DISPLAY_STYLE_WIRE, g_displayStyle == DISPLAY_STYLE_WIRE);
+    g_hud.AddPullDownButton(displaystyle_pulldown, "Shaded",
+        DISPLAY_STYLE_SHADED, g_displayStyle == DISPLAY_STYLE_SHADED);
+
+
+    int spacing_pulldown = g_hud.AddPullDown("Spacing Mode (M)", 550, 10, 250,
+                                             callbackSpacingMode, 'm');
     g_hud.AddPullDownButton(spacing_pulldown, "fractional odd", GLTessQuad::FRACTIONAL_ODD,
                             g_spacingMode == GLTessQuad::FRACTIONAL_ODD);
     g_hud.AddPullDownButton(spacing_pulldown, "fractional even", GLTessQuad::FRACTIONAL_EVEN,

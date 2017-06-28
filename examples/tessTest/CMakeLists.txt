@@ -52,6 +52,7 @@ _add_glfw_executable(tessTest "examples"
     glTessQuad.cpp
     glMesh.cpp
     glFontUtils.cpp
+    tessUtils.cpp
     "${SHADER_FILES}"
     "${INC_FILES}"
     $<TARGET_OBJECTS:sdc_obj>

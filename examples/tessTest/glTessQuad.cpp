@@ -48,7 +48,7 @@ GLTessQuad::GLTessQuad() {
     _tessFactorInner[0] = _tessFactorInner[1] = 2.5f;
 
     _tessFactorOuter[0] = _tessFactorOuter[1] =
-    _tessFactorOuter[0] = _tessFactorOuter[1] = 2.5f;
+    _tessFactorOuter[2] = _tessFactorOuter[3] = 2.5f;
 }
 
 GLTessQuad::~GLTessQuad() {
@@ -121,15 +121,22 @@ GLTessQuad::rebuildProgram() {
 }
 
 void
-GLTessQuad::Init() {
+GLTessQuad::Init(float xofs, float yofs, float zofs) {
 
     glGenVertexArrays(1, &_vao);
     glBindVertexArray(_vao);
 
+    float ofsPos[sizeof(positions)];
+    for (int i=0; i<sizeof(positions)/3; ++i) {
+        ofsPos[i*3+0] = positions[i*3+0] + xofs;
+        ofsPos[i*3+1] = positions[i*3+1] + yofs;
+        ofsPos[i*3+2] = positions[i*3+2] + zofs;
+    }
+
     GLsizei stride = 3 * sizeof(float);
     glGenBuffers(1, &_attrBuf);
     glBindBuffer(GL_ARRAY_BUFFER, _attrBuf);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(positions), positions, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(positions), ofsPos, GL_STATIC_DRAW);
 
     _posAttr = 0;
     glEnableVertexAttribArray(_posAttr);
@@ -168,9 +175,13 @@ GLTessQuad::Draw(GLuint xformUB, bool wireframe) const {
     glUniform1fv(glGetUniformLocation(_program, "TessLevelInner"), 2, _tessFactorInner);
     glUniform1fv(glGetUniformLocation(_program, "TessLevelOuter"), 4, _tessFactorOuter);
 
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    glPointSize(2.0f);
-    glLineWidth(1.0f);
+    if (wireframe) {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glPointSize(2.0f);
+        glLineWidth(1.0f);
+    } else {
+        glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+    }
 
     glPatchParameteri(GL_PATCH_VERTICES, 4);
     

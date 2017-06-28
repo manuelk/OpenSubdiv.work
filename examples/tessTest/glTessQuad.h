@@ -41,7 +41,7 @@ public:
 
     ~GLTessQuad();
 
-    void Init();
+    void Init(float xofs=0.0f, float yofs=0.0f, float zofs=0.0f);
 
     void Draw(GLuint xformUB, bool wireframe) const;
 
