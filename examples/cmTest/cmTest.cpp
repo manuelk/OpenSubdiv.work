@@ -84,6 +84,7 @@ enum ShadingMode {
     SHADING_PATCH_COORD,
     SHADING_PATCH_NORMAL,
     SHADING_TREE_DEPTH,
+    SHADING_TESS_FACTORS,
 };
 
 int g_level = 3,
@@ -155,6 +156,10 @@ struct Vertex {
         point[0] += weight * src.point[0];
         point[1] += weight * src.point[1];
         point[2] += weight * src.point[2];
+    }
+
+    void Print() const {
+        printf("%f %f %f", point[0], point[1], point[2]);
     }
 
     float point[3];
@@ -352,7 +357,6 @@ createFaceNumbers(Far::TopologyRefiner const & refiner,
 
 static void
 createNodeNumbers(Far::SubdivisionPlanTable const & plansTable,
-
     int planIndex, Far::SubdivisionPlan::Node node, int quadrant,
         std::vector<Vertex> const & vertexBuffer) {
 
@@ -388,6 +392,27 @@ createNodeNumbers(Far::SubdivisionPlanTable const & plansTable,
 }
 
 static void
+createPlanCVNumbers(Far::SubdivisionPlanTable const & plansTable,
+    int planIndex, std::vector<Vertex> const & vertexBuffer) {
+
+    Far::ConstIndexArray const & verts = plansTable.GetPlanControlVertices(planIndex);
+
+    for (int i=0; i<verts.size(); ++i) {
+
+        Vertex const & vert = vertexBuffer[verts[i]];
+
+        float position[3] = { vert.point[0],
+                              vert.point[1],
+                              vert.point[2], };
+
+        static char buf[16];
+        snprintf(buf, 16, "%d", i);
+        g_font->Print3D(position, buf, 3);
+    }
+}
+
+
+static void
 createPlanNumbers(Far::SubdivisionPlanTable const & plansTable,
     int planIndex, std::vector<Vertex> const & vertexBuffer) {
 
@@ -413,10 +438,53 @@ createPlanNumbers(Far::SubdivisionPlanTable const & plansTable,
             } else {
                 createNodeNumbers(plansTable, planIndex, node, 0, vertexBuffer);
             }
+            createPlanCVNumbers(plansTable, planIndex, vertexBuffer);
             return;
         }
     }
+
     g_currentNodeIndex=0;
+}
+
+static void
+createTessFactorNumbers(Far::SubdivisionPlanTable const & plansTable,
+    std::vector<Vertex> const & vertexBuffer, std::vector<float> const & tessFactors) {
+
+
+    for (int planIndex=0; planIndex < plansTable.GetNumPlans(); ++planIndex) {
+
+        if (plansTable.PlanIsHole(planIndex))
+            continue;
+
+        Far::ConstIndexArray planVerts = plansTable.GetPlanControlVertices(planIndex);
+
+        // assuming first 4 entries are 0-ring - will need to fix for non-quads
+
+        Vertex const * verts[4] = { &vertexBuffer[planVerts[0]],
+                                    &vertexBuffer[planVerts[1]],
+                                    &vertexBuffer[planVerts[2]],
+                                    &vertexBuffer[planVerts[3]] };
+
+        Vertex center;
+        center.Clear();
+        for (int i=0; i<4; ++i) {
+            center.AddWithWeight(*verts[i], 0.25f);
+        }
+
+        for (int i=0; i<4; ++i) {
+            Vertex pos;
+            pos.Clear();
+            pos.AddWithWeight(center, 0.2f);
+            pos.AddWithWeight(*verts[i], 0.4f);
+            pos.AddWithWeight(*verts[(i+1)%4], 0.4f);
+
+            float tessFactor = tessFactors[planIndex * 6 + 2 + i];
+
+            static char buf[16];
+            snprintf(buf, 16, "%c=%.5f",'A'+i, tessFactor);
+            g_font->Print3D(pos.point, buf, 4);        
+        }
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -480,6 +548,122 @@ computePlansTableSize(Far::SubdivisionPlanTable const & plansTable) {
     result += plansTable.GetControlVertices().size() * sizeof(Far::Index);
     return result;
 }
+
+
+
+//------------------------------------------------------------------------------
+
+// returns squared vector magnitude
+static float
+distance(float const * a, float const * b) {
+    float ab0 = b[0] - a[0],
+          ab1 = b[1] - a[1],
+          ab2 = b[2] - a[2];
+    return sqrtf(ab0*ab0 + ab1*ab1 + ab2*ab2);
+}
+
+static float
+computeProjectedSphereExtent(float const * center, float diameter) {
+
+    float p[4] = { center[0], center[1], center[2], 1.0f };
+
+    apply(p, g_transformData.ProjectionMatrix);
+
+    return fabs(diameter * g_transformData.ProjectionMatrix[5] / p[3]);
+}
+
+static float
+computeTessFactor(Vertex const & p0, Vertex const & p1, int tessLevel) {
+
+    float a[4] = { p0.point[0], p0.point[1], p0.point[2], 1.0f },
+          b[4] = { p1.point[0], p1.point[1], p1.point[2], 1.0f };
+
+//printf("  edge (%f %f %f) (%f %f %f)\n", a[0], a[1], a[2], b[0], b[1], b[2]);
+
+    // transform to camera
+    apply(a, g_transformData.ModelViewMatrix);
+    apply(b, g_transformData.ModelViewMatrix);
+
+//printf("  edge (%f %f %f) (%f %f %f)\n", a[0], a[1], a[2], b[0], b[1], b[2]);
+
+    float center[3] = { 0.5f*(a[0] + b[0]),
+                        0.5f*(a[1] + b[1]),
+                        0.5f*(a[2] + b[2]) };
+
+    float diameter = distance(a, b),
+          projLength = computeProjectedSphereExtent(center, diameter),
+          tessFactor = std::min(64.0f,std::max(1.0f, tessLevel * projLength));
+
+//printf("  diameter=%f, projLength=%f, tessFactor=%f\n", diameter, projLength, tessFactor);
+
+    return tessFactor;
+}
+
+static void
+computeTessFactors(Far::SubdivisionPlanTable const * plansTable,
+    std::vector<Vertex> const & verts, int tessLevel, float * tessFactors) {
+
+    for (int planIndex=0; planIndex < plansTable->GetNumPlans(); ++planIndex) {
+//printf("plan %d\n", planIndex);
+        memset(tessFactors, 0, 6*sizeof(float));
+
+        if (plansTable->PlanIsHole(planIndex))
+            continue;
+
+        Far::ConstIndexArray supports = plansTable->GetPlanControlVertices(planIndex);
+
+        // assuming first 4 entries are 0-ring ...
+
+        Vertex const & v0 = verts[supports[0]],
+                     & v1 = verts[supports[1]],
+                     & v2 = verts[supports[2]],
+                     & v3 = verts[supports[3]];
+
+        float f0 = computeTessFactor(v0, v1, tessLevel),
+              f1 = computeTessFactor(v1, v2, tessLevel),
+              f2 = computeTessFactor(v2, v3, tessLevel),
+              f3 = computeTessFactor(v3, v0, tessLevel);
+
+        tessFactors[0] = 0.5f * (f0 + f2);
+        tessFactors[1] = 0.5f * (f1 + f2);
+        tessFactors[2] = f0;
+        tessFactors[3] = f1;
+        tessFactors[4] = f2,
+        tessFactors[5] = f3;
+
+//printf("%f %f  -  %f %f %f %f\n", tessFactors[0], tessFactors[1],
+//    tessFactors[2], tessFactors[3], tessFactors[4], tessFactors[5], tessFactors[6]); fflush(stdout);
+
+        tessFactors += 6;
+    }
+}
+
+static void
+computeTessFactorColor(
+    int tessLevel, int x, int y, float const * tessFactors, float * color) {
+
+    int edge = -1;
+    if (x > y) {
+        if (x < (tessLevel-y)) edge = 0;
+        else                   edge = 1;
+    } else {
+        if (x < (tessLevel-y)) edge = 3;
+        else                   edge = 2;
+    }
+    assert(edge>=0);
+    float outerFactor = tessFactors[2 + edge]; // skip first 2 inner factors
+
+    static float const nearc[3] = { 1.0f, 1.0f, 1.0f },
+                       farc[3] = { 0.0f, 0.0f, 0.0f };
+
+    float s = (outerFactor - 1.0f) / 63.f;
+
+//printf("x=%d y=%d tess=%d edge=%d\n", x, y, tessLevel, edge); fflush(stdout);
+    color[0] = farc[0] * (1.0f - s) + nearc[0] * s;
+    color[1] = farc[1] * (1.0f - s) + nearc[1] * s;
+    color[2] = farc[2] * (1.0f - s) + nearc[2] * s;
+}
+
 
 //------------------------------------------------------------------------------
 
@@ -679,7 +863,14 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
     int const nplans = g_plansTable->GetNumPlans();
 
-    nverts = g_tessLevel * g_tessLevel * nplans;
+    std::vector<float> tessFactors;
+    if (g_shadingMode==SHADING_TESS_FACTORS) {
+        tessFactors.resize(nplans * 6);
+        computeTessFactors(g_plansTable, controlVerts, g_tessLevel, &tessFactors[0]);
+        createTessFactorNumbers(*g_plansTable, controlVerts, tessFactors);
+    }
+
+    nverts = g_tessLevel * g_tessLevel * nplans; // XXXX will need fixing for fractional tess
 
     std::vector<float> positions(3 * nverts),
                        normals(3 * nverts),
@@ -735,15 +926,15 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         // evaluate sample limits
         //
 
-        int const tessFactor = plan->IsNonQuadPatch() ? g_tessLevel / 2 + 1 : g_tessLevel;
+        int const tessLevel = plan->IsNonQuadPatch() ? g_tessLevel / 2 + 1 : g_tessLevel;
 
         // interpolate vertices
-        for (int y=0; y<tessFactor; ++y) {
-            for (int x=0; x<tessFactor; ++x, pos+=3, norm+=3, col+=3) {
+        for (int y=0; y<tessLevel; ++y) {
+            for (int x=0; x<tessLevel; ++x, pos+=3, norm+=3, col+=3) {
 
                 // compute basis weights at location (s,t)
-                float s = (float)x / (float)(tessFactor-1),
-                      t = (float)y / (float)(tessFactor-1);
+                float s = (float)x / (float)(tessLevel-1),
+                      t = (float)y / (float)(tessLevel-1);
 
                 unsigned char quadrant=0;
 
@@ -786,6 +977,11 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
                     case ::SHADING_TREE_DEPTH : {
                         float depth = desc.GetDepth() * 0.1f;
                         float c[3] = { depth, 0.0f, 1.0f - depth };
+                        memcpy(col, c, 3 * sizeof(float));
+                    } break;
+                    case ::SHADING_TESS_FACTORS: {
+                        float c[3] = { 0.0f, 0.0f, 0.0f };
+                        computeTessFactorColor(tessLevel, x, y, &tessFactors[planIndex * 6], c);
                         memcpy(col, c, 3 * sizeof(float));
                     } break;
                     default:
@@ -890,7 +1086,8 @@ getNodeData(Far::SubdivisionPlan::Node const & node) {
                         desc.GetDepth(), desc.GetBoundaryMask(), desc.GetU(), desc.GetV());
             } break;
             case Far::SubdivisionPlan::NODE_RECURSIVE : {
-                snprintf(buffer, 256, "type=%s depth=%d", nodeTypes[desc.GetType()], desc.GetDepth());
+                snprintf(buffer, 256, "type=%s nonquad=%d depth=%d",
+                    nodeTypes[desc.GetType()], desc.NonQuadRoot(), desc.GetDepth());
             } break;
             case Far::SubdivisionPlan::NODE_TERMINAL : {
                 snprintf(buffer, 256, "type=%s nonquad=%d depth=%d evIndex=%d u=%d v=%d",
@@ -938,7 +1135,7 @@ display() {
     glUseProgram(0);
 
 Svg * svg = 0;
-if (g_saveSVG) 
+if (g_saveSVG)
     svg = Svg::Create("screenshot.svg");
 
     // Update and bind transform state ---------------------
@@ -1353,6 +1550,8 @@ initHUD() {
         ::SHADING_PATCH_NORMAL, g_shadingMode == ::SHADING_PATCH_NORMAL);
     g_hud.AddPullDownButton(shading_pulldown, "Tree Depth",
         ::SHADING_TREE_DEPTH, g_shadingMode == ::SHADING_TREE_DEPTH);
+    g_hud.AddPullDownButton(shading_pulldown, "Tess Factors",
+        ::SHADING_TESS_FACTORS, g_shadingMode == ::SHADING_TESS_FACTORS);
 
     g_hud.AddSlider("Font Scale", 0.0f, 0.1f, 0.01f,
                     -800, -50, 100, false, callbackFontScale, 0);
