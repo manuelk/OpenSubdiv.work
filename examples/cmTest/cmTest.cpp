@@ -60,8 +60,10 @@ GLFWmonitor* g_primary=0;
 #include "./init_shapes.h"
 #include "./glFontutils.h"
 #include "./glMesh.h"
+#include "./tessUtils.h"
 #include "./svg.h"
 
+#include <algorithm>
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -87,18 +89,19 @@ enum ShadingMode {
     SHADING_TESS_FACTORS,
 };
 
+SpacingMode g_spacingMode = FRACTIONAL_EVEN;
+
 int g_level = 3,
     g_dynamicLevel = 10,
     g_shadingMode = SHADING_PATCH_TYPE,
     g_tessLevel = 5,
-    g_tessLevelMin = 2,
-    g_currentShape = 8, //cube = 8 square = 12 pyramid = 45 torus = 49
+    g_tessLevelMin = 1,
+    g_currentShape = 0, //cube = 8 square = 12 pyramid = 45 torus = 49
     g_useTerminalNodes = true,
     g_useDynamicIsolation = true,
     g_singleCreasePatch = 1,
     g_smoothCornerPatch = 0,
     g_infSharpPatch = 0;
-
 
 int g_frame = 0,
     g_repeatCount = 0;
@@ -106,9 +109,11 @@ int g_frame = 0,
 bool g_DrawVertIDs = false,
      g_DrawFaceIDs = false,
      g_DrawNodeIDs = false,
-     g_saveSVG = false;
+     g_DrawTessFactors = false,
+     g_saveSVG = false,
+     g_dynamicTess = true;
 
-Far::EndCapType g_endCap = Far::ENDCAP_BSPLINE_BASIS;
+Far::EndCapType g_endCap = Far::ENDCAP_BILINEAR_BASIS;
 
 // GUI variables
 int   g_fullscreen = 0,
@@ -320,6 +325,15 @@ size_t g_currentTopomapSize = 0,
 
 Far::SubdivisionPlan::Node g_currentNode;
 
+bool nodeIsSelected(int planIndex, Far::SubdivisionPlan::Node const & node) {
+    bool selected = false;
+    if (g_currentPlanIndex>=0 && g_currentPlanIndex==planIndex &&
+        g_currentNodeIndex>=0 && g_currentNode==node) {
+        selected = true;
+    }
+    return selected;
+}
+
 static void
 createVertNumbers(Far::TopologyRefiner const & refiner,
     std::vector<Vertex> const & verts) {
@@ -447,42 +461,62 @@ createPlanNumbers(Far::SubdivisionPlanTable const & plansTable,
 }
 
 static void
+computeSupports(Far::SubdivisionPlanTable const * plansTable,
+    int planIndex, std::vector<Vertex> const & controlVerts, Vertex * supports);
+
+static void
 createTessFactorNumbers(Far::SubdivisionPlanTable const & plansTable,
     std::vector<Vertex> const & vertexBuffer, std::vector<float> const & tessFactors) {
 
+    // create a 3D string by evaluating a point on the limit surface that
+    // is in the middle of the edge, nudged 0.05 units towards the parametric
+    // center
+
+    static float const u[4] = { 0.5f,  0.95f, 0.5f,  0.05f };
+    static float const v[4] = { 0.05f, 0.5f,  0.95f, 0.5f };
+
+    Far::TopologyMap const & topomap = plansTable.GetTopologyMap();
+
+    std::vector<Vertex> supports;
+    supports.resize(topomap.GetNumMaxSupports());
+
+    unsigned char quadrant=0;
+    float wP[20], wDs[20], wDt[20];
 
     for (int planIndex=0; planIndex < plansTable.GetNumPlans(); ++planIndex) {
 
         if (plansTable.PlanIsHole(planIndex))
             continue;
 
+        computeSupports(&plansTable, planIndex, vertexBuffer, &supports[0]);
+
+        Far::SubdivisionPlan const * plan =
+            plansTable.GetSubdivisionPlan(planIndex);
+
         Far::ConstIndexArray planVerts = plansTable.GetPlanControlVertices(planIndex);
 
-        // assuming first 4 entries are 0-ring - will need to fix for non-quads
-
-        Vertex const * verts[4] = { &vertexBuffer[planVerts[0]],
-                                    &vertexBuffer[planVerts[1]],
-                                    &vertexBuffer[planVerts[2]],
-                                    &vertexBuffer[planVerts[3]] };
-
-        Vertex center;
-        center.Clear();
         for (int i=0; i<4; ++i) {
-            center.AddWithWeight(*verts[i], 0.25f);
-        }
 
-        for (int i=0; i<4; ++i) {
-            Vertex pos;
-            pos.Clear();
-            pos.AddWithWeight(center, 0.2f);
-            pos.AddWithWeight(*verts[i], 0.4f);
-            pos.AddWithWeight(*verts[(i+1)%4], 0.4f);
+            float s = u[i],
+                  t = v[i];
 
-            float tessFactor = tessFactors[planIndex * 6 + 2 + i];
+            Far::SubdivisionPlan::Node node =
+                plan->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant, g_dynamicLevel);
+
+            int nsupports = node.GetNumSupports(quadrant);
+
+            LimitFrame limit;
+            limit.Clear();
+            for (int j=0; j<nsupports; ++j) {
+                Far::Index supportIndex = node.GetSupportIndex(j, quadrant, g_dynamicLevel);
+                limit.AddWithWeight(supports[supportIndex], wP[j], wDs[j], wDt[j]);
+            }
+
+            float tf = tessFactors[planIndex * 6 + 2 + i];
 
             static char buf[16];
-            snprintf(buf, 16, "%c=%.5f",'A'+i, tessFactor);
-            g_font->Print3D(pos.point, buf, 4);        
+            snprintf(buf, 16, "%c=%f",'A'+i, tf);            
+            g_font->Print3D(limit.point, buf, 4);
         }
     }
 }
@@ -578,13 +612,9 @@ computeTessFactor(Vertex const & p0, Vertex const & p1, int tessLevel) {
     float a[4] = { p0.point[0], p0.point[1], p0.point[2], 1.0f },
           b[4] = { p1.point[0], p1.point[1], p1.point[2], 1.0f };
 
-//printf("  edge (%f %f %f) (%f %f %f)\n", a[0], a[1], a[2], b[0], b[1], b[2]);
-
     // transform to camera
     apply(a, g_transformData.ModelViewMatrix);
     apply(b, g_transformData.ModelViewMatrix);
-
-//printf("  edge (%f %f %f) (%f %f %f)\n", a[0], a[1], a[2], b[0], b[1], b[2]);
 
     float center[3] = { 0.5f*(a[0] + b[0]),
                         0.5f*(a[1] + b[1]),
@@ -594,30 +624,62 @@ computeTessFactor(Vertex const & p0, Vertex const & p1, int tessLevel) {
           projLength = computeProjectedSphereExtent(center, diameter),
           tessFactor = std::min(64.0f,std::max(1.0f, tessLevel * projLength));
 
-//printf("  diameter=%f, projLength=%f, tessFactor=%f\n", diameter, projLength, tessFactor);
-
     return tessFactor;
 }
 
 static void
-computeTessFactors(Far::SubdivisionPlanTable const * plansTable,
-    std::vector<Vertex> const & verts, int tessLevel, float * tessFactors) {
+computeTessFactors(SpacingMode spacing,
+    Far::SubdivisionPlanTable const * plansTable, std::vector<Vertex> const & verts,
+        int tessLevel, float * tessFactors, int * nverts, int * ntris) {
+
 
     for (int planIndex=0; planIndex < plansTable->GetNumPlans(); ++planIndex) {
-//printf("plan %d\n", planIndex);
-        memset(tessFactors, 0, 6*sizeof(float));
 
         if (plansTable->PlanIsHole(planIndex))
             continue;
 
-        Far::ConstIndexArray supports = plansTable->GetPlanControlVertices(planIndex);
+        static float const defaults[6] = { 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f };
+        memcpy(tessFactors, defaults, 6 * sizeof(float));
 
-        // assuming first 4 entries are 0-ring ...
+        Far::SubdivisionPlan const * plan =
+            plansTable->GetSubdivisionPlan(planIndex);
 
-        Vertex const & v0 = verts[supports[0]],
-                     & v1 = verts[supports[1]],
-                     & v2 = verts[supports[2]],
-                     & v3 = verts[supports[3]];
+        Far::ConstIndexArray indices =
+            plansTable->GetPlanControlVertices(planIndex);
+
+        Vertex v0, v1, v2, v3;
+
+        bool nonquad = plan->IsNonQuadPatch();
+
+        if (nonquad) {
+            // first n entires are 0 ring, but need to be rotated by 'quadrant'
+            int valence = plan->GetCoarseFaceValence(),
+                quadrant = plan->GetCoarseFaceQuadrant();
+
+            Vertex center;
+            center.Clear();
+            for (int i=0; i<valence; ++i) {
+                center.AddWithWeight(verts[indices[i]], 1.0f/valence);
+            }
+
+            v0 = verts[indices[quadrant]];
+
+            v1.Clear();
+            v1.AddWithWeight(v0, 0.5f);
+            v1.AddWithWeight(verts[indices[(quadrant+1)%valence]], 0.5f);
+            
+            v2 = center;
+            
+            v3.Clear();
+            v3.AddWithWeight(verts[indices[(quadrant+valence-1)%valence]], 0.5f);
+            v3.AddWithWeight(v0, 0.5f);            
+        } else {
+            // first 4 entries are 0-ring ...
+            v0 = verts[indices[0]],
+            v1 = verts[indices[1]],
+            v2 = verts[indices[2]],
+            v3 = verts[indices[3]];
+        }
 
         float f0 = computeTessFactor(v0, v1, tessLevel),
               f1 = computeTessFactor(v1, v2, tessLevel),
@@ -631,10 +693,14 @@ computeTessFactors(Far::SubdivisionPlanTable const * plansTable,
         tessFactors[4] = f2,
         tessFactors[5] = f3;
 
-//printf("%f %f  -  %f %f %f %f\n", tessFactors[0], tessFactors[1],
-//    tessFactors[2], tessFactors[3], tessFactors[4], tessFactors[5], tessFactors[6]); fflush(stdout);
+        PatchInfo pi;
+        pi.set(QUAD, spacing, tessFactors, tessFactors+2);
 
+        *nverts += pi.patch_verts;
+        *ntris += pi.patch_prims;
+        
         tessFactors += 6;
+fflush(stdout);
     }
 }
 
@@ -658,7 +724,6 @@ computeTessFactorColor(
 
     float s = (outerFactor - 1.0f) / 63.f;
 
-//printf("x=%d y=%d tess=%d edge=%d\n", x, y, tessLevel, edge); fflush(stdout);
     color[0] = farc[0] * (1.0f - s) + nearc[0] * s;
     color[1] = farc[1] * (1.0f - s) + nearc[1] * s;
     color[2] = farc[2] * (1.0f - s) + nearc[2] * s;
@@ -669,124 +734,77 @@ computeTessFactorColor(
 
 GLMesh * g_tessMesh = 0;
 
-static void
-tessChar(int tessFactor, int charOffset,
-    std::vector<float> & positions, std::vector<float> & normals, std::vector<float> & colors,
-        float * pos, float * norm, float * col) {
-
-    // generate indices
-    for (int y=0; y<(tessFactor-1); ++y) {
-        for (int x=0; x<(tessFactor-1); ++x) {
-                                                                 //  A o----o B
-            int A = 3 * (charOffset + y * tessFactor + x),       //    |\   |
-                B = 3 * (charOffset + y * tessFactor + x+1),     //    | \  |
-                C = 3 * (charOffset + (y+1) * tessFactor + x),   //    |  \ |
-                D = 3 * (charOffset + (y+1) * tessFactor + x+1); //    |   \|
-                                                                 //  C o----o D
-            assert(A < positions.size() && B < positions.size() &&
-                C < positions.size() && D < positions.size());
-
-            // first triangle
-            memcpy(pos, &positions[A],  3 * sizeof(float)); pos+=3;
-            memcpy(norm, &normals[A], 3 * sizeof(float)); norm+=3;
-            memcpy(col, &colors[A],  3 * sizeof(float)); col+=3;
-
-            memcpy(pos, &positions[D],  3 * sizeof(float)); pos+=3;
-            memcpy(norm, &normals[D], 3 * sizeof(float)); norm+=3;
-            memcpy(col, &colors[D],  3 * sizeof(float)); col+=3;
-
-            memcpy(pos, &positions[C],  3 * sizeof(float)); pos+=3;
-            memcpy(norm, &normals[C], 3 * sizeof(float)); norm+=3;
-            memcpy(col, &colors[C],  3 * sizeof(float)); col+=3;
-
-            // second triangle
-            memcpy(pos, &positions[A],  3 * sizeof(float)); pos+=3;
-            memcpy(norm, &normals[A], 3 * sizeof(float)); norm+=3;
-            memcpy(col, &colors[A],  3 * sizeof(float)); col+=3;
-
-            memcpy(pos, &positions[B],  3 * sizeof(float)); pos+=3;
-            memcpy(norm, &normals[B], 3 * sizeof(float)); norm+=3;
-            memcpy(col, &colors[B],  3 * sizeof(float)); col+=3;
-
-            memcpy(pos, &positions[D],  3 * sizeof(float)); pos+=3;
-            memcpy(norm, &normals[D], 3 * sizeof(float)); norm+=3;
-            memcpy(col, &colors[D],  3 * sizeof(float)); col+=3;
-        }
-    }
-}
-
-//#define DO_MULTI_THREAD
-static void
-createTessMesh(Far::SubdivisionPlanTable const & plansTable, int nplans, int tessFactor,
-    std::vector<float> & positions, std::vector<float> & normals, std::vector<float> & colors,
-        bool createPointsMesh=false) {
-
-    delete g_tessMesh;
-    if (createPointsMesh) {
-        struct GLMesh::Topology topo;
-        topo.positions = &positions[0];
-        topo.normals = &normals[0];
-        topo.colors = &colors[0];
-        topo.nverts = (int)positions.size()/3;
-        g_tessMesh = new GLMesh(topo, GLMesh::DRAW_POINTS);
-    } else {
-
-        int ntriangles = 2 * (tessFactor-1) * (tessFactor-1) * nplans;
-
-        // create tess mesh
-
-        struct GLMesh::Topology topo;
-        topo.positions = new float[ntriangles * 3 * 3];
-        topo.normals = new float[ntriangles * 3 * 3];
-        topo.colors = new float[ntriangles * 3 * 3];
-        topo.nverts = 0;
-
-        float * pos = topo.positions,
-              * norm = topo.normals,
-              * col = topo.colors;
-
-        for (int i=0, offset=0; i<nplans; ++i) {
-
-            Far::FacePlan const & fplan =
-                plansTable.GetFacePlans()[i];
-
-            if (fplan.planIndex==Far::INDEX_INVALID) {
-                continue;
-            }
-
-            int tf = plansTable.GetSubdivisionPlan(i)->IsNonQuadPatch() ?
-                tessFactor / 2 + 1 : tessFactor;
-
-            tessChar(tf, offset, positions, normals, colors, pos, norm, col);
-
-            int ofs = (tf-1) * (tf-1) * 18;
-            pos  += ofs;
-            norm += ofs;
-            col  += ofs;
-
-            offset += tf * tf;
-
-            topo.nverts += (tf-1) * (tf-1) * 2 * 3;
-        }
-
-        g_tessMesh = new GLMesh(topo);
-
-        delete [] topo.positions;
-        delete [] topo.normals;
-        delete [] topo.colors;
-    }
-}
-
-//------------------------------------------------------------------------------
-
-#define CREATE_SHAPE_TESS
-#ifdef CREATE_SHAPE_TESS
-
 GLControlMeshDisplay g_controlMeshDisplay;
 
 Osd::GLVertexBuffer * g_controlMeshVerts = 0;
 
 Far::SubdivisionPlanTable const * g_plansTable;
+
+#define CREATE_SHAPE_TESS
+#ifdef CREATE_SHAPE_TESS
+
+//
+// apply color highlight if the node is currently selected
+//
+static void
+applyNodeColor(int planIndex,
+    Far::SubdivisionPlan::Node node, unsigned char quadrant, float * col) {
+
+     Far::SubdivisionPlan::NodeDescriptor desc = node.GetDescriptor();
+
+     bool nodeSelected = nodeIsSelected(planIndex, node);
+
+     if (nodeSelected) {
+         static float quadColors[4][3] = {{ 255.0f,    0.0f,   0.0f },
+                                          {   0.0f,  255.0f,   0.0f },
+                                          {   0.0f,    0.0f, 255.0f },
+                                          {  255.0f, 255.0f,   0.0f }};
+
+         if (desc.GetType()==Far::SubdivisionPlan::NODE_TERMINAL) {
+             memcpy(col, quadColors[quadrant], 3 * sizeof(float));
+         } else {
+             //memcpy(col, selColor, 3 * sizeof(float));
+             col[0] *= 2.0f;
+             col[1] *= 2.0f;
+             col[2] *= 2.0f;
+         }
+     }
+}
+
+//
+// Evaluate all supports points for this plan.
+// Depending on sampling density, we may end up using only a few of
+// them. To avoid this, we could first build a list of Nodes
+// (ie. sub-patches) that we actually want to sample, and then
+// evaluate only those support stencils.
+// note : function assumes that supports array has allocated enough verts
+
+static void
+computeSupports(Far::SubdivisionPlanTable const * plansTable,
+    int planIndex, std::vector<Vertex> const & controlVerts, Vertex * supports) {
+
+    Far::SubdivisionPlan const * plan =
+        plansTable->GetSubdivisionPlan(planIndex);
+
+    int nsupports = plan->GetNumSupportsTotal();
+    for (int i=0; i<nsupports; ++i) {
+
+        // get the stencil for this support point
+        Far::SubdivisionPlan::Support stencil = plan->GetSupport(i);
+
+        supports[i].Clear();
+        for (short k=0; k<stencil.size; ++k) {
+
+             // remap the support stencil indices, which are local
+             // to the subdivision plan's neighborhood, to the control
+             // mesh topology.
+             Far::Index vertIndex =
+                 plansTable->GetMeshControlVertexIndex(planIndex, stencil.indices[k]);
+
+             supports[i].AddWithWeight(controlVerts[vertIndex], stencil.weights[k]);
+        }
+    }
+}
 
 static void
 createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
@@ -810,42 +828,45 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         refiner->RefineAdaptive(options);
     }
 
-    // control mesh
-    delete g_controlMeshVerts;
-    int nverts = shape->GetNumVertices();
-    g_controlMeshVerts = Osd::GLVertexBuffer::Create(3, nverts);
-    g_controlMeshVerts->UpdateData(&shape->verts[0], 0, nverts);
-    g_controlMeshDisplay.SetTopology(refiner->GetLevel(0));
-
-    // build topology map
-    Far::TopologyMap::Options options;
-    options.endCapType = g_endCap;
-    options.useTerminalNode = g_useTerminalNodes;
-    options.useDynamicIsolation = g_useDynamicIsolation;
-    options.generateLegacySharpCornerPatches = g_smoothCornerPatch;
-    options.hashSize = 5000;
-    Far::TopologyMap * topomap = new Far::TopologyMap(options);
-
-    delete g_plansTable;
-    g_plansTable = topomap->HashTopology(*refiner);
-
-    g_currentTopomapSize = computeTopologyMapSize(*topomap);
-    g_currentPlansTableSize = computePlansTableSize(*g_plansTable);
-
-    // copy coarse vertices positions
+    // topology map & plans table
+    Far::TopologyMap * topomap = 0;
     std::vector<Vertex> controlVerts(shape->GetNumVertices());
-    for (int i=0; i<shape->GetNumVertices(); ++i) {
-        float const * ptr = &shape->verts[i*3];
-        memcpy(controlVerts[i].point, ptr, 3 * sizeof(float));
-    }
+    {
+        delete g_controlMeshVerts;
+        int nverts = shape->GetNumVertices(), ntriangles = 0;
+        g_controlMeshVerts = Osd::GLVertexBuffer::Create(3, nverts);
+        g_controlMeshVerts->UpdateData(&shape->verts[0], 0, nverts);
+        g_controlMeshDisplay.SetTopology(refiner->GetLevel(0));
 
-    delete shape;
+        // build topology map
+        Far::TopologyMap::Options options;
+        options.endCapType = g_endCap;
+        options.useTerminalNode = g_useTerminalNodes;
+        options.useDynamicIsolation = g_useDynamicIsolation;
+        options.generateLegacySharpCornerPatches = g_smoothCornerPatch;
+        options.hashSize = 5000;
+        topomap = new Far::TopologyMap(options);
 
-    if (g_DrawVertIDs) {
-        createVertNumbers(*refiner, controlVerts);
-    }
-    if (g_DrawFaceIDs) {
-        createFaceNumbers(*refiner, controlVerts);
+        delete g_plansTable;
+        g_plansTable = topomap->HashTopology(*refiner);
+
+        g_currentTopomapSize = computeTopologyMapSize(*topomap);
+        g_currentPlansTableSize = computePlansTableSize(*g_plansTable);
+
+        // copy coarse vertices positions
+        for (int i=0; i<shape->GetNumVertices(); ++i) {
+            float const * ptr = &shape->verts[i*3];
+            memcpy(controlVerts[i].point, ptr, 3 * sizeof(float));
+        }
+
+        delete shape;
+
+        if (g_DrawVertIDs) {
+            createVertNumbers(*refiner, controlVerts);
+        }
+        if (g_DrawFaceIDs) {
+            createFaceNumbers(*refiner, controlVerts);
+        }
     }
 
     // draw selected node data
@@ -861,20 +882,27 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     // tessellate
     //
 
-    int const nplans = g_plansTable->GetNumPlans();
+    int nplans = g_plansTable->GetNumPlans(),
+        nverts=0,
+        ntriangles=0;
 
+    // compute tess factos
     std::vector<float> tessFactors;
-    if (g_shadingMode==SHADING_TESS_FACTORS) {
+    if (g_dynamicTess) {
         tessFactors.resize(nplans * 6);
-        computeTessFactors(g_plansTable, controlVerts, g_tessLevel, &tessFactors[0]);
-        createTessFactorNumbers(*g_plansTable, controlVerts, tessFactors);
+        computeTessFactors(g_spacingMode, g_plansTable, controlVerts, g_tessLevel, &tessFactors[0], &nverts, &ntriangles);
+        if (g_DrawTessFactors) {
+            createTessFactorNumbers(*g_plansTable, controlVerts, tessFactors);
+        }
+    } else {
+        nverts = g_tessLevel * g_tessLevel * nplans,
+        ntriangles = 2 * std::max(1, g_tessLevel-1) * std::max(1, g_tessLevel-1) * nplans;
     }
 
-    nverts = g_tessLevel * g_tessLevel * nplans; // XXXX will need fixing for fractional tess
-
-    std::vector<float> positions(3 * nverts),
-                       normals(3 * nverts),
-                       colors(3 * nverts);
+    int size = ntriangles * 3 * 3;
+    std::vector<float> positions(size),
+                       normals(size),
+                       colors(size);
     float * pos = &positions[0],
           * norm = &normals[0],
           * col = &colors[0];
@@ -882,8 +910,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     std::vector<Vertex> supports;
     supports.resize(topomap->GetNumMaxSupports());
 
-    // interpolate limits
-
+    unsigned char quadrant=0;
     float wP[20], wDs[20], wDt[20];
 
     for (int planIndex=0; planIndex<nplans; ++planIndex) {
@@ -895,127 +922,102 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         Far::SubdivisionPlan const * plan =
             g_plansTable->GetSubdivisionPlan(planIndex);
 
+        bool nonquad = plan->IsNonQuadPatch();
+
         //
-        // Evaluate all supports points for this plan.
-        // Depending on sampling density, we may end up using only a few of
-        // them. To avoid this, we could first build a list of Nodes
-        // (ie. sub-patches) that we actually want to sample, and then
-        // evaluate only those support stencils.
-        {
-            int nsupports = plan->GetNumSupportsTotal();
-            for (int i=0; i<nsupports; ++i) {
+        // compute all sub-patch stencils for this plan
+        //
 
-                // get the stencil for this support point
-                Far::SubdivisionPlan::Support stencil = plan->GetSupport(i);
+        computeSupports(g_plansTable, planIndex, controlVerts, &supports[0]);
 
-                supports[i].Clear();
-                for (short k=0; k<stencil.size; ++k) {
+        //
+        // create topology
+        //
 
-                     // remap the support stencil indices, which are local
-                     // to the subdivision plan's neighborhood, to the control
-                     // mesh topology.
-                     Far::Index vertIndex =
-                         g_plansTable->GetMeshControlVertexIndex(planIndex, stencil.indices[k]);
+        std::vector<int> indices;
+        std::vector<float> u, v;
 
-                     supports[i].AddWithWeight(controlVerts[vertIndex], stencil.weights[k]);
-                }
-            }
+        if (g_dynamicTess) {
+            // dynamic (screen-space) tessellation
+            float const * inner = &tessFactors[6*planIndex],
+                        * outer = inner + 2;
+            SpacingMode spacing = g_spacingMode; // nonquad ? FRACTIONAL_ODD : FRACTIONAL_EVEN
+            tessellate(QUAD, spacing, inner, outer, indices, u, v);
+        } else {
+            int tessLevel = nonquad ? g_tessLevel / 2 + 1 : g_tessLevel;
+            tessellate(tessLevel, indices, u, v);
         }
 
-        //
-        // evaluate sample limits
-        //
+        for (int i=0; i<(int)indices.size(); ++i, pos+=3, norm+=3, col+=3) {
 
-        int const tessLevel = plan->IsNonQuadPatch() ? g_tessLevel / 2 + 1 : g_tessLevel;
+            //
+            // evaluate basis weights
+            //
 
-        // interpolate vertices
-        for (int y=0; y<tessLevel; ++y) {
-            for (int x=0; x<tessLevel; ++x, pos+=3, norm+=3, col+=3) {
+            float s = u[indices[i]],
+                  t = v[indices[i]];
 
-                // compute basis weights at location (s,t)
-                float s = (float)x / (float)(tessLevel-1),
-                      t = (float)y / (float)(tessLevel-1);
+            // XXXX g_dynamicLevel needs to be dynamic now !
+            Far::SubdivisionPlan::Node node =
+                plan->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant, g_dynamicLevel);
 
-                unsigned char quadrant=0;
+            //
+            // limit points : interpolate support points with basis weights
+            //
+            int nsupports = node.GetNumSupports(quadrant, g_dynamicLevel);
 
-                Far::SubdivisionPlan::Node node =
-                    plan->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant, g_dynamicLevel);
-
-                //
-                // limit points : interpolate support points with basis weights
-                //
-                int nsupports = node.GetNumSupports(quadrant, g_dynamicLevel);
-
-                LimitFrame limit;
-                limit.Clear();
-                for (int j=0; j<nsupports; ++j) {
-                    Far::Index supportIndex = node.GetSupportIndex(j, quadrant, g_dynamicLevel);
-                    limit.AddWithWeight(supports[supportIndex], wP[j], wDs[j], wDt[j]);
-                }
-
-                memcpy(pos, limit.point, 3 * sizeof(float));
-
-                // normal
-                cross(norm, limit.deriv1, limit.deriv2 );
-                normalize(norm);
-
-                Far::SubdivisionPlan::NodeDescriptor desc = node.GetDescriptor();
-
-                // color
-                switch (g_shadingMode) {
-                    case ::SHADING_PATCH_TYPE : {
-                        float const * c = getAdaptiveColor(node, g_dynamicLevel);
-                        memcpy(col, c, 3 * sizeof(float));
-                    } break;
-                    case ::SHADING_PATCH_COORD : {
-                        float c[3] = {s, t, 0.0f};
-                        memcpy(col, c, 3 * sizeof(float));
-                    } break;
-                    case ::SHADING_PATCH_NORMAL : {
-                        memcpy(col, norm, 3 * sizeof(float));
-                    } break;
-                    case ::SHADING_TREE_DEPTH : {
-                        float depth = desc.GetDepth() * 0.1f;
-                        float c[3] = { depth, 0.0f, 1.0f - depth };
-                        memcpy(col, c, 3 * sizeof(float));
-                    } break;
-                    case ::SHADING_TESS_FACTORS: {
-                        float c[3] = { 0.0f, 0.0f, 0.0f };
-                        computeTessFactorColor(tessLevel, x, y, &tessFactors[planIndex * 6], c);
-                        memcpy(col, c, 3 * sizeof(float));
-                    } break;
-                    default:
-
-                        break;
-                }
-
-                bool nodeSelected = false;
-                if (g_currentPlanIndex>=0 && g_currentPlanIndex==planIndex &&
-                    g_currentNodeIndex>=0 &&
-                    g_currentNode==node) {
-                    nodeSelected = true;
-                }
-
-                if (nodeSelected) {
-                    static float quadColors[4][3] = {{ 255.0f,    0.0f,   0.0f },
-                                                     {   0.0f,  255.0f,   0.0f },
-                                                     {   0.0f,    0.0f, 255.0f },
-                                                     {  255.0f, 255.0f,   0.0f }};
-
-                    if (desc.GetType()==Far::SubdivisionPlan::NODE_TERMINAL) {
-                        memcpy(col, quadColors[quadrant], 3 * sizeof(float));
-                    } else {
-                        //memcpy(col, selColor, 3 * sizeof(float));
-                        col[0] *= 2.0f;
-                        col[1] *= 2.0f;
-                        col[2] *= 2.0f;
-                    }
-                }
+            LimitFrame limit;
+            limit.Clear();
+            for (int j=0; j<nsupports; ++j) {
+                Far::Index supportIndex = node.GetSupportIndex(j, quadrant, g_dynamicLevel);
+                limit.AddWithWeight(supports[supportIndex], wP[j], wDs[j], wDt[j]);
             }
+
+            memcpy(pos, limit.point, 3 * sizeof(float));
+
+            // normal
+            cross(norm, limit.deriv1, limit.deriv2 );
+            normalize(norm);
+
+            // color
+            switch (g_shadingMode) {
+                case ::SHADING_PATCH_TYPE : {
+                    float const * c = getAdaptiveColor(node, g_dynamicLevel);
+                    memcpy(col, c, 3 * sizeof(float));
+                } break;
+                case ::SHADING_PATCH_COORD : {
+                    float c[3] = {s, t, 0.0f};
+                    memcpy(col, c, 3 * sizeof(float));
+                } break;
+                case ::SHADING_PATCH_NORMAL : {
+                    memcpy(col, norm, 3 * sizeof(float));
+                } break;
+                case ::SHADING_TREE_DEPTH : {
+                    Far::SubdivisionPlan::NodeDescriptor desc = node.GetDescriptor();
+                    float depth = desc.GetDepth() * 0.1f;
+                    float c[3] = { depth, 0.0f, 1.0f - depth };
+                    memcpy(col, c, 3 * sizeof(float));
+                } break;
+                //case ::SHADING_TESS_FACTORS: {
+                //    float c[3] = { 0.0f, 0.0f, 0.0f };
+                //    computeTessFactorColor(tessLevel, x, y, &tessFactors[planIndex * 6], c);
+                //    memcpy(col, c, 3 * sizeof(float));
+                //} break;
+                default:
+
+                    break;
+            }
+            applyNodeColor(planIndex, node, quadrant, col);
         }
     }
 
-    createTessMesh(*g_plansTable, nplans, g_tessLevel, positions, normals, colors);
+    delete g_tessMesh;
+    struct GLMesh::Topology topo;
+    topo.positions = &positions[0];
+    topo.normals = &normals[0];
+    topo.colors = &colors[0];
+    topo.nverts = (int)positions.size()/3;
+    g_tessMesh = new GLMesh(topo);
 
     delete refiner;
 }
@@ -1313,11 +1315,13 @@ enum HudCheckBox { kHUD_CB_DISPLAY_CONTROL_MESH_EDGES,
                    kHUD_CB_DISPLAY_VERT_IDS,
                    kHUD_CB_DISPLAY_FACE_IDS,
                    kHUD_CB_DISPLAY_NODE_IDS,
+                   kHUD_CB_DISPLAY_TESSFACTORS,
                    kHUD_CB_USE_TERMINAL_NODES,
                    kHUD_CB_USE_DYNAMIC_ISOLATION,
                    kHUD_CB_SMOOTH_CORNER_PATCH,
                    kHUD_CB_SINGLE_CREASE_PATCH,
                    kHUD_CB_INF_SHARP_PATCH,
+                   kHUD_CB_DYNAMIC_TESS,
                   };
 
 
@@ -1328,6 +1332,7 @@ callbackCheckBox(bool checked, int button) {
         case kHUD_CB_DISPLAY_NODE_IDS: g_DrawNodeIDs = checked; break;
         case kHUD_CB_DISPLAY_VERT_IDS: g_DrawVertIDs = checked; break;
         case kHUD_CB_DISPLAY_FACE_IDS: g_DrawFaceIDs = checked; break;
+        case kHUD_CB_DISPLAY_TESSFACTORS: g_DrawTessFactors = checked; break;
 
         case kHUD_CB_DISPLAY_CONTROL_MESH_EDGES:
             g_controlMeshDisplay.SetEdgesDisplay(checked);
@@ -1341,6 +1346,9 @@ callbackCheckBox(bool checked, int button) {
         case kHUD_CB_SMOOTH_CORNER_PATCH: g_smoothCornerPatch = checked; break;
         case kHUD_CB_SINGLE_CREASE_PATCH: g_singleCreasePatch = checked; break;
         case kHUD_CB_INF_SHARP_PATCH: g_infSharpPatch = checked; break;
+
+        case kHUD_CB_DYNAMIC_TESS: g_dynamicTess = checked; break;
+
         default:
             break;
     }
@@ -1348,6 +1356,11 @@ callbackCheckBox(bool checked, int button) {
     rebuildMeshes();
 }
 
+static void
+callbackSpacingMode(int b) {
+    g_spacingMode = (SpacingMode)b;
+    rebuildMeshes();
+}
 
 //------------------------------------------------------------------------------
 static void
@@ -1440,10 +1453,13 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int mods) {
 
         case '=':  {
             g_tessLevel+=5;
+            if (g_tessLevel%2==0) ++g_tessLevel;
             rebuildMeshes();
         } break;
         case '-': {
-            g_tessLevel = std::max(g_tessLevelMin, g_tessLevel-5);
+            g_tessLevel-=5;
+            if (g_tessLevel%2==0) ++g_tessLevel;
+            g_tessLevel = std::max(g_tessLevelMin, g_tessLevel);
             rebuildMeshes();
         } break;
 
@@ -1518,8 +1534,11 @@ initHUD() {
     g_hud.AddCheckBox("Node IDs", g_DrawNodeIDs!=0,
         10, 200, callbackCheckBox, kHUD_CB_DISPLAY_NODE_IDS);
 
+    g_hud.AddCheckBox("Tess Factors", g_DrawTessFactors!=0,
+        10, 220, callbackCheckBox, kHUD_CB_DISPLAY_TESSFACTORS);
+
     int endcap_pulldown = g_hud.AddPullDown(
-        "End cap (E)", 10, 230, 200, callbackEndCap, 'e');
+        "End cap (E)", 10, 250, 200, callbackEndCap, 'e');
     //g_hud.AddPullDownButton(endcap_pulldown, "None",
     //    Far::ENDCAP_NONE, g_endCap == Far::ENDCAP_NONE);
     g_hud.AddPullDownButton(endcap_pulldown, "Bilinear",
@@ -1530,6 +1549,11 @@ initHUD() {
         Far::ENDCAP_GREGORY_BASIS, g_endCap == Far::ENDCAP_GREGORY_BASIS);
     //g_hud.AddPullDownButton(endcap_pulldown, "LegacyGregory",
     //    Far::ENDCAP_LEGACY_GREGORY, g_endCap == Far::ENDCAP_LEGACY_GREGORY);
+
+
+    g_hud.AddCheckBox("Dynamic Tess", g_dynamicTess!=0,
+        10, 570, callbackCheckBox, kHUD_CB_DYNAMIC_TESS);
+
 
     int displaystyle_pulldown = g_hud.AddPullDown(
         "DisplayStyle (W)", 200, 10, 250, callbackDisplayStyle, 'w');
@@ -1550,8 +1574,13 @@ initHUD() {
         ::SHADING_PATCH_NORMAL, g_shadingMode == ::SHADING_PATCH_NORMAL);
     g_hud.AddPullDownButton(shading_pulldown, "Tree Depth",
         ::SHADING_TREE_DEPTH, g_shadingMode == ::SHADING_TREE_DEPTH);
-    g_hud.AddPullDownButton(shading_pulldown, "Tess Factors",
-        ::SHADING_TESS_FACTORS, g_shadingMode == ::SHADING_TESS_FACTORS);
+    //g_hud.AddPullDownButton(shading_pulldown, "Tess Factors",
+    //    ::SHADING_TESS_FACTORS, g_shadingMode == ::SHADING_TESS_FACTORS);
+
+    int spacing_pulldown = g_hud.AddPullDown("Spacing Mode (M)", 425, 10, 250, callbackSpacingMode, 'm');
+    g_hud.AddPullDownButton(spacing_pulldown, "fractional odd", FRACTIONAL_ODD, g_spacingMode == FRACTIONAL_ODD);
+    g_hud.AddPullDownButton(spacing_pulldown, "fractional even", FRACTIONAL_EVEN, g_spacingMode == FRACTIONAL_EVEN);
+    g_hud.AddPullDownButton(spacing_pulldown, "equal", EQUAL, g_spacingMode == EQUAL);
 
     g_hud.AddSlider("Font Scale", 0.0f, 0.1f, 0.01f,
                     -800, -50, 100, false, callbackFontScale, 0);

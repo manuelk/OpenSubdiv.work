@@ -48,6 +48,7 @@ _stringify("${SHADER_FILES}" INC_FILES)
 
 _add_glfw_executable(cmTest "examples"
     cmTest.cpp
+    tessUtils.cpp
     glMesh.cpp
     glFontUtils.cpp
     "${SHADER_FILES}"
