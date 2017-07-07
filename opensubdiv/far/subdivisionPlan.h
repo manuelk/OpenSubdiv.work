@@ -124,7 +124,14 @@ public:
 
     /// \brief Returns true if this topology plan belongs to an irregular
     /// (non-quad) face
-    bool IsNonQuadPatch() const { return _nonquad; }
+    bool IsNonQuadPatch() const { return _coarseFaceValence!=4; }
+
+    /// \briaf Returns the valence of the face
+    int GetCoarseFaceValence() const { return _coarseFaceValence; }
+
+    /// \briaf Returns the index of the sub-patch if the face is not a quad
+    /// and INDEX_INVALID if the face is a quad
+    int GetCoarseFaceQuadrant() const { return _coarseFaceQuadrant; }
 
     /// \brief Returns the map this plan belongs to
     TopologyMap const & GetTopologyMap() const { return _topologyMap; }
@@ -517,12 +524,15 @@ private:
 
     SubdivisionPlan(TopologyMap const & topomap,
                     int numControlVertices,
-                    bool nonquad) :
+                    int coarseFaceValence,
+                    int coarseFaceQuadrant=INDEX_INVALID) :
         _topologyMap(topomap),
         _numControlVertices(numControlVertices),
-        _nonquad(nonquad) { }
+        _coarseFaceValence(coarseFaceValence),
+        _coarseFaceQuadrant(coarseFaceQuadrant) { }
 
-    bool _nonquad;
+    int _coarseFaceValence,  // coarse face valence
+        _coarseFaceQuadrant; // relative sub-face index for non-quads
 
     TopologyMap const & _topologyMap;
 };

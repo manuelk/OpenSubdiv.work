@@ -834,8 +834,8 @@ SubdivisionPlanBuilder::populateNodes(int * treePtr, Index * supportsPtr) const 
 }
 
 SubdivisionPlan const *
-SubdivisionPlanBuilder::Create(
-    Index levelIndex, Index faceIndex, Neighborhood const * neighborhood) {
+SubdivisionPlanBuilder::Create(Neighborhood const * neighborhood,
+    Index levelIndex, Index faceIndex, Index subfaceIndex) {
 
     assert(neighborhood);
 
@@ -852,12 +852,13 @@ SubdivisionPlanBuilder::Create(
 
     bool nonquad = levelIndex!=0;
     SubdivisionPlan *plan =
-        new SubdivisionPlan(_topomap, neighborhood->GetNumVertices(), nonquad);
+        new SubdivisionPlan(
+            _topomap, neighborhood->GetNumVertices(),
+                neighborhood->GetValence(), subfaceIndex);
 
     // compute serial offsets for the SubdivisionPlan::Nodes tree
     int treeSize = 0, numSupportsTotal = 0;
     computeNodeOffsets(&treeSize, plan->_numSupports, &numSupportsTotal);
-
 
     BuildContext * context = new BuildContext;
     context->plan = plan;

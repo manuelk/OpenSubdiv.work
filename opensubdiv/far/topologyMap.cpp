@@ -206,12 +206,12 @@ TopologyMap::HashTopology(TopologyRefiner const & refiner) {
                     coarseLevel.GetFaceChildFaces(faceIndex);
                 for (int i=0; i<valence; ++i) {
                     SubdivisionPlan const * ch =
-                        planBuilder.Create(1, childFaces[i], neighborhood);
+                        planBuilder.Create(neighborhood, 1, childFaces[i], i);
                     _plans.push_back(ch);
                 }
             } else {
                 SubdivisionPlan const * ch =
-                    planBuilder.Create(0, faceIndex, neighborhood);
+                    planBuilder.Create(neighborhood, 0, faceIndex, INDEX_INVALID);
                 _plans.push_back(ch);
             }
 

@@ -78,8 +78,8 @@ public:
     // Returns a new plan for the given topological neighborhood
     // note : the plan will not be functional until FinalizeSupportStencils()
     // has been called
-    SubdivisionPlan const * Create(
-        Index levelIndex, Index faceIndex, Neighborhood const * neighborhood);
+    SubdivisionPlan const * Create(Neighborhood const * neighborhood,
+        Index levelIndex, Index faceIndex, Index subfaceIndex);
 
     // Finalizes the plans supports created by this builder
     int FinalizeSupportStencils();
