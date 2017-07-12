@@ -89,7 +89,7 @@ enum ShadingMode {
     SHADING_TESS_FACTORS,
 };
 
-SpacingMode g_spacingMode = FRACTIONAL_EVEN;
+SpacingMode g_spacingMode = FRACTIONAL_ODD;
 
 int g_level = 3,
     g_dynamicLevel = 10,
@@ -460,67 +460,6 @@ createPlanNumbers(Far::SubdivisionPlanTable const & plansTable,
     g_currentNodeIndex=0;
 }
 
-static void
-computeSupports(Far::SubdivisionPlanTable const * plansTable,
-    int planIndex, std::vector<Vertex> const & controlVerts, Vertex * supports);
-
-static void
-createTessFactorNumbers(Far::SubdivisionPlanTable const & plansTable,
-    std::vector<Vertex> const & vertexBuffer, std::vector<float> const & tessFactors) {
-
-    // create a 3D string by evaluating a point on the limit surface that
-    // is in the middle of the edge, nudged 0.05 units towards the parametric
-    // center
-
-    static float const u[4] = { 0.5f,  0.95f, 0.5f,  0.05f };
-    static float const v[4] = { 0.05f, 0.5f,  0.95f, 0.5f };
-
-    Far::TopologyMap const & topomap = plansTable.GetTopologyMap();
-
-    std::vector<Vertex> supports;
-    supports.resize(topomap.GetNumMaxSupports());
-
-    unsigned char quadrant=0;
-    float wP[20], wDs[20], wDt[20];
-
-    for (int planIndex=0; planIndex < plansTable.GetNumPlans(); ++planIndex) {
-
-        if (plansTable.PlanIsHole(planIndex))
-            continue;
-
-        computeSupports(&plansTable, planIndex, vertexBuffer, &supports[0]);
-
-        Far::SubdivisionPlan const * plan =
-            plansTable.GetSubdivisionPlan(planIndex);
-
-        Far::ConstIndexArray planVerts = plansTable.GetPlanControlVertices(planIndex);
-
-        for (int i=0; i<4; ++i) {
-
-            float s = u[i],
-                  t = v[i];
-
-            Far::SubdivisionPlan::Node node =
-                plan->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant, g_dynamicLevel);
-
-            int nsupports = node.GetNumSupports(quadrant);
-
-            LimitFrame limit;
-            limit.Clear();
-            for (int j=0; j<nsupports; ++j) {
-                Far::Index supportIndex = node.GetSupportIndex(j, quadrant, g_dynamicLevel);
-                limit.AddWithWeight(supports[supportIndex], wP[j], wDs[j], wDt[j]);
-            }
-
-            float tf = tessFactors[planIndex * 6 + 2 + i];
-
-            static char buf[16];
-            snprintf(buf, 16, "%c=%f",'A'+i, tf);            
-            g_font->Print3D(limit.point, buf, 4);
-        }
-    }
-}
-
 //------------------------------------------------------------------------------
 static void
 writeDigraph(Far::TopologyMap const & topomap, int planIndex) {
@@ -587,6 +526,77 @@ computePlansTableSize(Far::SubdivisionPlanTable const & plansTable) {
 
 //------------------------------------------------------------------------------
 
+inline float
+roundUpEven(float x) {
+//printf("round even %f -> %f\n", x, 2.0f * std::ceil(x/2.0f));
+    return 2.0f * std::ceil(x/2.0f);
+}
+
+inline float
+roundUpOdd(float x) {
+//printf("round odd %f -> %f\n", x,  2.0f * std::ceil((x+1.0f)/2.0f)-1.0f);
+    return 2.0f * std::ceil((x+1.0f)/2.0f)-1.0f;
+}
+
+struct TessFactors {
+    float outerLo[4],
+          outerHi[4],
+          outer[4],
+          inner[2];
+
+    void SetDefault(float f=0.0) {
+        outerLo[0]=outerLo[1]=outerLo[2]=outerLo[3]=f;
+        outerHi[0]=outerHi[1]=outerHi[2]=outerHi[3]=f;
+        outer[0]=outer[1]=outer[2]=outer[3]=f;
+        inner[0]=inner[1]=f;
+    }
+
+    // computes outer & inner from outerLo & outerHi
+    void ComputeTessLevels(SpacingMode spacing) {
+        float combinedOuter[4] = {
+            outerLo[0] + outerHi[0],
+            outerLo[1] + outerHi[1],
+            outerLo[2] + outerHi[2],
+            outerLo[3] + outerHi[3],
+        };
+
+        switch (spacing) {
+            case FRACTIONAL_ODD: {
+                for (int i=0; i<4; ++i) {
+                    outer[i] = outerHi[i] > 0.0f ?
+                        roundUpOdd(outerLo[i]) + roundUpOdd(outerHi[i]) :
+                            combinedOuter[i];
+                    combinedOuter[i] = std::max(3.0f, combinedOuter[i]);
+                }
+            } break;
+            case FRACTIONAL_EVEN: {
+                for (int i=0; i<4; ++i) {
+                    outer[i] = outerHi[i] > 0.0f ?
+                        roundUpEven(outerLo[i]) + roundUpEven(outerHi[i]) :
+                            combinedOuter[i];
+                }
+            } break;
+            case EQUAL: {
+                for (int i=0; i<4; ++i) {
+                    outerLo[i] = std::round(outerLo[i]);
+                    outerHi[i] = std::round(outerHi[i]);
+                    outer[i] = combinedOuter[i] = outerLo[i] + outerHi[i];
+                }
+            } break;
+        }
+
+        inner[0] = (combinedOuter[1]+combinedOuter[3]) * 0.5f;
+        inner[1] = (combinedOuter[0]+combinedOuter[2]) * 0.5f;
+    }
+
+    void Print() const {
+        printf("outerLo [%f %f %f %f]\n", outerLo[0], outerLo[1], outerLo[2], outerLo[3]);
+        printf("outerHi [%f %f %f %f]\n", outerHi[0], outerHi[1], outerHi[2], outerHi[3]);
+        printf("outer   [%f %f %f %f]\n", outer[0], outer[1], outer[2], outer[3]);
+        printf("inner   [%f %f]\n",       inner[0], inner[1]);
+    }
+};
+
 // returns squared vector magnitude
 static float
 distance(float const * a, float const * b) {
@@ -630,16 +640,14 @@ computeTessFactor(Vertex const & p0, Vertex const & p1, int tessLevel) {
 static void
 computeTessFactors(SpacingMode spacing,
     Far::SubdivisionPlanTable const * plansTable, std::vector<Vertex> const & verts,
-        int tessLevel, float * tessFactors, int * nverts, int * ntris) {
-
+        int tessLevel, TessFactors * tf, int * nverts, int * ntris) {
 
     for (int planIndex=0; planIndex < plansTable->GetNumPlans(); ++planIndex) {
 
+        tf->SetDefault(0.0);
+
         if (plansTable->PlanIsHole(planIndex))
             continue;
-
-        static float const defaults[6] = { 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f };
-        memcpy(tessFactors, defaults, 6 * sizeof(float));
 
         Far::SubdivisionPlan const * plan =
             plansTable->GetSubdivisionPlan(planIndex);
@@ -647,66 +655,257 @@ computeTessFactors(SpacingMode spacing,
         Far::ConstIndexArray indices =
             plansTable->GetPlanControlVertices(planIndex);
 
-        Vertex v0, v1, v2, v3;
-
         bool nonquad = plan->IsNonQuadPatch();
 
         if (nonquad) {
+
             // first n entires are 0 ring, but need to be rotated by 'quadrant'
             int valence = plan->GetCoarseFaceValence(),
                 quadrant = plan->GetCoarseFaceQuadrant();
 
-            Vertex center;
-            center.Clear();
-            for (int i=0; i<valence; ++i) {
-                center.AddWithWeight(verts[indices[i]], 1.0f/valence);
-            }
+            Vertex v0, v1, v2, v3;
 
             v0 = verts[indices[quadrant]];
 
-            v1.Clear();
+            v1.Clear(); // edge forward midpoint
             v1.AddWithWeight(v0, 0.5f);
             v1.AddWithWeight(verts[indices[(quadrant+1)%valence]], 0.5f);
-            
-            v2 = center;
-            
-            v3.Clear();
+
+            v2.Clear();
+            for (int i=0; i<valence; ++i) {
+                v2.AddWithWeight(verts[indices[i]], 1.0f/valence);
+            }
+
+            v3.Clear(); // edge backward midpoint
             v3.AddWithWeight(verts[indices[(quadrant+valence-1)%valence]], 0.5f);
-            v3.AddWithWeight(v0, 0.5f);            
+            v3.AddWithWeight(v0, 0.5f);
+
+            float f0 = computeTessFactor(v0, v1, tessLevel),
+                  f1 = computeTessFactor(v1, v2, tessLevel),
+                  f2 = computeTessFactor(v2, v3, tessLevel),
+                  f3 = computeTessFactor(v3, v0, tessLevel);
+
+            tf->outerLo[0] = f0; tf->outerHi[0] = 0.0f;
+            tf->outerLo[1] = f1; tf->outerHi[1] = 0.0f;
+            tf->outerLo[2] = f2, tf->outerHi[2] = 0.0f;
+            tf->outerLo[3] = f3; tf->outerHi[3] = 0.0f;
         } else {
-            // first 4 entries are 0-ring ...
-            v0 = verts[indices[0]],
-            v1 = verts[indices[1]],
-            v2 = verts[indices[2]],
-            v3 = verts[indices[3]];
+            for (int i=0; i<4; ++i) {
+
+                Vertex v0 = verts[indices[i]],
+                       v1 = verts[indices[(i+1)%4]];
+
+                Vertex ev; // mid-point
+                ev.Clear();
+                ev.AddWithWeight(v0, 0.5f);
+                ev.AddWithWeight(v1, 0.5f);
+
+                tf->outerLo[i] = computeTessFactor(v0, ev, tessLevel);
+                tf->outerHi[i] = computeTessFactor(ev, v1, tessLevel);
+            }
         }
 
-        float f0 = computeTessFactor(v0, v1, tessLevel),
-              f1 = computeTessFactor(v1, v2, tessLevel),
-              f2 = computeTessFactor(v2, v3, tessLevel),
-              f3 = computeTessFactor(v3, v0, tessLevel);
+        tf->ComputeTessLevels(spacing);
+        if (tf->inner[0]==0.0f || tf->inner[1]==0.0f) {
+            tf->SetDefault(2.0f);
+        }
 
-        tessFactors[0] = 0.5f * (f0 + f2);
-        tessFactors[1] = 0.5f * (f1 + f2);
-        tessFactors[2] = f0;
-        tessFactors[3] = f1;
-        tessFactors[4] = f2,
-        tessFactors[5] = f3;
+//printf("tessFactors plan=%d valence=%d\n", planIndex, plan->GetCoarseFaceValence());
+//tf->Print();
+//fflush(stdout);
 
         PatchInfo pi;
-        pi.set(QUAD, spacing, tessFactors, tessFactors+2);
+        pi.set(QUAD, spacing, tf->inner, tf->outer);
 
         *nverts += pi.patch_verts;
         *ntris += pi.patch_prims;
-        
-        tessFactors += 6;
-fflush(stdout);
+
+        ++tf;
+    }
+}
+
+static float
+computeTessFractionalSplit(
+    SpacingMode spacing, float t, float level, float levelUp) {
+
+    // Fractional tessellation of an edge will produce n segments where n
+    // is the tessellation level of the edge (level) rounded up to the
+    // nearest even or odd integer (levelUp). There will be n-2 segments of
+    // equal length (dx1) and two additional segments of equal length (dx0)
+    // that are typically shorter than the other segments. The two additional
+    // segments should be placed symmetrically on opposite sides of the
+    // edge (offset).
+
+    float base, offset;
+    switch (spacing) {
+
+        case FRACTIONAL_ODD: {
+            if (level <= 1.0f) return t;
+            base = powf(2.0f, std::floor(log2f(levelUp))),
+            offset = 1.0f/(((int(2.0f*base-levelUp)/2+1) & int(base/2.0f-1.0f))+1.0f);
+        } break;
+
+        case FRACTIONAL_EVEN: {
+            if (level <= 2.0f) return t;
+            base = powf(2.0f,std::floor(log2f(levelUp))),
+            offset = 1.0f/(int(2*base-levelUp)/2 & int(base/2.0f-1.0f));
+        } break;
+
+        case EQUAL: {
+        } break;
+    }
+
+    float dx0 = (1.0f - (levelUp-level)/2.0f) / levelUp,
+          dx1 = (1.0f - 2.0f*dx0) / (levelUp - 2.0f*std::ceil(dx0));
+
+    if (t < 0.5f) {
+        float x = levelUp/2.0f - std::round(t*levelUp);
+        return 0.5f - (x*dx1 + int(x*offset > 1.0f) * (dx0 - dx1));
+    } else if (t > 0.5f) {
+        float x = std::round(t*levelUp) - levelUp/2.0f;
+        return 0.5f + (x*dx1 + int(x*offset > 1.0f) * (dx0 - dx1));
+    } else {
+        return t;
+    }
+}
+
+static float
+computeTessTransitionSplit(
+    SpacingMode spacing, float t, float lo, float hi) {
+
+
+    switch (spacing) {
+
+        case FRACTIONAL_ODD: {
+            float loRoundUp = roundUpOdd(lo),
+                  hiRoundUp = roundUpOdd(hi);
+            // Convert the parametric t into a segment index along the combined edge.
+            // The +1 below is to account for the extra segment produced by the
+            // tessellator since the sum of two odd tess levels will be rounded
+            // up by one to the next odd integer tess level.
+            float ti = std::round(t * (loRoundUp + hiRoundUp + 1.0f));
+
+            if (ti <= loRoundUp) {
+                float t0 = ti / loRoundUp;
+                return computeTessFractionalSplit(spacing, t0, lo, loRoundUp) * 0.5f;
+            } else if (ti > (loRoundUp+1.0f)) {
+                float t1 = (ti - (loRoundUp+1.0f)) / hiRoundUp;
+                return computeTessFractionalSplit(spacing, t1, hi, hiRoundUp) * 0.5f + 0.5f;
+            } else {
+                return 0.5f;
+            }
+        } break;
+
+        case FRACTIONAL_EVEN: {
+            float loRoundUp = roundUpEven(lo),
+                  hiRoundUp = roundUpEven(hi);
+            float ti = std::round(t * (loRoundUp + hiRoundUp));
+            if (ti <= loRoundUp) {
+                float t0 = ti / loRoundUp;
+                return computeTessFractionalSplit(spacing, t0, lo, loRoundUp) * 0.5f;
+            } else {
+                float t1 = (ti - loRoundUp) / hiRoundUp;
+                return computeTessFractionalSplit(spacing, t1, hi, hiRoundUp) * 0.5f + 0.5f;
+            }
+        } break;
+
+        case EQUAL: {
+            // Convert the parametric t into a segment index along the combined edge.
+            float ti = round(t * (lo + hi));
+
+            if (ti <= lo) {
+                return (ti / lo) * 0.5f;
+            } else {
+                return ((ti - lo) / hi) * 0.5f + 0.5f;
+            }
+        } break;
+    }
+    return -1.0f;
+}
+
+static void
+computeTessParameterization(SpacingMode spacing, TessFactors const & tf, float * u, float * v) {
+
+    assert(u && v);
+
+    float s=*u, t=*v;
+           if (s==0.0f && tf.outerHi[0]>0.0f) {
+        t = computeTessTransitionSplit(spacing, t, tf.outerHi[3], tf.outerLo[3]);
+    } else if (t==0.0f && tf.outerHi[0]>0.0f) {
+        s = computeTessTransitionSplit(spacing, s, tf.outerLo[0], tf.outerHi[0]);
+    } else if (s==1.0f && tf.outerHi[0]>0.0f) {
+        t = computeTessTransitionSplit(spacing, t, tf.outerLo[1], tf.outerHi[1]);
+    } else if (t==1.0f && tf.outerHi[0]>0.0f) {
+        s = computeTessTransitionSplit(spacing, s, tf.outerHi[2], tf.outerLo[2]);
+    }
+    *u = s;
+    *v = t;
+}
+
+static void
+computeSupports(Far::SubdivisionPlanTable const * plansTable,
+    int planIndex, std::vector<Vertex> const & controlVerts, Vertex * supports);
+
+static void
+createTessFactorNumbers(Far::SubdivisionPlanTable const & plansTable,
+    std::vector<Vertex> const & vertexBuffer, std::vector<TessFactors> const & tessFactors) {
+
+    // create a 3D string by evaluating a point on the limit surface that
+    // is in the middle of the edge, nudged 0.05 units towards the parametric
+    // center
+
+    static float const u[4] = { 0.5f,  0.95f, 0.5f,  0.05f };
+    static float const v[4] = { 0.05f, 0.5f,  0.95f, 0.5f };
+
+    Far::TopologyMap const & topomap = plansTable.GetTopologyMap();
+
+    std::vector<Vertex> supports;
+    supports.resize(topomap.GetNumMaxSupports());
+
+    unsigned char quadrant=0;
+    float wP[20], wDs[20], wDt[20];
+
+    for (int planIndex=0; planIndex < plansTable.GetNumPlans(); ++planIndex) {
+
+        if (plansTable.PlanIsHole(planIndex))
+            continue;
+
+        computeSupports(&plansTable, planIndex, vertexBuffer, &supports[0]);
+
+        Far::SubdivisionPlan const * plan =
+            plansTable.GetSubdivisionPlan(planIndex);
+
+        Far::ConstIndexArray planVerts = plansTable.GetPlanControlVertices(planIndex);
+
+        for (int i=0; i<4; ++i) {
+
+            float s = u[i],
+                  t = v[i];
+
+            Far::SubdivisionPlan::Node node =
+                plan->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant, g_dynamicLevel);
+
+            int nsupports = node.GetNumSupports(quadrant);
+
+            LimitFrame limit;
+            limit.Clear();
+            for (int j=0; j<nsupports; ++j) {
+                Far::Index supportIndex = node.GetSupportIndex(j, quadrant, g_dynamicLevel);
+                limit.AddWithWeight(supports[supportIndex], wP[j], wDs[j], wDt[j]);
+            }
+
+            //float tf = tessFactors[planIndex].outerLo[i] + tessFactors[planIndex].outerHi[i];
+            float tf = tessFactors[planIndex].outer[i];
+            static char buf[16];
+            snprintf(buf, 16, "%c=%f",'A'+i, tf);
+            g_font->Print3D(limit.point, buf, 4);
+        }
     }
 }
 
 static void
 computeTessFactorColor(
-    int tessLevel, int x, int y, float const * tessFactors, float * color) {
+    int tessLevel, int x, int y, TessFactors const & tessFactors, float * color) {
 
     int edge = -1;
     if (x > y) {
@@ -717,7 +916,7 @@ computeTessFactorColor(
         else                   edge = 2;
     }
     assert(edge>=0);
-    float outerFactor = tessFactors[2 + edge]; // skip first 2 inner factors
+    float outerFactor = tessFactors.outerLo[edge];
 
     static float const nearc[3] = { 1.0f, 1.0f, 1.0f },
                        farc[3] = { 0.0f, 0.0f, 0.0f };
@@ -886,11 +1085,13 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         nverts=0,
         ntriangles=0;
 
+    SpacingMode spacing = g_spacingMode;
+
     // compute tess factos
-    std::vector<float> tessFactors;
+    std::vector<TessFactors> tessFactors;
     if (g_dynamicTess) {
-        tessFactors.resize(nplans * 6);
-        computeTessFactors(g_spacingMode, g_plansTable, controlVerts, g_tessLevel, &tessFactors[0], &nverts, &ntriangles);
+        tessFactors.resize(nplans);
+        computeTessFactors(spacing, g_plansTable, controlVerts, g_tessLevel, &tessFactors[0], &nverts, &ntriangles);
         if (g_DrawTessFactors) {
             createTessFactorNumbers(*g_plansTable, controlVerts, tessFactors);
         }
@@ -937,12 +1138,11 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         std::vector<int> indices;
         std::vector<float> u, v;
 
+        TessFactors const & tf = tessFactors[planIndex];
+
         if (g_dynamicTess) {
             // dynamic (screen-space) tessellation
-            float const * inner = &tessFactors[6*planIndex],
-                        * outer = inner + 2;
-            SpacingMode spacing = g_spacingMode; // nonquad ? FRACTIONAL_ODD : FRACTIONAL_EVEN
-            tessellate(QUAD, spacing, inner, outer, indices, u, v);
+            tessellate(QUAD, spacing, tf.inner, tf.outer, indices, u, v);
         } else {
             int tessLevel = nonquad ? g_tessLevel / 2 + 1 : g_tessLevel;
             tessellate(tessLevel, indices, u, v);
@@ -956,6 +1156,8 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
             float s = u[indices[i]],
                   t = v[indices[i]];
+
+            computeTessParameterization(spacing, tf, &s, &t);
 
             // XXXX g_dynamicLevel needs to be dynamic now !
             Far::SubdivisionPlan::Node node =
