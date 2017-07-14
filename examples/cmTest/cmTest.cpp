@@ -1089,8 +1089,8 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
     // compute tess factos
     std::vector<TessFactors> tessFactors;
+    tessFactors.resize(nplans);
     if (g_dynamicTess) {
-        tessFactors.resize(nplans);
         computeTessFactors(spacing, g_plansTable, controlVerts, g_tessLevel, &tessFactors[0], &nverts, &ntriangles);
         if (g_DrawTessFactors) {
             createTessFactorNumbers(*g_plansTable, controlVerts, tessFactors);
