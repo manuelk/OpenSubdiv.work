@@ -135,6 +135,8 @@ int   g_width = 1024,
 
 GLhud g_hud;
 
+GLFont * g_font=0;
+
 Stopwatch g_fpsTimer;
 
 GLuint g_transformUB = 0,
@@ -313,15 +315,41 @@ getAdaptiveColor(Far::SubdivisionPlan::Node node, int maxLevel) {
 
 //------------------------------------------------------------------------------
 
-GLFont * g_font=0;
+#define COLLECT_STATS
+#ifdef COLLECT_STATS
+    #define CLEAR_STATS() \
+        g_stats.Clear();
+
+    #define INC_STAT(statname, value) \
+        g_stats.statname += value;
+
+    #define SET_STAT(statname, value) \
+        g_stats.statname = value;
+#else
+    #define CLEAR_STATS()
+
+    #define INC_STAT(statname, value)
+
+    #define SET_STAT(statname, value)
+#endif
+
+struct Stats {
+
+    size_t topomapSize = 0,
+           plansTableSize = 0,
+           numSupportsEvaluated = 0,
+           numSupportsTotal = 0;
+
+    void Clear() {
+        memset(this, 0, sizeof(Stats));
+    }
+} g_stats;
 
 //------------------------------------------------------------------------------
+
 int g_currentPlanIndex = -1,
     g_currentNodeIndex = 0,
     g_currentQuadrantIndex = 0;
-
-size_t g_currentTopomapSize = 0,
-       g_currentPlansTableSize = 0;
 
 Far::SubdivisionPlan::Node g_currentNode;
 
@@ -842,7 +870,7 @@ computeTessParameterization(SpacingMode spacing, TessFactors const & tf, float *
     *v = t;
 }
 
-static void
+static int
 computeSupports(Far::SubdivisionPlanTable const * plansTable,
     int planIndex, std::vector<Vertex> const & controlVerts, Vertex * supports);
 
@@ -978,7 +1006,7 @@ applyNodeColor(int planIndex,
 // evaluate only those support stencils.
 // note : function assumes that supports array has allocated enough verts
 
-static void
+static int
 computeSupports(Far::SubdivisionPlanTable const * plansTable,
     int planIndex, std::vector<Vertex> const & controlVerts, Vertex * supports) {
 
@@ -1003,10 +1031,17 @@ computeSupports(Far::SubdivisionPlanTable const * plansTable,
              supports[i].AddWithWeight(controlVerts[vertIndex], stencil.weights[k]);
         }
     }
+
+    INC_STAT(numSupportsEvaluated, nsupports);
+    INC_STAT(numSupportsTotal, plan->GetNumSupportsTotal());
+
+    return nsupports;
 }
 
 static void
 createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
+
+    CLEAR_STATS();
 
     Shape const * shape = Shape::parseObj(
         shapeDesc.data.c_str(), shapeDesc.scheme);
@@ -1049,8 +1084,8 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         delete g_plansTable;
         g_plansTable = topomap->HashTopology(*refiner);
 
-        g_currentTopomapSize = computeTopologyMapSize(*topomap);
-        g_currentPlansTableSize = computePlansTableSize(*g_plansTable);
+        SET_STAT(topomapSize, computeTopologyMapSize(*topomap));
+        SET_STAT(plansTableSize, computePlansTableSize(*g_plansTable));
 
         // copy coarse vertices positions
         for (int i=0; i<shape->GetNumVertices(); ++i) {
@@ -1126,12 +1161,6 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         bool nonquad = plan->IsNonQuadPatch();
 
         //
-        // compute all sub-patch stencils for this plan
-        //
-
-        computeSupports(g_plansTable, planIndex, controlVerts, &supports[0]);
-
-        //
         // create topology
         //
 
@@ -1147,6 +1176,12 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
             int tessLevel = nonquad ? g_tessLevel / 2 + 1 : g_tessLevel;
             tessellate(tessLevel, indices, u, v);
         }
+
+        //
+        // compute all sub-patch stencils for this plan
+        //
+
+        computeSupports(g_plansTable, planIndex, controlVerts, &supports[0]);
 
         for (int i=0; i<(int)indices.size(); ++i, pos+=3, norm+=3, col+=3) {
 
@@ -1453,11 +1488,14 @@ if (g_saveSVG) {
         g_hud.DrawString(10, -40,  "Triangles  : %d", g_tessMesh ? g_tessMesh->GetNumTriangles() : -1);
         g_hud.DrawString(10, -20,  "FPS        : %3.1f", fps);
 
-        g_hud.DrawString(-280, -120, "Chars : %d (%s)",
-            g_plansTable ? g_plansTable->GetTopologyMap().GetNumSubdivisionPlans() : -1, formatMemorySize(g_currentTopomapSize));
+        g_hud.DrawString(-280, -140, "Supports : %d / %d",
+            g_stats.numSupportsEvaluated, g_stats.numSupportsTotal);
 
-        g_hud.DrawString(-280, -100, "Plans : %d (%s)",
-            g_plansTable ? (int)g_plansTable->GetFacePlans().size() : 0, formatMemorySize(g_currentPlansTableSize));
+        g_hud.DrawString(-280, -120, "TopoMap : %d (%s)",
+            g_plansTable ? g_plansTable->GetTopologyMap().GetNumSubdivisionPlans() : -1, formatMemorySize(g_stats.topomapSize));
+
+        g_hud.DrawString(-280, -100, "PlansTable : %d (%s)",
+            g_plansTable ? (int)g_plansTable->GetFacePlans().size() : 0, formatMemorySize(g_stats.plansTableSize));
 
         g_hud.Flush();
     }
