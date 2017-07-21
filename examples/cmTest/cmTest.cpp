@@ -572,11 +572,14 @@ struct TessFactors {
           outer[4],
           inner[2];
 
+    int isolationLevel;
+
     void SetDefault(float f=0.0) {
         outerLo[0]=outerLo[1]=outerLo[2]=outerLo[3]=f;
         outerHi[0]=outerHi[1]=outerHi[2]=outerHi[3]=f;
         outer[0]=outer[1]=outer[2]=outer[3]=f;
         inner[0]=inner[1]=f;
+        isolationLevel=10;
     }
 
     // computes outer & inner from outerLo & outerHi
@@ -622,6 +625,7 @@ struct TessFactors {
         printf("outerHi [%f %f %f %f]\n", outerHi[0], outerHi[1], outerHi[2], outerHi[3]);
         printf("outer   [%f %f %f %f]\n", outer[0], outer[1], outer[2], outer[3]);
         printf("inner   [%f %f]\n",       inner[0], inner[1]);
+        printf("isolation = %d\n",        isolationLevel);
     }
 };
 
@@ -668,7 +672,7 @@ computeTessFactor(Vertex const & p0, Vertex const & p1, int tessLevel) {
 static void
 computeTessFactors(SpacingMode spacing,
     Far::SubdivisionPlanTable const * plansTable, std::vector<Vertex> const & verts,
-        int tessLevel, TessFactors * tf, int * nverts, int * ntris) {
+        int isolationLevel, int dynamicLevel, int tessLevel, TessFactors * tf, int * nverts, int * ntris) {
 
     for (int planIndex=0; planIndex < plansTable->GetNumPlans(); ++planIndex) {
 
@@ -738,6 +742,16 @@ computeTessFactors(SpacingMode spacing,
             tf->SetDefault(2.0f);
         }
 
+        // dynamic isolation level
+        {
+            float tessMax = 0;
+            for (int i=0; i<4; ++i) {
+                tessMax = std::max(tessMax, tf->outerLo[i] + tf->outerHi[i]);
+            }
+            int level = (int)tessMax,
+                levelCap = std::min(isolationLevel, dynamicLevel);
+            tf->isolationLevel = std::min(level, levelCap);
+        }
 //printf("tessFactors plan=%d valence=%d\n", planIndex, plan->GetCoarseFaceValence());
 //tf->Print();
 //fflush(stdout);
@@ -870,63 +884,56 @@ computeTessParameterization(SpacingMode spacing, TessFactors const & tf, float *
     *v = t;
 }
 
-static int
+static void
 computeSupports(Far::SubdivisionPlanTable const * plansTable,
-    int planIndex, std::vector<Vertex> const & controlVerts, Vertex * supports);
+    int planIndex, int levelIndex, std::vector<Vertex> const & controlVerts, Vertex * supports);
 
 static void
 createTessFactorNumbers(Far::SubdivisionPlanTable const & plansTable,
-    std::vector<Vertex> const & vertexBuffer, std::vector<TessFactors> const & tessFactors) {
+    int planIndex, std::vector<Vertex> const & supports, TessFactors const & tf) {
 
     // create a 3D string by evaluating a point on the limit surface that
     // is in the middle of the edge, nudged 0.05 units towards the parametric
     // center
 
-    static float const u[4] = { 0.5f,  0.95f, 0.5f,  0.05f };
-    static float const v[4] = { 0.05f, 0.5f,  0.95f, 0.5f };
+    static float const u[5] = { 0.5f,  0.95f, 0.5f,  0.05f, 0.5f };
+    static float const v[5] = { 0.05f, 0.5f,  0.95f, 0.5f,  0.5f };
 
     Far::TopologyMap const & topomap = plansTable.GetTopologyMap();
-
-    std::vector<Vertex> supports;
-    supports.resize(topomap.GetNumMaxSupports());
 
     unsigned char quadrant=0;
     float wP[20], wDs[20], wDt[20];
 
-    for (int planIndex=0; planIndex < plansTable.GetNumPlans(); ++planIndex) {
+    Far::SubdivisionPlan const * plan =
+        plansTable.GetSubdivisionPlan(planIndex);
 
-        if (plansTable.PlanIsHole(planIndex))
-            continue;
+    Far::ConstIndexArray planVerts = plansTable.GetPlanControlVertices(planIndex);
 
-        computeSupports(&plansTable, planIndex, vertexBuffer, &supports[0]);
+    for (int i=0; i<5; ++i) {
 
-        Far::SubdivisionPlan const * plan =
-            plansTable.GetSubdivisionPlan(planIndex);
+        float s = u[i],
+              t = v[i];
 
-        Far::ConstIndexArray planVerts = plansTable.GetPlanControlVertices(planIndex);
+        Far::SubdivisionPlan::Node node =
+            plan->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant, tf.isolationLevel);
 
-        for (int i=0; i<4; ++i) {
+        int nsupports = node.GetNumSupports(quadrant);
 
-            float s = u[i],
-                  t = v[i];
+        LimitFrame limit;
+        limit.Clear();
+        for (int j=0; j<nsupports; ++j) {
+            Far::Index supportIndex = node.GetSupportIndex(j, quadrant, tf.isolationLevel);
+            limit.AddWithWeight(supports[supportIndex], wP[j], wDs[j], wDt[j]);
+        }
 
-            Far::SubdivisionPlan::Node node =
-                plan->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant, g_dynamicLevel);
-
-            int nsupports = node.GetNumSupports(quadrant);
-
-            LimitFrame limit;
-            limit.Clear();
-            for (int j=0; j<nsupports; ++j) {
-                Far::Index supportIndex = node.GetSupportIndex(j, quadrant, g_dynamicLevel);
-                limit.AddWithWeight(supports[supportIndex], wP[j], wDs[j], wDt[j]);
-            }
-
+        static char buf[16];
+        if (i<4) {
             //float tf = tessFactors[planIndex].outerLo[i] + tessFactors[planIndex].outerHi[i];
-            float tf = tessFactors[planIndex].outer[i];
-            static char buf[16];
-            snprintf(buf, 16, "%c=%f",'A'+i, tf);
+            snprintf(buf, 16, "%c=%f",'A'+i, tf.outer[i]);
             g_font->Print3D(limit.point, buf, 4);
+        } else {
+            snprintf(buf, 16, "%d", tf.isolationLevel);
+            g_font->Print3D(limit.point, buf, 7);
         }
     }
 }
@@ -1006,14 +1013,15 @@ applyNodeColor(int planIndex,
 // evaluate only those support stencils.
 // note : function assumes that supports array has allocated enough verts
 
-static int
+static void
 computeSupports(Far::SubdivisionPlanTable const * plansTable,
-    int planIndex, std::vector<Vertex> const & controlVerts, Vertex * supports) {
+    int planIndex, int levelIndex, std::vector<Vertex> const & controlVerts, Vertex * supports) {
 
     Far::SubdivisionPlan const * plan =
         plansTable->GetSubdivisionPlan(planIndex);
 
-    int nsupports = plan->GetNumSupportsTotal();
+    int nsupports = levelIndex > 0 ?
+        plan->GetNumSupports(levelIndex) : plan->GetNumSupportsTotal();
     for (int i=0; i<nsupports; ++i) {
 
         // get the stencil for this support point
@@ -1034,8 +1042,6 @@ computeSupports(Far::SubdivisionPlanTable const * plansTable,
 
     INC_STAT(numSupportsEvaluated, nsupports);
     INC_STAT(numSupportsTotal, plan->GetNumSupportsTotal());
-
-    return nsupports;
 }
 
 static void
@@ -1126,10 +1132,8 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     std::vector<TessFactors> tessFactors;
     tessFactors.resize(nplans);
     if (g_dynamicTess) {
-        computeTessFactors(spacing, g_plansTable, controlVerts, g_tessLevel, &tessFactors[0], &nverts, &ntriangles);
-        if (g_DrawTessFactors) {
-            createTessFactorNumbers(*g_plansTable, controlVerts, tessFactors);
-        }
+        computeTessFactors(spacing, g_plansTable, controlVerts,
+            g_level, g_dynamicLevel, g_tessLevel, &tessFactors[0], &nverts, &ntriangles);
     } else {
         nverts = g_tessLevel * g_tessLevel * nplans,
         ntriangles = 2 * std::max(1, g_tessLevel-1) * std::max(1, g_tessLevel-1) * nplans;
@@ -1181,7 +1185,15 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         // compute all sub-patch stencils for this plan
         //
 
-        computeSupports(g_plansTable, planIndex, controlVerts, &supports[0]);
+        int isolationLevel = g_dynamicTess ? tf.isolationLevel : g_dynamicLevel;
+
+        isolationLevel = std::min(isolationLevel, g_level);
+
+        computeSupports(g_plansTable, planIndex, isolationLevel, controlVerts, &supports[0]);
+
+        if (g_dynamicTess && g_DrawTessFactors) {
+            createTessFactorNumbers(*g_plansTable, planIndex, supports, tf);
+        }
 
         for (int i=0; i<(int)indices.size(); ++i, pos+=3, norm+=3, col+=3) {
 
@@ -1194,19 +1206,18 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
             computeTessParameterization(spacing, tf, &s, &t);
 
-            // XXXX g_dynamicLevel needs to be dynamic now !
             Far::SubdivisionPlan::Node node =
-                plan->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant, g_dynamicLevel);
+                plan->EvaluateBasis(s, t, wP, wDs, wDt, &quadrant, isolationLevel);
 
             //
             // limit points : interpolate support points with basis weights
             //
-            int nsupports = node.GetNumSupports(quadrant, g_dynamicLevel);
+            int nsupports = node.GetNumSupports(quadrant, isolationLevel);
 
             LimitFrame limit;
             limit.Clear();
             for (int j=0; j<nsupports; ++j) {
-                Far::Index supportIndex = node.GetSupportIndex(j, quadrant, g_dynamicLevel);
+                Far::Index supportIndex = node.GetSupportIndex(j, quadrant, isolationLevel);
                 limit.AddWithWeight(supports[supportIndex], wP[j], wDs[j], wDt[j]);
             }
 
@@ -1219,7 +1230,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
             // color
             switch (g_shadingMode) {
                 case ::SHADING_PATCH_TYPE : {
-                    float const * c = getAdaptiveColor(node, g_dynamicLevel);
+                    float const * c = getAdaptiveColor(node, isolationLevel);
                     memcpy(col, c, 3 * sizeof(float));
                 } break;
                 case ::SHADING_PATCH_COORD : {
