@@ -578,6 +578,13 @@ SubdivisionPlanBuilder::computeNodeOffsets(
         }
         numSupportsOut[level] = numSupports;
     }
+
+    // pad the per-level number of supports lookup table with the
+    // total number of supports.
+    for (int level=_refiner.GetNumLevels(); level<11; ++level) {
+        numSupportsOut[level] = numSupports;        
+    }
+
     *treeSizeOut = treeSize;
     *numSupportsTotalOut = numSupports;
 }
