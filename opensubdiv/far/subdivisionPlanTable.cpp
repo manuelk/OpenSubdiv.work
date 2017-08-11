@@ -31,10 +31,6 @@ namespace OPENSUBDIV_VERSION {
 
 namespace Far {
 
-SubdivisionPlanTable::SubdivisionPlanTable(
-    TopologyMap const & topomap) : _topomap(topomap) {
-}
-
 int
 SubdivisionPlanTable::countNumPlans(
     TopologyLevel const & coarseLevel, int regFaceSize) {

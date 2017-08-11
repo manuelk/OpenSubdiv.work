@@ -162,7 +162,7 @@ TopologyMap::HashTopology(TopologyRefiner const & refiner) {
         regValence = Sdc::SchemeTypeTraits::GetRegularFaceSize(refiner.GetSchemeType()),
         hashSize = _options.hashSize;
 
-    SubdivisionPlanTable * plansTable = new SubdivisionPlanTable(*this);
+    SubdivisionPlanTable * plansTable = new SubdivisionPlanTable;
 
     FacePlanVector & plans = plansTable->_plans;
     plans.reserve(nplans);

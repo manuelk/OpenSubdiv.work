@@ -83,10 +83,10 @@ public:
     }
 
     /// \brief Returns the subdivision plan associated with the face
-    SubdivisionPlan const * GetSubdivisionPlan(Index faceIndex) const {
+    SubdivisionPlan const * GetSubdivisionPlan(TopologyMap const & topomap, Index faceIndex) const {
         Index planIndex = _plans[faceIndex].planIndex;
         return planIndex!=INDEX_INVALID ?
-            _topomap.GetSubdivisionPlan(planIndex) : 0;
+            topomap.GetSubdivisionPlan(planIndex) : 0;
     }
 
     /// \brief Returns the index of the vertex in the control mesh corresponding
@@ -100,11 +100,6 @@ public:
         FacePlan const & plan = _plans[planIndex];
         return ConstIndexArray(
             &_controlVertices[plan.firstControl], plan.numControls);
-    }
-
-    /// \brief Returns the TopologyMap associated with the plans in the table
-    TopologyMap const & GetTopologyMap() const {
-        return _topomap;
     }
 
     /// \brief Returns a vector with all the plans in the table
@@ -122,8 +117,6 @@ private:
 
     friend class TopologyMap;
 
-    SubdivisionPlanTable(TopologyMap const & topomap);
-
     static int countNumPlans(TopologyLevel const & coarseLevel, int regFaceSize);
 
 private:
@@ -131,8 +124,6 @@ private:
     FacePlanVector _plans;
 
     std::vector<Index> _controlVertices;
-
-    TopologyMap const & _topomap;
 };
 
 
