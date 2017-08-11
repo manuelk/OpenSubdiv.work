@@ -335,7 +335,8 @@ getAdaptiveColor(Far::SubdivisionPlan::Node node, int maxLevel) {
 
 struct Stats {
 
-    size_t topomapSize = 0,
+    size_t topomapNumPlans = 0,
+           topomapSize = 0,
            plansTableSize = 0,
            numSupportsEvaluated = 0,
            numSupportsTotal = 0;
@@ -455,15 +456,16 @@ createPlanCVNumbers(Far::SubdivisionPlanTable const & plansTable,
 
 
 static void
-createPlanNumbers(Far::SubdivisionPlanTable const & plansTable,
-    int planIndex, std::vector<Vertex> const & vertexBuffer) {
+createPlanNumbers(Far::TopologyMap const & topomap,
+    Far::SubdivisionPlanTable const & plansTable,
+        int planIndex, std::vector<Vertex> const & vertexBuffer) {
 
     if (g_currentNodeIndex<0) {
         return;
     }
 
     Far::SubdivisionPlan const * plan =
-        plansTable.GetSubdivisionPlan(planIndex);
+        plansTable.GetSubdivisionPlan(topomap, planIndex);
 
     Far::SubdivisionPlan::Node node = plan->GetTreeNode(0);
 
@@ -671,8 +673,9 @@ computeTessFactor(Vertex const & p0, Vertex const & p1, int tessLevel) {
 
 static void
 computeTessFactors(SpacingMode spacing,
-    Far::SubdivisionPlanTable const * plansTable, std::vector<Vertex> const & verts,
-        int isolationLevel, int dynamicLevel, int tessLevel, TessFactors * tf, int * nverts, int * ntris) {
+    Far::TopologyMap const * topomap, Far::SubdivisionPlanTable const * plansTable,
+        std::vector<Vertex> const & verts, int isolationLevel, int dynamicLevel,
+            int tessLevel, TessFactors * tf, int * nverts, int * ntris) {
 
     for (int planIndex=0; planIndex < plansTable->GetNumPlans(); ++planIndex) {
 
@@ -682,7 +685,7 @@ computeTessFactors(SpacingMode spacing,
             continue;
 
         Far::SubdivisionPlan const * plan =
-            plansTable->GetSubdivisionPlan(planIndex);
+            plansTable->GetSubdivisionPlan(*topomap, planIndex);
 
         Far::ConstIndexArray indices =
             plansTable->GetPlanControlVertices(planIndex);
@@ -885,12 +888,14 @@ computeTessParameterization(SpacingMode spacing, TessFactors const & tf, float *
 }
 
 static void
-computeSupports(Far::SubdivisionPlanTable const * plansTable,
-    int planIndex, int levelIndex, std::vector<Vertex> const & controlVerts, Vertex * supports);
+computeSupports(
+    Far::TopologyMap const * topomap, Far::SubdivisionPlanTable const * plansTable,
+        int planIndex, int levelIndex, std::vector<Vertex> const & controlVerts, Vertex * supports);
 
 static void
-createTessFactorNumbers(Far::SubdivisionPlanTable const & plansTable,
-    int planIndex, std::vector<Vertex> const & supports, TessFactors const & tf) {
+createTessFactorNumbers(
+    Far::TopologyMap const * topomap, Far::SubdivisionPlanTable const & plansTable,
+        int planIndex, std::vector<Vertex> const & supports, TessFactors const & tf) {
 
     // create a 3D string by evaluating a point on the limit surface that
     // is in the middle of the edge, nudged 0.05 units towards the parametric
@@ -899,13 +904,11 @@ createTessFactorNumbers(Far::SubdivisionPlanTable const & plansTable,
     static float const u[5] = { 0.5f,  0.95f, 0.5f,  0.05f, 0.5f };
     static float const v[5] = { 0.05f, 0.5f,  0.95f, 0.5f,  0.5f };
 
-    Far::TopologyMap const & topomap = plansTable.GetTopologyMap();
-
     unsigned char quadrant=0;
     float wP[20], wDs[20], wDt[20];
 
     Far::SubdivisionPlan const * plan =
-        plansTable.GetSubdivisionPlan(planIndex);
+        plansTable.GetSubdivisionPlan(*topomap, planIndex);
 
     Far::ConstIndexArray planVerts = plansTable.GetPlanControlVertices(planIndex);
 
@@ -972,7 +975,9 @@ GLControlMeshDisplay g_controlMeshDisplay;
 
 Osd::GLVertexBuffer * g_controlMeshVerts = 0;
 
-Far::SubdivisionPlanTable const * g_plansTable;
+Far::TopologyMap * g_topologyMap = 0;
+
+Far::SubdivisionPlanTable const * g_plansTable = 0;
 
 #define CREATE_SHAPE_TESS
 #ifdef CREATE_SHAPE_TESS
@@ -1014,11 +1019,11 @@ applyNodeColor(int planIndex,
 // note : function assumes that supports array has allocated enough verts
 
 static void
-computeSupports(Far::SubdivisionPlanTable const * plansTable,
+computeSupports(Far::TopologyMap const * topomap, Far::SubdivisionPlanTable const * plansTable,
     int planIndex, int levelIndex, std::vector<Vertex> const & controlVerts, Vertex * supports) {
 
     Far::SubdivisionPlan const * plan =
-        plansTable->GetSubdivisionPlan(planIndex);
+        plansTable->GetSubdivisionPlan(*topomap, planIndex);
 
     int nsupports = levelIndex > 0 ?
         plan->GetNumSupports(levelIndex) : plan->GetNumSupportsTotal();
@@ -1069,7 +1074,6 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     }
 
     // topology map & plans table
-    Far::TopologyMap * topomap = 0;
     std::vector<Vertex> controlVerts(shape->GetNumVertices());
     {
         delete g_controlMeshVerts;
@@ -1079,18 +1083,20 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         g_controlMeshDisplay.SetTopology(refiner->GetLevel(0));
 
         // build topology map
+        delete g_topologyMap;
         Far::TopologyMap::Options options;
         options.endCapType = g_endCap;
         options.useTerminalNode = g_useTerminalNodes;
         options.useDynamicIsolation = g_useDynamicIsolation;
         options.generateLegacySharpCornerPatches = g_smoothCornerPatch;
         options.hashSize = 5000;
-        topomap = new Far::TopologyMap(options);
+        g_topologyMap = new Far::TopologyMap(options);
 
         delete g_plansTable;
-        g_plansTable = topomap->HashTopology(*refiner);
+        g_plansTable = g_topologyMap->HashTopology(*refiner);
 
-        SET_STAT(topomapSize, computeTopologyMapSize(*topomap));
+        SET_STAT(topomapNumPlans, g_topologyMap->GetNumSubdivisionPlans());
+        SET_STAT(topomapSize, computeTopologyMapSize(*g_topologyMap));
         SET_STAT(plansTableSize, computePlansTableSize(*g_plansTable));
 
         // copy coarse vertices positions
@@ -1114,7 +1120,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         g_currentPlanIndex = std::max(-1,
             std::min(g_currentPlanIndex, g_plansTable->GetNumPlans()-1));
         if (g_currentPlanIndex>=0) {
-            createPlanNumbers(*g_plansTable, g_currentPlanIndex, controlVerts);
+            createPlanNumbers(*g_topologyMap, *g_plansTable, g_currentPlanIndex, controlVerts);
         }
     }
 
@@ -1132,7 +1138,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     std::vector<TessFactors> tessFactors;
     tessFactors.resize(nplans);
     if (g_dynamicTess) {
-        computeTessFactors(spacing, g_plansTable, controlVerts,
+        computeTessFactors(spacing, g_topologyMap, g_plansTable, controlVerts,
             g_level, g_dynamicLevel, g_tessLevel, &tessFactors[0], &nverts, &ntriangles);
     } else {
         nverts = g_tessLevel * g_tessLevel * nplans,
@@ -1148,7 +1154,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
           * col = &colors[0];
 
     std::vector<Vertex> supports;
-    supports.resize(topomap->GetNumMaxSupports());
+    supports.resize(g_topologyMap->GetNumMaxSupports());
 
     unsigned char quadrant=0;
     float wP[20], wDs[20], wDt[20];
@@ -1160,7 +1166,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         }
 
         Far::SubdivisionPlan const * plan =
-            g_plansTable->GetSubdivisionPlan(planIndex);
+            g_plansTable->GetSubdivisionPlan(*g_topologyMap, planIndex);
 
         bool nonquad = plan->IsNonQuadPatch();
 
@@ -1189,10 +1195,10 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
 
         isolationLevel = std::min(isolationLevel, g_level);
 
-        computeSupports(g_plansTable, planIndex, isolationLevel, controlVerts, &supports[0]);
+        computeSupports(g_topologyMap, g_plansTable, planIndex, isolationLevel, controlVerts, &supports[0]);
 
         if (g_dynamicTess && g_DrawTessFactors) {
-            createTessFactorNumbers(*g_plansTable, planIndex, supports, tf);
+            createTessFactorNumbers(g_topologyMap, *g_plansTable, planIndex, supports, tf);
         }
 
         for (int i=0; i<(int)indices.size(); ++i, pos+=3, norm+=3, col+=3) {
@@ -1268,6 +1274,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
     g_tessMesh = new GLMesh(topo);
 
     delete refiner;
+    
 }
 
 #else /* CREATE_SHAPE_TESS */
@@ -1503,7 +1510,7 @@ if (g_saveSVG) {
             g_stats.numSupportsEvaluated, g_stats.numSupportsTotal);
 
         g_hud.DrawString(-280, -120, "TopoMap : %d (%s)",
-            g_plansTable ? g_plansTable->GetTopologyMap().GetNumSubdivisionPlans() : -1, formatMemorySize(g_stats.topomapSize));
+            g_stats.topomapNumPlans, formatMemorySize(g_stats.topomapSize));
 
         g_hud.DrawString(-280, -100, "PlansTable : %d (%s)",
             g_plansTable ? (int)g_plansTable->GetFacePlans().size() : 0, formatMemorySize(g_stats.plansTableSize));
@@ -1696,9 +1703,11 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int mods) {
         case 'Q': g_running = 0; break;
         case 'F': fitFrame(); break;
 
-        case 'D': writeDigraph(g_plansTable->GetTopologyMap(),
-            mods==GLFW_MOD_SHIFT ? -1 : g_currentPlanIndex);
-            break;
+        case 'D': {
+            if (g_topologyMap) 
+                writeDigraph(*g_topologyMap,
+                    mods==GLFW_MOD_SHIFT ? -1 : g_currentPlanIndex);
+            } break;
 
         case 'V' : g_saveSVG = true; break;
 
