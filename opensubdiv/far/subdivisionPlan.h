@@ -448,11 +448,11 @@ public:
     /// \brief Returns a vector of supports control vertex indices
     std::vector<LocalIndex> const & GetSupportIndices() const { return _indices; }
 
-    /// \brief Returns a vector of the supports stencil weights
-    std::vector<int> const & GetSupportWeights() const { return _offsets; }
-
     /// \brief Returns a vector of the offsets to each support indices & weights
     std::vector<int> const & GetSupportOffsets() const { return _offsets; }
+
+    /// \brief Returns a vector of the supports stencil weights
+    std::vector<float> const & GetSupportWeights() const { return _weights; }
 
     /// \brief Returns the number of control vertices in the plan's neighborhood
     short GetNumControlVertices() const { return _numControlVertices; }
