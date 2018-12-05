@@ -132,6 +132,7 @@ namespace {
         REAL t2 = t * t;
         REAL t3 = t * t2;
 
+        /// XXXX manuelk shouldn't these constants be typed (REAL) ?
         wP[0] = one6th * (1.0f - 3.0f*(t -      t2) -      t3);
         wP[1] = one6th * (4.0f           - 6.0f*t2  + 3.0f*t3);
         wP[2] = one6th * (1.0f + 3.0f*(t +      t2  -      t3));
@@ -158,6 +159,7 @@ namespace {
     void
     adjustBSplineBoundaryWeights(int boundary, REAL w[16]) {
 
+        /// XXXX manuelk shouldn't these constants be typed (REAL) ?
         if ((boundary & 1) != 0) {
             for (int i = 0; i < 4; ++i) {
                 w[i + 8] -= w[i + 0];
@@ -209,18 +211,126 @@ namespace {
         }
     }
 
+    template <typename REAL> 
+    REAL
+    mix(REAL s1, REAL s2, REAL t) {
+        return ((REAL)1.0-t) * s1 + t * s2;
+    }
+
+    template <typename REAL>
+    void
+    flipMatrix(REAL const * a, REAL * m) {
+        m[ 0]=a[15]; m[ 1]=a[14]; m[ 2]=a[13]; m[ 3]=a[12];
+        m[ 4]=a[11]; m[ 5]=a[10]; m[ 6]=a[ 9]; m[ 7]=a[ 8];
+        m[ 8]=a[ 7]; m[ 9]=a[ 6]; m[10]=a[ 5]; m[11]=a[ 4];
+        m[12]=a[ 3]; m[13]=a[ 2]; m[14]=a[ 1]; m[15]=a[ 0];
+    }
+
+    // v x m (column major)
+    template <typename REAL>
+    void
+    applyMatrix(REAL * v, REAL const * m) {
+        REAL r[4];
+        r[0] = v[0]*m[0] + v[1]*m[4] + v[2]*m[ 8] + v[3]*m[12];
+        r[1] = v[0]*m[1] + v[1]*m[5] + v[2]*m[ 9] + v[3]*m[13];
+        r[2] = v[0]*m[2] + v[1]*m[6] + v[2]*m[10] + v[3]*m[14];
+        r[3] = v[0]*m[3] + v[1]*m[7] + v[2]*m[11] + v[3]*m[15];
+        memcpy(v, r, 4 * sizeof(REAL));
+    }
+
+    template <typename REAL>
+    void
+    computeMixedCreaseMatrix(REAL sharp1, REAL sharp2, REAL t, REAL tInf, REAL m[16]) {
+      REAL s1 = (REAL)exp2(sharp1),
+           s2 = (REAL)exp2(sharp2);
+
+      REAL sOver3 = mix(s1, s2, t) / REAL(3),
+           oneOverS1 = (REAL)1 / s1,
+           oneOverS2 = (REAL)1 / s2,
+           oneOver6S = mix(oneOverS1, oneOverS2, t) / (REAL)6,
+           sSqr = mix(s1*s1, s2*s2, t);
+
+      REAL A = -sSqr + sOver3 * (REAL)5.5 + oneOver6S            - (REAL)1.0,
+           B =         sOver3             + oneOver6S            + (REAL)0.5,
+           C =         sOver3             - oneOver6S*(REAL)2.0  + (REAL)1.0,
+           E =         sOver3             + oneOver6S            - (REAL)0.5,
+           F =       - sOver3 * (REAL)0.5 + oneOver6S;
+
+        m[ 0] = (REAL)1.0; m[ 1] = A*tInf;                   m[ 2] = (REAL)-2.0*A*tInf;                  m[ 3] = A*tInf;
+        m[ 4] = (REAL)0.0; m[ 5] = mix((REAL)1.0, B, tInf);  m[ 6] = (REAL)-2.0*E*tInf;                  m[ 7] = E*tInf;
+        m[ 8] = (REAL)0.0; m[ 9] = F*tInf;                   m[10] = mix((REAL)1.0, C, tInf);            m[11] = F*tInf;
+        m[12] = (REAL)0.0; m[13] = mix((REAL)-1.0, E, tInf); m[14] = mix((REAL)2.0, -(REAL)2.0*E, tInf); m[15] = B*tInf;
+    }
+
+    // compute the "crease matrix" for modifying basis weights at parametric
+    // location 't', given a sharpness value (see Matthias Niessner derivation
+    // for 'single crease' regular patches)
+    template <typename REAL>
+    void
+    computeCreaseMatrix(REAL sharpness, REAL t, REAL m[16]) {
+
+        REAL sharpFloor = (REAL)floor(sharpness),
+             sharpCeil = sharpFloor + 1,
+             sharpFrac = sharpness - sharpFloor;
+
+        REAL creaseWidthFloor = (REAL)1.0 - exp2(-sharpFloor),
+             creaseWidthCeil = (REAL)1.0 - exp2(-sharpCeil);
+
+        // we compute the matrix for both the floor and ceiling of
+        // the sharpness value, and then interpolate between them
+        // as needed.
+        REAL tA = (t > creaseWidthCeil) ? sharpFrac : (REAL)0.0,
+             tB = (REAL)0.0;
+        if (t > creaseWidthFloor)
+          tB = (REAL)1.0-sharpFrac;
+        if (t > creaseWidthCeil)
+          tB = (REAL)1.0;
+
+        computeMixedCreaseMatrix<REAL>(sharpFloor, sharpCeil, tA, tB, m);
+    }
+
 } // end namespace
 
 template <typename REAL>
 int
 EvalBasisBSpline(REAL s, REAL t,
     REAL wP[16], REAL wDs[16], REAL wDt[16],
-    REAL wDss[16], REAL wDst[16], REAL wDtt[16]) {
+    REAL wDss[16], REAL wDst[16], REAL wDtt[16], int boundaryMask, REAL sharpness) {
 
     REAL sWeights[4], tWeights[4], dsWeights[4], dtWeights[4], dssWeights[4], dttWeights[4];
 
     evalBSplineCurve(s, wP ? sWeights : 0, wDs ? dsWeights : 0, wDss ? dssWeights : 0);
     evalBSplineCurve(t, wP ? tWeights : 0, wDt ? dtWeights : 0, wDtt ? dttWeights : 0);
+
+    if (boundaryMask!=0 && sharpness > (REAL)0.0) {
+        REAL m[16], mflip[16];
+        if (boundaryMask & 1) {
+            computeCreaseMatrix<REAL>(sharpness, (REAL)1.0-t, m);
+            flipMatrix(m, mflip);
+            applyMatrix(  tWeights, mflip);
+            applyMatrix( dtWeights, mflip);
+            applyMatrix(dttWeights, mflip);
+        }
+        if (boundaryMask & 2) {
+            computeCreaseMatrix<REAL>(sharpness, s, m);
+            applyMatrix(  sWeights, m);
+            applyMatrix( dsWeights, m);
+            applyMatrix(dssWeights, m);
+        }
+        if (boundaryMask & 4) {
+            computeCreaseMatrix<REAL>(sharpness, t, m);
+            applyMatrix(  tWeights, m);
+            applyMatrix( dtWeights, m);
+            applyMatrix(dttWeights, m);
+        }
+        if (boundaryMask & 8) {
+            computeCreaseMatrix<REAL>(sharpness, (REAL)1.0-s, m);
+            flipMatrix(m, mflip);
+            applyMatrix(  sWeights, mflip);
+            applyMatrix( dsWeights, mflip);
+            applyMatrix(dssWeights, mflip);
+        }
+    }
 
     if (wP) {
         for (int i = 0; i < 4; ++i) {
@@ -632,7 +742,7 @@ EvalBasisLinearTri(REAL s, REAL t,
 //      { 1,  2, 4,    0,  6,  6,  -4,-12, -6, -4,   2,  4, 0, -2, -1 },
 //      { 0,  0, 0,    0,  0,  0,   2,  6,  6,  2,  -1, -2, 0, -2, -1 },
 //      { 0,  0, 0,    0,  0,  0,   0,  0,  0,  2,   0,  0, 0, -2, -1 },
-//      { 0,  0, 0,    0,  0,  0,   0,  0,  0,  0,   0,  0, 0,  2,  1 } 
+//      { 0,  0, 0,    0,  0,  0,   0,  0,  0,  0,   0,  0, 0,  2,  1 }
 //
 //  Differentiating the monomials and refactoring yields a unique set of
 //  coefficients for each of the derivatives, which we multiply by M(u,v).
@@ -1170,7 +1280,7 @@ EvalBasisBezierTri(REAL s, REAL t,
 //
 namespace {
     //
-    //  Expanding a set of 12 Bezier basis functions for the 6 (3 pairs) of 
+    //  Expanding a set of 12 Bezier basis functions for the 6 (3 pairs) of
     //  rational weights for the 15 Gregory basis functions:
     //
     template <typename REAL>
@@ -1210,7 +1320,7 @@ EvalBasisGregoryTri(REAL s, REAL t,
     //
     REAL BP[12], BDs[12], BDt[12], BDss[12], BDst[12], BDtt[12];
 
-    REAL G[6] = { 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f };
+    REAL G[6] = { 1.0, 0.0, 1.0, 0.0, 1.0, 0.0 };
     REAL u = s;
     REAL v = t;
     REAL w = 1 - u - v;
@@ -1265,19 +1375,21 @@ template <typename REAL>
 int
 EvaluatePatchBasisNormalized(int patchType, PatchParam const & param, REAL s, REAL t,
     REAL wP[], REAL wDs[], REAL wDt[],
-    REAL wDss[], REAL wDst[], REAL wDtt[]) {
+    REAL wDss[], REAL wDst[], REAL wDtt[], REAL sharpness) {
 
     int boundaryMask = param.GetBoundary();
 
+    bool needBounding = (sharpness==0) && boundaryMask;
+
     int nPoints = 0;
     if (patchType == PatchDescriptor::REGULAR) {
-        nPoints = EvalBasisBSpline(s, t, wP, wDs, wDt, wDss, wDst, wDtt);
-        if (boundaryMask) {
+        nPoints = EvalBasisBSpline(s, t, wP, wDs, wDt, wDss, wDst, wDtt, boundaryMask, sharpness);
+        if (needBounding) {
             boundBasisBSpline(boundaryMask, wP, wDs, wDt, wDss, wDst, wDtt);
         }
     } else if (patchType == PatchDescriptor::LOOP) {
         nPoints = EvalBasisBoxSplineTri(s, t, wP, wDs, wDt, wDss, wDst, wDtt);
-        if (boundaryMask) {
+        if (needBounding) {
             boundBasisBoxSplineTri(boundaryMask, wP, wDs, wDt, wDss, wDst, wDtt);
         }
     } else if (patchType == PatchDescriptor::GREGORY_BASIS) {
@@ -1298,7 +1410,7 @@ template <typename REAL>
 int
 EvaluatePatchBasis(int patchType, PatchParam const & param, REAL s, REAL t,
     REAL wP[], REAL wDs[], REAL wDt[],
-    REAL wDss[], REAL wDst[], REAL wDtt[]) {
+    REAL wDss[], REAL wDst[], REAL wDtt[], REAL sharpness) {
 
     REAL derivSign = 1.0f;
 
@@ -1314,7 +1426,7 @@ EvaluatePatchBasis(int patchType, PatchParam const & param, REAL s, REAL t,
     }
 
     int nPoints = EvaluatePatchBasisNormalized(
-        patchType, param, s, t, wP, wDs, wDt, wDss, wDst, wDtt);
+        patchType, param, s, t, wP, wDs, wDt, wDss, wDst, wDtt, sharpness);
 
     if (wDs && wDt) {
         REAL d1Scale = derivSign * (REAL)(1 << param.GetDepth());
@@ -1341,14 +1453,14 @@ EvaluatePatchBasis(int patchType, PatchParam const & param, REAL s, REAL t,
 //  Explicit float and double instantiations:
 //
 template int EvaluatePatchBasisNormalized<float>(int patchType, PatchParam const & param,
-    float s, float t, float wP[], float wDs[], float wDt[], float wDss[], float wDst[], float wDtt[]);
+    float s, float t, float wP[], float wDs[], float wDt[], float wDss[], float wDst[], float wDtt[], float sharpness);
 template int EvaluatePatchBasis<float>(int patchType, PatchParam const & param,
-    float s, float t, float wP[], float wDs[], float wDt[], float wDss[], float wDst[], float wDtt[]);
+    float s, float t, float wP[], float wDs[], float wDt[], float wDss[], float wDst[], float wDtt[], float sharpness);
 
 template int EvaluatePatchBasisNormalized<double>(int patchType, PatchParam const & param,
-    double s, double t, double wP[], double wDs[], double wDt[], double wDss[], double wDst[], double wDtt[]);
+    double s, double t, double wP[], double wDs[], double wDt[], double wDss[], double wDst[], double wDtt[], double sharpness);
 template int EvaluatePatchBasis<double>(int patchType, PatchParam const & param,
-    double s, double t, double wP[], double wDs[], double wDt[], double wDss[], double wDst[], double wDtt[]);
+    double s, double t, double wP[], double wDs[], double wDt[], double wDss[], double wDst[], double wDtt[], double sharpness);
 
 //
 //   Most basis evaluation functions are implicitly instantiated above -- Bezier

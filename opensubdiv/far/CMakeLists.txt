@@ -29,6 +29,8 @@ set(SOURCE_FILES
     catmarkPatchBuilder.cpp
     error.cpp
     loopPatchBuilder.cpp
+    neighborhood.cpp
+    neighborhoodBuilder.cpp
     patchBasis.cpp
     patchBuilder.cpp
     patchDescriptor.cpp
@@ -39,7 +41,11 @@ set(SOURCE_FILES
     stencilTable.cpp
     stencilTableFactory.cpp
     stencilBuilder.cpp
+    subdivisionPlan.cpp
+    subdivisionPlanBuilder.cpp
+    subdivisionPlanTable.cpp
     topologyDescriptor.cpp
+    topologyMap.cpp
     topologyRefiner.cpp
     topologyRefinerFactory.cpp
 )
@@ -48,10 +54,13 @@ set(PRIVATE_HEADER_FILES
     bilinearPatchBuilder.h
     catmarkPatchBuilder.h
     loopPatchBuilder.h
+    neighborhood.h
+    neighborhoodBuilder.h
     patchBasis.h
     patchBuilder.h
     sparseMatrix.h
     stencilBuilder.h
+    subdivisionPlanBuilder.h
 )
 
 set(PUBLIC_HEADER_FILES
@@ -65,8 +74,11 @@ set(PUBLIC_HEADER_FILES
     ptexIndices.h
     stencilTable.h
     stencilTableFactory.h
+    subdivisionPlan.h
+    subdivisionPlanTable.h
     topologyDescriptor.h
     topologyLevel.h
+    topologyMap.h
     topologyRefiner.h
     topologyRefinerFactory.h
     types.h

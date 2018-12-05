@@ -40,6 +40,9 @@ namespace OPENSUBDIV_VERSION {
 namespace Far {
 
 //  Forward declarations for friends:
+namespace internal {
+    class SubdivisionPlanBuilder;
+}
 class PatchTableBuilder;
 
 template <typename REAL> class StencilTableFactoryReal;
@@ -259,6 +262,7 @@ protected:
 
     friend class StencilTableFactoryReal<REAL>;
     friend class Far::PatchTableBuilder;
+    friend class Far::internal::SubdivisionPlanBuilder;
 
     int _numControlVertices;              // number of control vertices
 

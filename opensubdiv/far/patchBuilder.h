@@ -214,6 +214,12 @@ public:
     void GetIrregularPatchCornerSpans(int level, Index face,
             Vtr::internal::Level::VSpan cornerSpans[4], int fvc = -1) const;
 
+    int GetTransitionMask(int level, Index face ) const {
+        if (level<_refiner.GetMaxLevel())
+            return _refiner.getRefinement(level).getParentFaceSparseTag(face)._transitional;
+        return 0;
+    }
+
     bool DoesFaceVaryingPatchMatch(int level, Index face, int fvc) const {
         return _refiner.getLevel(level).doesFaceFVarTopologyMatch(face, fvc);
     }

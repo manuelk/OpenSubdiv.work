@@ -61,7 +61,8 @@ int EvalBasisBezier(REAL s, REAL t,
 
 template <typename REAL>
 int EvalBasisBSpline(REAL s, REAL t,
-    REAL wP[16], REAL wDs[16] = 0, REAL wDt[16] = 0, REAL wDss[16] = 0, REAL wDst[16] = 0, REAL wDtt[16] = 0);
+    REAL wP[16], REAL wDs[16] = 0, REAL wDt[16] = 0, REAL wDss[16] = 0, REAL wDst[16] = 0, REAL wDtt[16] = 0,
+    int boundaryMask=0, REAL sharpness=0.0);
 
 template <typename REAL>
 int EvalBasisGregory(REAL s, REAL t,
@@ -92,11 +93,11 @@ int EvalBasisGregoryTri(REAL s, REAL t,
 //
 template <typename REAL>
 int EvaluatePatchBasisNormalized(int patchType, PatchParam const & param, REAL s, REAL t,
-    REAL wP[], REAL wDs[] = 0, REAL wDt[] = 0, REAL wDss[] = 0, REAL wDst[] = 0, REAL wDtt[] = 0);
+    REAL wP[], REAL wDs[] = 0, REAL wDt[] = 0, REAL wDss[] = 0, REAL wDst[] = 0, REAL wDtt[] = 0, REAL sharpness = 0);
 
 template <typename REAL>
 int EvaluatePatchBasis(int patchType, PatchParam const & param, REAL s, REAL t,
-    REAL wP[], REAL wDs[] = 0, REAL wDt[] = 0, REAL wDss[] = 0, REAL wDst[] = 0, REAL wDtt[] = 0);
+    REAL wP[], REAL wDs[] = 0, REAL wDt[] = 0, REAL wDss[] = 0, REAL wDst[] = 0, REAL wDtt[] = 0, REAL sharpness = 0);
 
 
 } // end namespace internal

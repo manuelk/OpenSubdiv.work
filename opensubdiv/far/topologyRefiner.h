@@ -42,6 +42,10 @@ namespace Far { namespace internal { class FeatureMask; } }
 
 namespace Far {
 
+namespace internal {
+    class SubdivisionPlanBuilder;
+}
+
 template <typename REAL> class PrimvarRefinerReal;
 template <class MESH> class TopologyRefinerFactory;
 
@@ -218,6 +222,7 @@ protected:
     friend class PtexIndices;
     template <typename REAL>
     friend class PrimvarRefinerReal;
+    friend class internal::SubdivisionPlanBuilder;
 
     //  Copy constructor exposed via the factory class:
     TopologyRefiner(TopologyRefiner const & source);
