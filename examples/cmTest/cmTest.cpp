@@ -1024,7 +1024,7 @@ computeSupports(Far::TopologyMap const * topomap, Far::SubdivisionPlanTable cons
     Far::SubdivisionPlan const * plan =
         plansTable->GetSubdivisionPlan(*topomap, planIndex);
 
-    int nsupports = levelIndex > 0 ?
+    int nsupports = levelIndex >= 0 ?
         plan->GetNumSupports(levelIndex) : plan->GetNumSupportsTotal();
     for (int i=0; i<nsupports; ++i) {
 
@@ -1190,7 +1190,7 @@ createMesh(ShapeDesc const & shapeDesc, int maxlevel=3) {
         // compute all sub-patch stencils for this plan
         //
 
-        int isolationLevel = g_dynamicTess ? tf.isolationLevel : g_dynamicLevel;
+        int isolationLevel = g_dynamicTess ? tf.isolationLevel : g_dynamicLevel-1;
 
         isolationLevel = std::min(isolationLevel, g_level);
 
