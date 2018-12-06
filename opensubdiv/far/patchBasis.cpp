@@ -132,7 +132,6 @@ namespace {
         REAL t2 = t * t;
         REAL t3 = t * t2;
 
-        /// XXXX manuelk shouldn't these constants be typed (REAL) ?
         wP[0] = one6th * (1.0f - 3.0f*(t -      t2) -      t3);
         wP[1] = one6th * (4.0f           - 6.0f*t2  + 3.0f*t3);
         wP[2] = one6th * (1.0f + 3.0f*(t +      t2  -      t3));
@@ -159,7 +158,6 @@ namespace {
     void
     adjustBSplineBoundaryWeights(int boundary, REAL w[16]) {
 
-        /// XXXX manuelk shouldn't these constants be typed (REAL) ?
         if ((boundary & 1) != 0) {
             for (int i = 0; i < 4; ++i) {
                 w[i + 8] -= w[i + 0];
@@ -742,7 +740,7 @@ EvalBasisLinearTri(REAL s, REAL t,
 //      { 1,  2, 4,    0,  6,  6,  -4,-12, -6, -4,   2,  4, 0, -2, -1 },
 //      { 0,  0, 0,    0,  0,  0,   2,  6,  6,  2,  -1, -2, 0, -2, -1 },
 //      { 0,  0, 0,    0,  0,  0,   0,  0,  0,  2,   0,  0, 0, -2, -1 },
-//      { 0,  0, 0,    0,  0,  0,   0,  0,  0,  0,   0,  0, 0,  2,  1 }
+//      { 0,  0, 0,    0,  0,  0,   0,  0,  0,  0,   0,  0, 0,  2,  1 } 
 //
 //  Differentiating the monomials and refactoring yields a unique set of
 //  coefficients for each of the derivatives, which we multiply by M(u,v).
@@ -1280,7 +1278,7 @@ EvalBasisBezierTri(REAL s, REAL t,
 //
 namespace {
     //
-    //  Expanding a set of 12 Bezier basis functions for the 6 (3 pairs) of
+    //  Expanding a set of 12 Bezier basis functions for the 6 (3 pairs) of 
     //  rational weights for the 15 Gregory basis functions:
     //
     template <typename REAL>
@@ -1320,7 +1318,7 @@ EvalBasisGregoryTri(REAL s, REAL t,
     //
     REAL BP[12], BDs[12], BDt[12], BDss[12], BDst[12], BDtt[12];
 
-    REAL G[6] = { 1.0, 0.0, 1.0, 0.0, 1.0, 0.0 };
+    REAL G[6] = { 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f };
     REAL u = s;
     REAL v = t;
     REAL w = 1 - u - v;
