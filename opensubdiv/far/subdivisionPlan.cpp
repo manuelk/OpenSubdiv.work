@@ -261,7 +261,7 @@ evaluateEndCapBasis(SubdivisionPlan::EndCapType type, PatchParam param,
             internal::EvaluatePatchBasis<float>(PatchDescriptor::REGULAR, param, s, t, wP, wDs, wDt);
             break;
         case SubdivisionPlan::ENDCAP_GREGORY_BASIS :
-            internal::EvaluatePatchBasis<float>(PatchDescriptor::GREGORY, param, s, t, wP, wDs, wDt);
+            internal::EvaluatePatchBasis<float>(PatchDescriptor::GREGORY_BASIS, param, s, t, wP, wDs, wDt);
             break;
         default:
             assert(0);

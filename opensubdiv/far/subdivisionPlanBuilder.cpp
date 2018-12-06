@@ -45,6 +45,7 @@ namespace Far {
 using Vtr::internal::Refinement;
 using Vtr::internal::Level;
 using Vtr::internal::FVarLevel;
+using Vtr::internal::StackBuffer;
 
 namespace internal {
 
@@ -608,13 +609,15 @@ SubdivisionPlanBuilder::gatherIrregularPatchPoints(
     Vtr::internal::Level::VSpan cornerSpans[4];
     _patchBuilder->GetIrregularPatchCornerSpans(level, face, cornerSpans);
 
-    Index patchVerts[20];
-    int npoints = _patchBuilder->GetIrregularPatchSourcePoints(level, face, cornerSpans, patchVerts);
-
     SparseMatrix<float> matrix;
      _patchBuilder->GetIrregularPatchConversionMatrix(level, face, cornerSpans, matrix);
 
-    _stencilHelper->AppendLocalPatchPoints(level, face, matrix, _patchBuilder->GetIrregularPatchType(), patchVerts, offset, supports);
+    int numSourcePoints = matrix.GetNumColumns();
+
+    StackBuffer<Index, 64, true> sourcePoints(numSourcePoints);
+    int npoints = _patchBuilder->GetIrregularPatchSourcePoints(level, face, cornerSpans, sourcePoints);
+
+    _stencilHelper->AppendLocalPatchPoints(level, face, matrix, _patchBuilder->GetIrregularPatchType(), sourcePoints, offset, supports);
 }
 
 void
