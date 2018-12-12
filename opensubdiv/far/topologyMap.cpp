@@ -98,14 +98,14 @@ TopologyMap::findSubdivisionPlan(
 
         planIndex = _plansHash[hashIndex];
         if (planIndex==INDEX_INVALID) {
-                return planIndex;
+            return planIndex;
         }
 
-        SubdivisionPlan const * ch = _plans[planIndex];
-        for (int j=0; j<ch->GetNumNeighborhoods(); ++j) {
-            if (neighborhood.IsEquivalent(*ch->GetNeighborhood(j))) {
+        SubdivisionPlan const * plan = _plans[planIndex];
+        for (int j=0; j<plan->GetNumNeighborhoods(); ++j) {
+            if (neighborhood.IsEquivalent(*plan->GetNeighborhood(j))) {
                 if (rotation) {
-                    *rotation = ch->GetStartingEdge(j);
+                    *rotation = plan->GetStartingEdge(j);
                 }
                 return planIndex;
             }
@@ -162,9 +162,6 @@ TopologyMap::HashTopology(TopologyRefiner const & refiner) {
     // the same subdivision plan
     NeighborhoodBuilder neighborhoodBuilder(maxValence);
 
-    std::vector<Neighborhood const *> neighborhoods;
-    neighborhoods.reserve(nplans);
-
     for (int faceIndex=0, firstControl=0; faceIndex < nfaces; ++faceIndex) {
 
         if (coarseLevel.IsFaceHole(faceIndex)) {
@@ -186,7 +183,7 @@ TopologyMap::HashTopology(TopologyRefiner const & refiner) {
             // this topological configuration does not exist in the map :
             // create a new subdivision plan & add it to the map
             planIndex = GetNumSubdivisionPlans();
-            assert(planIndex!=INDEX_INVALID);
+            assert(planIndex!=INDEX_INVALID && planIndex<_options.hashSize);
 
             int valence = neighborhood->GetValence();
             if (valence!=regValence) {
@@ -211,7 +208,6 @@ TopologyMap::HashTopology(TopologyRefiner const & refiner) {
                 neighborhood =
                     neighborhoodBuilder.Create(coarseLevel, faceIndex, rotation);
             }
-            neighborhoods.push_back(neighborhood);
         }
 
         int numControlVertices =
@@ -241,10 +237,6 @@ TopologyMap::HashTopology(TopologyRefiner const & refiner) {
 
     _numMaxSupports = std::max(
         _numMaxSupports, planBuilder.FinalizeSupportStencils());
-
-    for (int i=0; i<(int)neighborhoods.size(); ++i) {
-        free((void *)neighborhoods[i]);
-    }
 
     return plansTable;
 }

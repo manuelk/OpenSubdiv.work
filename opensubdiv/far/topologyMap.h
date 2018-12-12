@@ -65,7 +65,7 @@ public:
              endCapType(SubdivisionPlan::ENDCAP_BSPLINE_BASIS),
              useTerminalNode(true),
              useDynamicIsolation(true),
-             generateLegacySharpCornerPatches(true) { }
+             generateLegacySharpCornerPatches(false) { }
 
         /// \brief Get endcap patch type
         EndCapType GetEndCapType() const { return (EndCapType)endCapType; }
@@ -79,7 +79,7 @@ public:
                      useTerminalNode      : 1,  ///< Use "terminal" nodes on patches with single EV
                      useDynamicIsolation  : 1,  ///< Generate data for run-time dynamic isolation
 
-                     // legacy behaviors (default to true)
+                     // legacy behaviors
                      generateLegacySharpCornerPatches : 1; ///< Generate sharp regular patches at smooth corners (legacy)
     };
 
